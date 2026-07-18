@@ -1,0 +1,686 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Charakterbogen — Kaltakquise-Dungeon</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --void:#0b0a12;
+    --panel:#151220;
+    --panel-2:#1c1830;
+    --border:#2c2540;
+    --arcane:#8b5cf6;
+    --arcane-glow:#a78bfa;
+    --mana:#22d3c8;
+    --amber:#f2a154;
+    --success:#34d399;
+    --danger:#f16565;
+    --text:#ede9f5;
+    --muted:#9089a8;
+    --muted-2:#6b6483;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:
+      radial-gradient(ellipse 900px 500px at 20% -10%, rgba(139,92,246,0.14), transparent),
+      radial-gradient(ellipse 700px 500px at 100% 10%, rgba(34,211,200,0.10), transparent),
+      var(--void);
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    padding:28px 16px 60px;
+    min-height:100vh;
+  }
+  .wrap{max-width:1040px;margin:0 auto;}
+  .mono{font-family:'JetBrains Mono',monospace;}
+  .display{font-family:'Cinzel',serif;}
+
+  #loading{display:flex;align-items:center;justify-content:center;height:60vh;color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:13px;letter-spacing:.05em;}
+  #app{display:none;}
+
+  .header{background:linear-gradient(160deg, var(--panel-2), var(--panel));border:1px solid var(--border);border-radius:14px;padding:22px 26px;position:relative;overflow:hidden;margin-bottom:18px;}
+  .header::before{content:"";position:absolute;top:-60%;right:-10%;width:340px;height:340px;background:radial-gradient(circle, rgba(139,92,246,0.18), transparent 65%);pointer-events:none;}
+  .header-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;position:relative;}
+  .name-row{display:flex;flex-direction:column;gap:4px;}
+  #nameInput{background:transparent;border:none;color:var(--text);font-family:'Cinzel',serif;font-weight:700;font-size:26px;padding:2px 0;outline:none;border-bottom:1px solid transparent;max-width:340px;}
+  #nameInput:focus{border-bottom:1px solid var(--arcane);}
+  .subtitle{color:var(--muted);font-size:13px;letter-spacing:.04em;}
+  .level-badge{display:flex;align-items:center;gap:10px;background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.35);border-radius:999px;padding:8px 18px;}
+  .level-badge .num{font-family:'Cinzel',serif;font-weight:700;font-size:22px;color:var(--arcane-glow);}
+  .level-badge .lbl{font-size:11px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;}
+
+  .xpbar-wrap{margin-top:18px;position:relative;}
+  .xpbar-labels{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:6px;font-family:'JetBrains Mono',monospace;letter-spacing:.03em;}
+  .xpbar-track{height:14px;border-radius:8px;background:#0e0c17;border:1px solid var(--border);overflow:hidden;position:relative;}
+  .xpbar-fill{height:100%;border-radius:8px;background:linear-gradient(90deg, var(--arcane), var(--arcane-glow));box-shadow:0 0 14px rgba(139,92,246,0.55);transition:width .6s cubic-bezier(.22,1,.36,1);}
+
+  .levelup-banner{display:none;margin-top:14px;padding:10px 14px;border-radius:8px;background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.4);color:var(--success);font-family:'JetBrains Mono',monospace;font-size:13px;animation:pulse 1.6s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 rgba(52,211,153,0.0);}50%{box-shadow:0 0 18px rgba(52,211,153,0.35);}}
+
+  .grid{display:grid;grid-template-columns:1.1fr 1fr;gap:18px;}
+  @media (max-width:860px){.grid{grid-template-columns:1fr;}}
+
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:20px;}
+  .card h2{font-family:'Cinzel',serif;font-size:15px;font-weight:700;margin:0 0 14px;color:var(--text);letter-spacing:.03em;display:flex;align-items:center;justify-content:space-between;}
+  .card h2 .tag{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted-2);text-transform:none;letter-spacing:0;}
+
+  #sigil{display:block;margin:0 auto;}
+  .skill-list{margin-top:14px;display:flex;flex-direction:column;gap:10px;}
+  .skill-row{font-size:12px;}
+  .skill-row-top{display:flex;justify-content:space-between;margin-bottom:4px;color:var(--muted);}
+  .skill-row-top .sname{color:var(--text);font-weight:500;}
+  .skill-row-top .slvl{font-family:'JetBrains Mono',monospace;color:var(--arcane-glow);}
+  .skill-track{height:6px;border-radius:4px;background:#0e0c17;border:1px solid var(--border);overflow:hidden;}
+  .skill-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--mana),var(--arcane));transition:width .5s ease;}
+
+  .energy-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;}
+  .pip{width:16px;height:16px;border-radius:4px;border:1px solid var(--border);background:#0e0c17;transition:all .3s;}
+  .pip.full{background:var(--mana);border-color:var(--mana);box-shadow:0 0 8px rgba(34,211,200,0.6);}
+  .energy-label{font-size:12px;color:var(--muted);margin-top:10px;font-family:'JetBrains Mono',monospace;}
+
+  .quickbar{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
+  .qbtn{
+    background:var(--panel-2);border:1px solid var(--border);border-radius:12px;
+    padding:16px 8px 12px;color:var(--text);cursor:pointer;text-align:center;
+    font-family:'Inter',sans-serif;display:flex;flex-direction:column;align-items:center;gap:8px;
+    transition:all .12s;user-select:none;
+  }
+  .qbtn:hover:not(:disabled){border-color:var(--mana);background:rgba(34,211,200,0.08);}
+  .qbtn:active:not(:disabled){transform:scale(0.96);}
+  .qbtn:disabled{opacity:.35;cursor:not-allowed;}
+  .qbtn .qicon{font-size:22px;line-height:1;}
+  .qbtn .qlabel{font-size:11.5px;font-weight:600;}
+  .qbtn .qxp{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--success);}
+  .qbtn .qtally{display:flex;gap:3px;margin-top:2px;}
+  .qbtn .qtally .tpip{width:7px;height:7px;border-radius:50%;background:#0e0c17;border:1px solid var(--border);}
+  .qbtn .qtally .tpip.on{background:var(--mana);border-color:var(--mana);box-shadow:0 0 5px rgba(34,211,200,0.6);}
+  .flash{animation:flash-anim .4s ease;}
+  @keyframes flash-anim{0%{background:rgba(52,211,153,0.35);}100%{background:var(--panel-2);}}
+
+  .action-group{margin-bottom:16px;}
+  .action-group-title{font-size:11px;color:var(--muted-2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;font-family:'JetBrains Mono',monospace;}
+  .action-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .abtn{background:var(--panel-2);border:1px solid var(--border);border-radius:9px;padding:10px 12px;color:var(--text);cursor:pointer;text-align:left;font-family:'Inter',sans-serif;font-size:12.5px;font-weight:500;transition:all .15s;display:flex;flex-direction:column;gap:3px;}
+  .abtn:hover:not(:disabled){border-color:var(--arcane);background:rgba(139,92,246,0.10);transform:translateY(-1px);}
+  .abtn:disabled{opacity:.35;cursor:not-allowed;}
+  .abtn .xp{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--success);}
+  .abtn.boss{grid-column:1/-1;background:rgba(242,161,84,0.10);border-color:rgba(242,161,84,0.4);}
+  .abtn.boss:hover:not(:disabled){border-color:var(--amber);background:rgba(242,161,84,0.18);}
+  .abtn.boss .xp{color:var(--amber);}
+
+  .quest{margin-bottom:14px;}
+  .quest-top{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:6px;}
+  .quest-top .qname{color:var(--text);}
+  .quest-top .qprog{font-family:'JetBrains Mono',monospace;color:var(--muted);}
+  .quest-top .qprog.done{color:var(--success);}
+  .quest-track{height:6px;border-radius:4px;background:#0e0c17;border:1px solid var(--border);overflow:hidden;}
+  .quest-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--success),var(--mana));transition:width .5s ease;}
+
+  .chain{border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px;background:var(--panel-2);}
+  .chain-title{font-size:12px;color:var(--muted-2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;font-family:'JetBrains Mono',monospace;}
+  .chain-stage{display:flex;align-items:center;gap:10px;padding:6px 0;font-size:12.5px;}
+  .chain-stage .icon{width:20px;text-align:center;flex-shrink:0;}
+  .chain-stage.done{color:var(--success);}
+  .chain-stage.locked{color:var(--muted-2);}
+  .chain-stage .reward{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:11px;}
+
+  .log{max-height:260px;overflow-y:auto;display:flex;flex-direction:column-reverse;gap:6px;padding-right:4px;}
+  .log::-webkit-scrollbar{width:6px;}
+  .log::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px;}
+  .log-entry{display:flex;justify-content:space-between;gap:10px;font-family:'JetBrains Mono',monospace;font-size:11.5px;padding:7px 10px;border-radius:6px;background:var(--panel-2);border:1px solid var(--border);}
+  .log-entry .lname{color:var(--text);}
+  .log-entry .lctx{color:var(--arcane-glow);}
+  .log-entry .ltime{color:var(--muted-2);}
+  .log-entry .lxp{color:var(--success);white-space:nowrap;}
+  .log-empty{color:var(--muted-2);font-size:12px;font-family:'JetBrains Mono',monospace;text-align:center;padding:20px 0;}
+
+  .footer-row{display:flex;justify-content:space-between;align-items:center;margin-top:18px;}
+  .reset-btn{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:8px 14px;font-size:11.5px;cursor:pointer;font-family:'JetBrains Mono',monospace;}
+  .reset-btn:hover{border-color:var(--danger);color:var(--danger);}
+  .totalxp{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--muted);}
+</style>
+</head>
+<body>
+
+<div id="loading">Charakterbogen wird beschworen …</div>
+
+<div class="wrap" id="app">
+
+  <div class="header">
+    <div class="header-top">
+      <div class="name-row">
+        <input id="nameInput" class="display" value="Namenloser Hexer" maxlength="30">
+        <div class="subtitle">Klasse: Hexer &nbsp;·&nbsp; Spezialisierung: Vertrieb akademische Heilberufe</div>
+      </div>
+      <div class="level-badge">
+        <div class="num mono" id="levelNum">1</div>
+        <div class="lbl">Level</div>
+      </div>
+    </div>
+
+    <div class="xpbar-wrap">
+      <div class="xpbar-labels">
+        <span id="xpCurrentLabel">0 / 100 XP</span>
+        <span id="xpToNextLabel">100 XP bis Level 2</span>
+      </div>
+      <div class="xpbar-track"><div class="xpbar-fill" id="xpFill" style="width:0%"></div></div>
+    </div>
+
+    <div class="levelup-banner" id="levelUpBanner">⬆ Level Up!</div>
+  </div>
+
+  <div class="grid">
+    <div>
+      <div class="card">
+        <h2>Sigil der Fähigkeiten <span class="tag">skill radar</span></h2>
+        <svg id="sigil" width="260" height="260" viewBox="0 0 260 260"></svg>
+        <div class="skill-list" id="skillList"></div>
+      </div>
+
+      <div class="card" style="margin-top:18px;">
+        <h2>Schnellzugriff <span class="tag">im gespräch</span></h2>
+        <div class="quickbar" id="quickbar">
+          <button class="qbtn" id="qbtn_telefon">
+            <span class="qicon">📞</span>
+            <span class="qlabel">Telefon</span>
+            <span class="qxp">+2 XP je 5</span>
+            <span class="qtally" id="phoneTallyPips"></span>
+          </button>
+          <button class="qbtn" id="qbtn_termin">
+            <span class="qicon">📅</span>
+            <span class="qlabel">Termin vereinbart</span>
+            <span class="qxp">+5 XP</span>
+          </button>
+          <button class="qbtn" id="qbtn_ansprache">
+            <span class="qicon">🩺</span>
+            <span class="qlabel">Ansprache KH</span>
+            <span class="qxp">+2 XP</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:18px;">
+        <h2>Manareserve <span class="tag">tagesenergie</span></h2>
+        <div class="energy-row" id="energyRow"></div>
+        <div class="energy-label" id="energyLabel"></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <h2>Handlungen <span class="tag">im dungeon</span></h2>
+
+        <div class="action-group">
+          <div class="action-group-title">Krankenhausakquise</div>
+          <div class="action-btns">
+            <button class="abtn" data-action="ansprache_oberarzt">Ansprache Ober-/Chefarzt<span class="xp">+5 XP · 2 Energie</span></button>
+            <button class="abtn" data-action="gruppentermin">Gruppentermin<span class="xp">+10 XP · 3 Energie</span></button>
+          </div>
+        </div>
+
+        <div class="action-group">
+          <div class="action-group-title">Telefonakquise</div>
+          <div class="action-btns">
+            <button class="abtn" data-action="kalttelefonie">Kalttelefonie geführt<span class="xp">+4 XP · 1 Energie</span></button>
+            <button class="abtn" data-action="bestandskunde">Bestandskunde kontaktiert<span class="xp">+1 XP · 1 Energie</span></button>
+          </div>
+        </div>
+
+        <div class="action-group">
+          <div class="action-group-title">Termine</div>
+          <div class="action-btns">
+            <button class="abtn" data-action="termin_wahrgenommen">Termin wahrgenommen<span class="xp">+8 XP · 0 Energie</span></button>
+          </div>
+        </div>
+
+        <div class="action-group">
+          <div class="action-group-title">Gespräch & Abschluss</div>
+          <div class="action-btns">
+            <button class="abtn" data-action="bedarfsanalyse">Bedarfsanalyse geführt<span class="xp">+10 XP · 2 Energie</span></button>
+            <button class="abtn" data-action="kundenausbau">Kundenausbau<span class="xp">+10 XP · 2 Energie</span></button>
+            <button class="abtn" data-action="pitch">Angebot/Pitch abgegeben<span class="xp">+15 XP · 3 Energie</span></button>
+            <button class="abtn" data-action="empfehlung">Empfehlung erhalten<span class="xp">+20 XP · 2 Energie</span></button>
+            <button class="abtn" data-action="fachinfo">Fachliche Info recherchiert<span class="xp">+5 XP · 1 Energie</span></button>
+            <button class="abtn" data-action="abschluss">Abschluss<span class="xp">+40 XP · 4 Energie</span></button>
+            <button class="abtn boss" data-action="boss">🐲 Boss-Encounter: Große Präsentation<span class="xp">+60 XP · 5 Energie</span></button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:18px;">
+        <h2>Quests <span class="tag">täglich/wöchentlich</span></h2>
+        <div id="questList"></div>
+      </div>
+
+      <div class="card" style="margin-top:18px;">
+        <h2>Quest-Ketten <span class="tag">meilensteine</span></h2>
+        <div id="chainList"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:18px;">
+    <h2>Abenteuerlog <span class="tag" id="logCount"></span></h2>
+    <div class="log" id="logList"></div>
+  </div>
+
+  <div class="footer-row">
+    <span class="totalxp" id="totalXpFooter"></span>
+    <button class="reset-btn" id="resetBtn">Charakter zurücksetzen</button>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  const STORAGE_KEY = 'hexer-character-v2';
+
+  // ---- Regelwerk ----
+  const ACTIONS = {
+    ansprache_assistenz: { label:'Ansprache Assistenzarzt', xp:2,  energy:1, skill:'akquise' },
+    ansprache_oberarzt:  { label:'Ansprache Ober-/Chefarzt', xp:5,  energy:2, skill:'gespraech', skill2:'akquise' },
+    gruppentermin:       { label:'Gruppentermin',            xp:10, energy:3, skill:'akquise', skill2:'beziehung' },
+
+    telefon_5:           { label:'5 Nummern gewählt',        xp:2,  energy:1, skill:'akquise' },
+    kalttelefonie:       { label:'Kalttelefonie geführt',    xp:4,  energy:1, skill:'gespraech', skill2:'akquise' },
+    bestandskunde:       { label:'Bestandskunde kontaktiert',xp:1,  energy:1, skill:'beziehung' },
+
+    termin_vereinbart:   { label:'Termin vereinbart',        xp:5,  energy:1, skill:'akquise' },
+    termin_wahrgenommen: { label:'Termin wahrgenommen',      xp:8,  energy:0, skill:'beziehung' },
+
+    bedarfsanalyse:      { label:'Bedarfsanalyse geführt',   xp:10, energy:2, skill:'gespraech' },
+    kundenausbau:        { label:'Kundenausbau',             xp:10, energy:2, skill:'akquise', skill2:'beziehung' },
+    pitch:               { label:'Angebot/Pitch abgegeben',  xp:15, energy:3, skill:'fachwissen', skill2:'abschluss' },
+    empfehlung:          { label:'Empfehlung erhalten',      xp:20, energy:2, skill:'beziehung' },
+    fachinfo:            { label:'Fachliche Info recherchiert', xp:5, energy:1, skill:'fachwissen' },
+    abschluss:           { label:'Abschluss', xp:40, energy:4, skill:'abschluss', context:'Klinik/Krankenhaus' },
+
+    boss:                { label:'Boss-Encounter: Große Präsentation', xp:60, energy:5, skill:'fachwissen', skill2:'gespraech' },
+  };
+
+  const SKILLS = {
+    gespraech:  'Gesprächsführung',
+    akquise:    'Akquise & Ausdauer',
+    fachwissen: 'Fachwissen',
+    beziehung:  'Beziehungspflege',
+    abschluss:  'Abschlusskraft',
+  };
+  const SKILL_ORDER = ['gespraech','akquise','fachwissen','beziehung','abschluss'];
+
+  const ENERGY_MAX = 15;
+
+  // Zeitzone für "heute"/"diese Woche" — fix auf Deutschland für den Start.
+  // Skalierbarkeits-Vorkehrung: das wird später ein Feld pro Organisation
+  // (jede Organisation kann ihre eigene Zeitzone einstellen), hier vorerst als
+  // einzelne Konstante hinterlegt.
+  const ORG_TIMEZONE = 'Europe/Berlin';
+
+  // Level-Kurve: XP für Level L = 5 * L^1.5 (leicht am Anfang, hart am Ende)
+  const LEVEL_BASE = 5;
+  const LEVEL_EXP = 1.5;
+
+  // Wiederkehrende Quests (täglich/wöchentlich, auto-berechnet aus dem Log)
+  const RECURRING_QUESTS = [
+    { id:'daily1', period:'daily', name:'Täglich: 3 Ansprachen + 1 Termin vereinbart', bonus:10,
+      conditions:[
+        { actions:['ansprache_assistenz','ansprache_oberarzt'], count:3 },
+        { actions:['termin_vereinbart'], count:1 },
+      ] },
+    { id:'weekly1', period:'weekly', name:'Wöchentlich: 1 neue Fachinfo recherchiert', bonus:25,
+      conditions:[
+        { actions:['fachinfo'], count:1 },
+      ] },
+  ];
+
+  // Quest-Ketten (einmalig, schalten sich nacheinander frei, nutzen Kontext-Tags wie "Klinik")
+  const QUEST_CHAINS = [
+    { id:'krankenhaus_meister', name:'Krankenhaus-Meister', stages:[
+        { id:'stufe1', name:'3 Abschlüsse im selben Krankenhaus', bonus:50,
+          check: (ctxGroups) => Object.values(ctxGroups).some(c => c>=3) },
+        { id:'stufe2', name:'Abschlüsse aus 3 verschiedenen Krankenhäusern', bonus:100,
+          check: (ctxGroups) => Object.keys(ctxGroups).length>=3 },
+      ] },
+  ];
+
+  let state = { name:'Namenloser Hexer', log:[], phoneTally:0 };
+  let lastKnownLevel = 1;
+  const PHONE_BATCH = 5; // alle 5 Anrufe = 1 XP-Aktion (telefon_5)
+
+  function localPartsInTZ(d, tz){
+    const fmt = new Intl.DateTimeFormat('en-CA', {timeZone:tz, year:'numeric', month:'2-digit', day:'2-digit'});
+    const map = {};
+    fmt.formatToParts(new Date(d)).forEach(p=>{ map[p.type]=p.value; });
+    return { year:+map.year, month:+map.month, day:+map.day };
+  }
+  function todayKey(d){
+    const p = localPartsInTZ(d, ORG_TIMEZONE);
+    return `${p.year}-${String(p.month).padStart(2,'0')}-${String(p.day).padStart(2,'0')}`;
+  }
+  function weekKey(d){
+    const p = localPartsInTZ(d, ORG_TIMEZONE);
+    const localNoon = new Date(Date.UTC(p.year, p.month-1, p.day, 12));
+    const onejan = new Date(Date.UTC(p.year, 0, 1));
+    const week = Math.ceil((((localNoon-onejan)/86400000)+onejan.getUTCDay()+1)/7);
+    return p.year+'-W'+week;
+  }
+
+  function xpForLevel(level){ return Math.round(LEVEL_BASE*Math.pow(level,LEVEL_EXP)); }
+  function levelInfo(totalXp){
+    let level=1, remaining=totalXp, need=xpForLevel(level);
+    while(remaining>=need){ remaining-=need; level++; need=xpForLevel(level); }
+    return { level, into:remaining, need };
+  }
+
+  function computeTotals(){
+    let totalXp=0;
+    const skillXp={gespraech:0,akquise:0,fachwissen:0,beziehung:0,abschluss:0};
+    state.log.forEach(e=>{
+      totalXp+=e.xp;
+      if(e.skill) skillXp[e.skill]=(skillXp[e.skill]||0)+e.xp;
+      if(e.skill2) skillXp[e.skill2]=(skillXp[e.skill2]||0)+Math.round(e.xp*0.4);
+    });
+    return {totalXp, skillXp};
+  }
+
+  function energyUsedToday(){
+    const t=todayKey(new Date());
+    return state.log.filter(e=>todayKey(e.ts)===t).reduce((s,e)=>s+(e.energy||0),0);
+  }
+
+  function countInPeriod(actionsList, period){
+    const now=new Date();
+    const filterFn = period==='daily'
+      ? e => todayKey(e.ts)===todayKey(now)
+      : e => weekKey(e.ts)===weekKey(now);
+    return state.log.filter(e=>actionsList.includes(e.action) && filterFn(e)).length;
+  }
+
+  function recurringQuestBonusEarned(q){
+    // Bonus wurde bereits vergeben, wenn irgendwann in diesem Zeitraum ein
+    // Log-Eintrag vom Typ "quest_bonus" mit dieser Quest-ID existiert.
+    const now=new Date();
+    const key = q.period==='daily' ? todayKey(now) : weekKey(now);
+    return state.log.some(e => e.action==='quest_bonus' && e.questId===q.id && e.periodKey===key);
+  }
+
+  function abschlussContextGroups(){
+    const groups={};
+    state.log.filter(e=>e.action==='abschluss' && e.context).forEach(e=>{
+      const key=e.context.trim().toLowerCase();
+      if(!key) return;
+      groups[key]=(groups[key]||0)+1;
+    });
+    return groups;
+  }
+
+  function chainStageDone(stage, ctxGroups){
+    return stage.check(ctxGroups);
+  }
+
+  async function load(){
+    try{
+      const res = await window.storage.get(STORAGE_KEY, false);
+      if(res && res.value){
+        const parsed = JSON.parse(res.value);
+        state.name = parsed.name || state.name;
+        state.log = Array.isArray(parsed.log) ? parsed.log : [];
+        state.phoneTally = Number.isInteger(parsed.phoneTally) ? parsed.phoneTally : 0;
+      }
+    }catch(err){ console.log('Kein gespeicherter Charakter gefunden, starte neu.', err); }
+  }
+  async function save(){
+    try{ await window.storage.set(STORAGE_KEY, JSON.stringify(state), false); }
+    catch(err){ console.error('Speichern fehlgeschlagen', err); }
+  }
+
+  function fmtTime(ts){
+    const d=new Date(ts), now=new Date();
+    const timeStr = d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+    if(todayKey(d)===todayKey(now)) return 'heute ' + timeStr;
+    return d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'}) + ' ' + timeStr;
+  }
+
+  function drawSigil(skillXp, totalXp){
+    const svg = document.getElementById('sigil');
+    const cx=130, cy=130, r=95;
+    const n = SKILL_ORDER.length;
+    const VISUAL_CAP = 0.88; // harte Obergrenze: kein Skill füllt je den ganzen Kreis — Luft nach oben bleibt immer sichtbar
+
+    // Die Skala hängt am GESAMTFORTSCHRITT (totalXp), nicht am eigenen Spitzenwert.
+    // Sonst würde der jeweils stärkste Skill immer fast voll aussehen, egal wie stark er
+    // wirklich im Vergleich zu einem erfahrenen Charakter ist. So werden Stärken und
+    // Schwächen im Vergleich zum eigenen Fortschritt ehrlich sichtbar.
+    const ceiling = Math.max(150, totalXp*0.45);
+
+    const angle=(i)=> (Math.PI*2*i/n) - Math.PI/2;
+    function pt(i, val, radius){ const a=angle(i); const rad = radius * Math.min(VISUAL_CAP, val/ceiling); return [cx+Math.cos(a)*rad, cy+Math.sin(a)*rad]; }
+    function ringPts(radius){ return SKILL_ORDER.map((k,i)=>{ const a=angle(i); return [cx+Math.cos(a)*radius, cy+Math.sin(a)*radius]; }); }
+
+    let svgContent = '';
+    [0.25,0.5,0.75,1].forEach(f=>{
+      const pts = ringPts(r*f).map(p=>p.join(',')).join(' ');
+      svgContent += `<polygon points="${pts}" fill="none" stroke="#2c2540" stroke-width="1"/>`;
+    });
+    SKILL_ORDER.forEach((k,i)=>{
+      const [x,y] = ringPts(r)[i];
+      svgContent += `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="#2c2540" stroke-width="1"/>`;
+    });
+    const dataPts = SKILL_ORDER.map((k,i)=> pt(i, skillXp[k]||0, r).join(',')).join(' ');
+    svgContent += `<polygon points="${dataPts}" fill="rgba(139,92,246,0.28)" stroke="#a78bfa" stroke-width="2" style="filter:drop-shadow(0 0 6px rgba(139,92,246,0.6))"/>`;
+    SKILL_ORDER.forEach((k,i)=>{
+      const [x,y] = pt(i, skillXp[k]||0, r);
+      svgContent += `<circle cx="${x}" cy="${y}" r="3.5" fill="#22d3c8"/>`;
+    });
+    SKILL_ORDER.forEach((k,i)=>{
+      const a=angle(i);
+      const lx = cx+Math.cos(a)*(r+22), ly = cy+Math.sin(a)*(r+22);
+      const short = SKILLS[k].split(' ')[0].split('&')[0].slice(0,10);
+      svgContent += `<text x="${lx}" y="${ly}" fill="#9089a8" font-size="9.5" font-family="JetBrains Mono, monospace" text-anchor="middle" dominant-baseline="middle">${short}</text>`;
+    });
+    svg.innerHTML = svgContent;
+  }
+
+  async function checkAndAwardRecurringQuests(){
+    const now=new Date();
+    for(const q of RECURRING_QUESTS){
+      const key = q.period==='daily' ? todayKey(now) : weekKey(now);
+      const allMet = q.conditions.every(c => countInPeriod(c.actions, q.period) >= c.count);
+      if(allMet && !recurringQuestBonusEarned(q)){
+        state.log.push({ action:'quest_bonus', label:'Quest erfüllt: '+q.name, xp:q.bonus, energy:0, questId:q.id, periodKey:key, ts:new Date().toISOString() });
+      }
+    }
+  }
+
+  async function checkAndAwardChains(){
+    const ctxGroups = abschlussContextGroups();
+    for(const chain of QUEST_CHAINS){
+      for(let i=0;i<chain.stages.length;i++){
+        const stage = chain.stages[i];
+        const alreadyAwarded = state.log.some(e=>e.action==='chain_bonus' && e.chainId===chain.id && e.stageId===stage.id);
+        if(alreadyAwarded) continue;
+        const prevDone = i===0 || state.log.some(e=>e.action==='chain_bonus' && e.chainId===chain.id && e.stageId===chain.stages[i-1].id);
+        if(prevDone && chainStageDone(stage, ctxGroups)){
+          state.log.push({ action:'chain_bonus', label:'Kette erfüllt: '+chain.name+' — '+stage.name, xp:stage.bonus, energy:0, chainId:chain.id, stageId:stage.id, ts:new Date().toISOString() });
+        }
+      }
+    }
+  }
+
+  function render(){
+    const {totalXp, skillXp} = computeTotals();
+    const lvl = levelInfo(totalXp);
+
+    document.getElementById('nameInput').value = state.name;
+    document.getElementById('levelNum').textContent = lvl.level;
+    document.getElementById('xpCurrentLabel').textContent = `${lvl.into} / ${lvl.need} XP`;
+    document.getElementById('xpToNextLabel').textContent = `${lvl.need-lvl.into} XP bis Level ${lvl.level+1}`;
+    document.getElementById('xpFill').style.width = Math.round(100*lvl.into/lvl.need)+'%';
+    document.getElementById('totalXpFooter').textContent = `Gesamt: ${totalXp} XP · ${state.log.length} Einträge`;
+
+    if(lvl.level>lastKnownLevel){
+      const banner=document.getElementById('levelUpBanner');
+      banner.style.display='block';
+      banner.textContent=`⬆ Level Up! Willkommen auf Level ${lvl.level}.`;
+      setTimeout(()=>{banner.style.display='none';},4000);
+    }
+    lastKnownLevel = lvl.level;
+
+    drawSigil(skillXp, totalXp);
+    document.getElementById('skillList').innerHTML = SKILL_ORDER.map(k=>{
+      const xp = skillXp[k]||0, slvl = Math.floor(xp/50)+1, into = xp%50, pct = Math.round(100*into/50);
+      return `<div class="skill-row"><div class="skill-row-top"><span class="sname">${SKILLS[k]}</span><span class="slvl">Lv.${slvl} · ${xp} XP</span></div><div class="skill-track"><div class="skill-fill" style="width:${pct}%"></div></div></div>`;
+    }).join('');
+
+    const used = energyUsedToday();
+    const remaining = Math.max(0, ENERGY_MAX-used);
+    document.getElementById('energyRow').innerHTML = Array.from({length:ENERGY_MAX}).map((_,i)=> `<div class="pip ${i<remaining ? 'full':''}"></div>`).join('');
+    document.getElementById('energyLabel').textContent = `${remaining} / ${ENERGY_MAX} Energie verfügbar (regeneriert morgen)`;
+
+    document.querySelectorAll('.abtn').forEach(btn=>{
+      const a = ACTIONS[btn.dataset.action];
+      btn.disabled = a.energy > remaining;
+    });
+
+    // Schnellzugriff: Telefon-Tally-Pips
+    document.getElementById('phoneTallyPips').innerHTML = Array.from({length:PHONE_BATCH}).map((_,i)=>
+      `<span class="tpip ${i<state.phoneTally ? 'on':''}"></span>`
+    ).join('');
+    document.getElementById('qbtn_telefon').disabled = ACTIONS.telefon_5.energy > remaining;
+    document.getElementById('qbtn_termin').disabled = ACTIONS.termin_vereinbart.energy > remaining;
+    document.getElementById('qbtn_ansprache').disabled = ACTIONS.ansprache_assistenz.energy > remaining;
+
+    // Wiederkehrende Quests
+    document.getElementById('questList').innerHTML = RECURRING_QUESTS.map(q=>{
+      const progressParts = q.conditions.map(c=>Math.min(countInPeriod(c.actions,q.period), c.count));
+      const cur = progressParts.reduce((a,b)=>a+b,0);
+      const max = q.conditions.reduce((a,c)=>a+c.count,0);
+      const done = recurringQuestBonusEarned(q);
+      const pct = Math.round(100*cur/max);
+      return `<div class="quest"><div class="quest-top"><span class="qname">${q.name} <span style="color:var(--muted-2)">(+${q.bonus} XP)</span></span><span class="qprog ${done?'done':''}">${done?'✓ erfüllt':cur+'/'+max}</span></div><div class="quest-track"><div class="quest-fill" style="width:${pct}%"></div></div></div>`;
+    }).join('');
+
+    // Quest-Ketten
+    const ctxGroups = abschlussContextGroups();
+    document.getElementById('chainList').innerHTML = QUEST_CHAINS.map(chain=>{
+      let prevDone = true;
+      const stagesHtml = chain.stages.map(stage=>{
+        const awarded = state.log.some(e=>e.action==='chain_bonus' && e.chainId===chain.id && e.stageId===stage.id);
+        const isLocked = !prevDone && !awarded;
+        const cls = awarded ? 'done' : (isLocked ? 'locked' : '');
+        const icon = awarded ? '✓' : (isLocked ? '🔒' : '▸');
+        prevDone = awarded;
+        return `<div class="chain-stage ${cls}"><span class="icon">${icon}</span><span>${stage.name}</span><span class="reward">+${stage.bonus} XP</span></div>`;
+      }).join('');
+      return `<div class="chain"><div class="chain-title">${chain.name}</div>${stagesHtml}</div>`;
+    }).join('');
+
+    // Log
+    document.getElementById('logCount').textContent = state.log.length+' einträge';
+    const logListEl = document.getElementById('logList');
+    if(state.log.length===0){
+      logListEl.innerHTML = '<div class="log-empty">Noch keine Taten vollbracht. Betritt den Dungeon.</div>';
+    } else {
+      logListEl.innerHTML = state.log.slice(-150).map(e=>
+        `<div class="log-entry"><span class="lname">${e.label}${e.context?` <span class="lctx">(${e.context})</span>`:''}</span><span class="ltime">${fmtTime(e.ts)}</span><span class="lxp">+${e.xp} XP</span></div>`
+      ).join('');
+    }
+  }
+
+  async function logAction(key){
+    const a = ACTIONS[key];
+    if(!a) return;
+    const remaining = ENERGY_MAX - energyUsedToday();
+    if(a.energy > remaining) return;
+
+    let context = null;
+    if(a.context){
+      context = window.prompt(`${a.context} eintragen (optional, für Quest-Ketten wichtig):`, '');
+      if(context===null) return; // Abgebrochen
+    }
+
+    state.log.push({
+      action:key, label:a.label, xp:a.xp, energy:a.energy,
+      skill:a.skill, skill2:a.skill2||null,
+      context: context ? context.trim() : null,
+      ts: new Date().toISOString()
+    });
+
+    await checkAndAwardRecurringQuests();
+    await checkAndAwardChains();
+
+    render();
+    await save();
+  }
+
+  document.querySelectorAll('.abtn').forEach(btn=>{
+    btn.addEventListener('click', ()=> logAction(btn.dataset.action));
+  });
+
+  function flashButton(btn){
+    btn.classList.add('flash');
+    setTimeout(()=>btn.classList.remove('flash'), 400);
+  }
+
+  // Telefon: zählt im Hintergrund mit, XP wird erst nach jedem 5. Tastendruck gebucht
+  document.getElementById('qbtn_telefon').addEventListener('click', async ()=>{
+    const a = ACTIONS.telefon_5;
+    const remaining = ENERGY_MAX - energyUsedToday();
+    if(a.energy > remaining) return;
+
+    state.phoneTally++;
+    flashButton(document.getElementById('qbtn_telefon'));
+
+    if(state.phoneTally >= PHONE_BATCH){
+      state.phoneTally = 0;
+      state.log.push({ action:'telefon_5', label:a.label, xp:a.xp, energy:a.energy, skill:a.skill, ts:new Date().toISOString() });
+      await checkAndAwardRecurringQuests();
+      await checkAndAwardChains();
+    }
+    render();
+    await save();
+  });
+
+  // Termin vereinbart & Ansprache KH: jeder Klick bucht direkt
+  async function quickDirect(actionKey, btnId){
+    const a = ACTIONS[actionKey];
+    const remaining = ENERGY_MAX - energyUsedToday();
+    if(a.energy > remaining) return;
+    flashButton(document.getElementById(btnId));
+    state.log.push({ action:actionKey, label:a.label, xp:a.xp, energy:a.energy, skill:a.skill, skill2:a.skill2||null, ts:new Date().toISOString() });
+    await checkAndAwardRecurringQuests();
+    await checkAndAwardChains();
+    render();
+    await save();
+  }
+  document.getElementById('qbtn_termin').addEventListener('click', ()=> quickDirect('termin_vereinbart','qbtn_termin'));
+  document.getElementById('qbtn_ansprache').addEventListener('click', ()=> quickDirect('ansprache_assistenz','qbtn_ansprache'));
+
+  document.getElementById('nameInput').addEventListener('change', async (e)=>{
+    state.name = e.target.value.trim() || 'Namenloser Hexer';
+    await save();
+  });
+
+  document.getElementById('resetBtn').addEventListener('click', async ()=>{
+    if(!confirm('Charakter wirklich zurücksetzen? Alle XP und Logs gehen verloren.')) return;
+    state = { name:'Namenloser Hexer', log:[], phoneTally:0 };
+    lastKnownLevel = 1;
+    render();
+    await save();
+  });
+
+  (async function init(){
+    await load();
+    const {totalXp} = computeTotals();
+    lastKnownLevel = levelInfo(totalXp).level;
+    document.getElementById('loading').style.display='none';
+    document.getElementById('app').style.display='block';
+    render();
+  })();
+})();
+</script>
+
+</body>
+</html>
