@@ -1,0 +1,633 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vertriebs-Quest</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+  :root{
+    --void:#0b0a12; --panel:#151220; --panel-2:#1c1830; --border:#2c2540;
+    --arcane:#8b5cf6; --arcane-glow:#a78bfa; --mana:#22d3c8; --amber:#f2a154;
+    --success:#34d399; --danger:#f16565; --text:#ede9f5; --muted:#9089a8; --muted-2:#6b6483;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:radial-gradient(ellipse 900px 500px at 20% -10%, rgba(139,92,246,0.14), transparent),radial-gradient(ellipse 700px 500px at 100% 10%, rgba(34,211,200,0.10), transparent),var(--void);color:var(--text);font-family:'Inter',sans-serif;padding:28px 16px 60px;min-height:100vh;}
+  .wrap{max-width:1040px;margin:0 auto;}
+  .mono{font-family:'JetBrains Mono',monospace;}
+  .display{font-family:'Cinzel',serif;}
+  #loading{display:flex;align-items:center;justify-content:center;height:60vh;color:var(--muted);font-family:'JetBrains Mono',monospace;font-size:13px;letter-spacing:.05em;}
+  #app,#authScreen{display:none;}
+
+  /* Auth */
+  .auth-card{max-width:380px;margin:10vh auto;background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:30px;}
+  .auth-card h1{font-family:'Cinzel',serif;font-size:22px;margin:0 0 6px;}
+  .auth-card p{color:var(--muted);font-size:13px;margin:0 0 20px;}
+  .auth-card input{width:100%;background:#0e0c17;border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text);margin-bottom:10px;font-family:'Inter',sans-serif;font-size:14px;}
+  .auth-card input:focus{outline:none;border-color:var(--arcane);}
+  .auth-btn{width:100%;background:linear-gradient(90deg,var(--arcane),var(--arcane-glow));border:none;border-radius:8px;padding:11px;color:#fff;font-weight:600;cursor:pointer;font-size:14px;}
+  .auth-btn:hover{opacity:.9;}
+  .auth-switch{margin-top:14px;font-size:12.5px;color:var(--muted);text-align:center;}
+  .auth-switch a{color:var(--arcane-glow);cursor:pointer;text-decoration:underline;}
+  .auth-error{color:var(--danger);font-size:12.5px;margin-top:8px;min-height:16px;}
+
+  .header{background:linear-gradient(160deg, var(--panel-2), var(--panel));border:1px solid var(--border);border-radius:14px;padding:22px 26px;position:relative;overflow:hidden;margin-bottom:18px;}
+  .header::before{content:"";position:absolute;top:-60%;right:-10%;width:340px;height:340px;background:radial-gradient(circle, rgba(139,92,246,0.18), transparent 65%);pointer-events:none;}
+  .header-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;position:relative;}
+  .name-row{display:flex;flex-direction:column;gap:4px;}
+  #nameInput{background:transparent;border:none;color:var(--text);font-family:'Cinzel',serif;font-weight:700;font-size:26px;padding:2px 0;outline:none;border-bottom:1px solid transparent;max-width:340px;}
+  #nameInput:focus{border-bottom:1px solid var(--arcane);}
+  .subtitle{color:var(--muted);font-size:13px;letter-spacing:.04em;}
+  .header-right{display:flex;align-items:center;gap:10px;}
+  .level-badge{display:flex;align-items:center;gap:10px;background:rgba(139,92,246,0.12);border:1px solid rgba(139,92,246,0.35);border-radius:999px;padding:8px 18px;}
+  .level-badge .num{font-family:'Cinzel',serif;font-weight:700;font-size:22px;color:var(--arcane-glow);}
+  .level-badge .lbl{font-size:11px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;}
+  .logout-btn,.admin-btn{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:7px 12px;font-size:11.5px;cursor:pointer;font-family:'JetBrains Mono',monospace;}
+  .logout-btn:hover{border-color:var(--danger);color:var(--danger);}
+  .admin-btn:hover{border-color:var(--amber);color:var(--amber);}
+
+  .xpbar-wrap{margin-top:18px;position:relative;}
+  .xpbar-labels{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:6px;font-family:'JetBrains Mono',monospace;letter-spacing:.03em;}
+  .xpbar-track{height:14px;border-radius:8px;background:#0e0c17;border:1px solid var(--border);overflow:hidden;position:relative;}
+  .xpbar-fill{height:100%;border-radius:8px;background:linear-gradient(90deg, var(--arcane), var(--arcane-glow));box-shadow:0 0 14px rgba(139,92,246,0.55);transition:width .6s cubic-bezier(.22,1,.36,1);}
+  .levelup-banner{display:none;margin-top:14px;padding:10px 14px;border-radius:8px;background:rgba(52,211,153,0.12);border:1px solid rgba(52,211,153,0.4);color:var(--success);font-family:'JetBrains Mono',monospace;font-size:13px;animation:pulse 1.6s ease-in-out infinite;}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 rgba(52,211,153,0.0);}50%{box-shadow:0 0 18px rgba(52,211,153,0.35);}}
+
+  .grid{display:grid;grid-template-columns:1.1fr 1fr;gap:18px;}
+  @media (max-width:860px){.grid{grid-template-columns:1fr;}}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:20px;}
+  .card h2{font-family:'Cinzel',serif;font-size:15px;font-weight:700;margin:0 0 14px;color:var(--text);letter-spacing:.03em;display:flex;align-items:center;justify-content:space-between;}
+  .card h2 .tag{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted-2);text-transform:none;letter-spacing:0;}
+
+  #sigil{display:block;margin:0 auto;}
+  .skill-list{margin-top:14px;display:flex;flex-direction:column;gap:10px;}
+  .skill-row{font-size:12px;}
+  .skill-row-top{display:flex;justify-content:space-between;margin-bottom:4px;color:var(--muted);}
+  .skill-row-top .sname{color:var(--text);font-weight:500;}
+  .skill-row-top .slvl{font-family:'JetBrains Mono',monospace;color:var(--arcane-glow);}
+  .skill-track{height:6px;border-radius:4px;background:#0e0c17;border:1px solid var(--border);overflow:hidden;}
+  .skill-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--mana),var(--arcane));transition:width .5s ease;}
+
+  .energy-row{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;}
+  .pip{width:16px;height:16px;border-radius:4px;border:1px solid var(--border);background:#0e0c17;transition:all .3s;}
+  .pip.full{background:var(--mana);border-color:var(--mana);box-shadow:0 0 8px rgba(34,211,200,0.6);}
+  .energy-label{font-size:12px;color:var(--muted);margin-top:10px;font-family:'JetBrains Mono',monospace;}
+
+  .quickbar{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;}
+  .qbtn{background:var(--panel-2);border:1px solid var(--border);border-radius:12px;padding:16px 8px 12px;color:var(--text);cursor:pointer;text-align:center;font-family:'Inter',sans-serif;display:flex;flex-direction:column;align-items:center;gap:8px;transition:all .12s;user-select:none;}
+  .qbtn:hover:not(:disabled){border-color:var(--mana);background:rgba(34,211,200,0.08);}
+  .qbtn:active:not(:disabled){transform:scale(0.96);}
+  .qbtn:disabled{opacity:.35;cursor:not-allowed;}
+  .qbtn .qicon{font-size:22px;line-height:1;}
+  .qbtn .qlabel{font-size:11.5px;font-weight:600;}
+  .qbtn .qxp{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--success);}
+  .qbtn .qtally{display:flex;gap:3px;margin-top:2px;}
+  .qbtn .qtally .tpip{width:7px;height:7px;border-radius:50%;background:#0e0c17;border:1px solid var(--border);}
+  .qbtn .qtally .tpip.on{background:var(--mana);border-color:var(--mana);box-shadow:0 0 5px rgba(34,211,200,0.6);}
+  .flash{animation:flash-anim .4s ease;}
+  @keyframes flash-anim{0%{background:rgba(52,211,153,0.35);}100%{background:var(--panel-2);}}
+
+  .action-btns{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+  .abtn{background:var(--panel-2);border:1px solid var(--border);border-radius:9px;padding:10px 12px;color:var(--text);cursor:pointer;text-align:left;font-family:'Inter',sans-serif;font-size:12.5px;font-weight:500;transition:all .15s;display:flex;flex-direction:column;gap:3px;}
+  .abtn:hover:not(:disabled){border-color:var(--arcane);background:rgba(139,92,246,0.10);transform:translateY(-1px);}
+  .abtn:disabled{opacity:.35;cursor:not-allowed;}
+  .abtn .xp{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--success);}
+  .abtn.boss{grid-column:1/-1;background:rgba(242,161,84,0.10);border-color:rgba(242,161,84,0.4);}
+  .abtn.boss:hover:not(:disabled){border-color:var(--amber);background:rgba(242,161,84,0.18);}
+  .abtn.boss .xp{color:var(--amber);}
+
+  .quest{margin-bottom:14px;}
+  .quest-top{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:6px;}
+  .quest-top .qname{color:var(--text);}
+  .quest-top .qprog{font-family:'JetBrains Mono',monospace;color:var(--muted);}
+  .quest-top .qprog.done{color:var(--success);}
+  .quest-track{height:6px;border-radius:4px;background:#0e0c17;border:1px solid var(--border);overflow:hidden;}
+  .quest-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--success),var(--mana));transition:width .5s ease;}
+
+  .chain{border:1px solid var(--border);border-radius:10px;padding:12px 14px;margin-bottom:10px;background:var(--panel-2);}
+  .chain-title{font-size:12px;color:var(--muted-2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px;font-family:'JetBrains Mono',monospace;}
+  .chain-stage{display:flex;align-items:center;gap:10px;padding:6px 0;font-size:12.5px;}
+  .chain-stage .icon{width:20px;text-align:center;flex-shrink:0;}
+  .chain-stage.done{color:var(--success);}
+  .chain-stage.locked{color:var(--muted-2);}
+  .chain-stage .reward{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:11px;}
+
+  .log{max-height:260px;overflow-y:auto;display:flex;flex-direction:column-reverse;gap:6px;padding-right:4px;}
+  .log-entry{display:flex;justify-content:space-between;gap:10px;font-family:'JetBrains Mono',monospace;font-size:11.5px;padding:7px 10px;border-radius:6px;background:var(--panel-2);border:1px solid var(--border);}
+  .log-entry .lname{color:var(--text);}
+  .log-entry .lctx{color:var(--arcane-glow);}
+  .log-entry .ltime{color:var(--muted-2);}
+  .log-entry .lxp{color:var(--success);white-space:nowrap;}
+  .log-empty{color:var(--muted-2);font-size:12px;font-family:'JetBrains Mono',monospace;text-align:center;padding:20px 0;}
+  .totalxp{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--muted);}
+
+  /* Admin panel */
+  #adminPanel{display:none;margin-top:18px;}
+  #adminPanel textarea{width:100%;min-height:340px;background:#0e0c17;border:1px solid var(--border);border-radius:8px;color:var(--text);font-family:'JetBrains Mono',monospace;font-size:12px;padding:12px;}
+  .admin-actions{display:flex;gap:10px;margin-top:10px;}
+  .admin-actions button{border-radius:8px;padding:9px 16px;font-size:12.5px;cursor:pointer;font-family:'Inter',sans-serif;font-weight:600;border:1px solid var(--border);}
+  #saveConfigBtn{background:var(--arcane);color:#fff;border-color:var(--arcane);}
+  #cancelConfigBtn{background:transparent;color:var(--muted);}
+  .admin-hint{font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.5;}
+</style>
+</head>
+<body>
+
+<div id="loading">Verbindung zum Dungeon wird aufgebaut …</div>
+
+<div class="auth-card" id="authScreen">
+  <h1 class="display">Vertriebs-Quest</h1>
+  <p id="authSubtitle">Melde dich an, um deinen Charakter zu sehen.</p>
+  <input type="email" id="authEmail" placeholder="E-Mail">
+  <input type="password" id="authPassword" placeholder="Passwort">
+  <button class="auth-btn" id="authSubmitBtn">Anmelden</button>
+  <div class="auth-error" id="authError"></div>
+  <div class="auth-switch" id="authSwitch">Noch kein Konto? <a id="authToggleLink">Registrieren</a></div>
+</div>
+
+<div class="wrap" id="app">
+
+  <div class="header">
+    <div class="header-top">
+      <div class="name-row">
+        <input id="nameInput" class="display" value="Namenloser Held" maxlength="30">
+        <div class="subtitle" id="orgSubtitle">Klasse: Hexer</div>
+      </div>
+      <div class="header-right">
+        <div class="level-badge">
+          <div class="num mono" id="levelNum">1</div>
+          <div class="lbl">Level</div>
+        </div>
+        <button class="admin-btn" id="adminToggleBtn" style="display:none;">⚙ Admin</button>
+        <button class="logout-btn" id="logoutBtn">Abmelden</button>
+      </div>
+    </div>
+
+    <div class="xpbar-wrap">
+      <div class="xpbar-labels">
+        <span id="xpCurrentLabel">0 / 100 XP</span>
+        <span id="xpToNextLabel">100 XP bis Level 2</span>
+      </div>
+      <div class="xpbar-track"><div class="xpbar-fill" id="xpFill" style="width:0%"></div></div>
+    </div>
+
+    <div class="levelup-banner" id="levelUpBanner">⬆ Level Up!</div>
+
+    <div id="adminPanel">
+      <div class="admin-hint">
+        Hier bearbeitest du das komplette Regelwerk als JSON — Aktionen, XP-Werte, Energie, Skills, Level-Kurve, Quests und Quest-Ketten. Änderungen gelten sofort für alle Mitglieder deiner Organisation.
+      </div>
+      <textarea id="configEditor" spellcheck="false"></textarea>
+      <div class="admin-actions">
+        <button id="saveConfigBtn">Regelwerk speichern</button>
+        <button id="cancelConfigBtn">Schließen</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div>
+      <div class="card">
+        <h2>Sigil der Fähigkeiten <span class="tag">skill radar</span></h2>
+        <svg id="sigil" width="260" height="260" viewBox="0 0 260 260"></svg>
+        <div class="skill-list" id="skillList"></div>
+      </div>
+
+      <div class="card" style="margin-top:18px;">
+        <h2>Schnellzugriff <span class="tag">im gespräch</span></h2>
+        <div class="quickbar">
+          <button class="qbtn" id="qbtn_telefon">
+            <span class="qicon">📞</span><span class="qlabel">Telefon</span>
+            <span class="qxp">+2 XP je 5</span>
+            <span class="qtally" id="phoneTallyPips"></span>
+          </button>
+          <button class="qbtn" id="qbtn_termin">
+            <span class="qicon">📅</span><span class="qlabel">Termin vereinbart</span>
+            <span class="qxp">+5 XP</span>
+          </button>
+          <button class="qbtn" id="qbtn_ansprache">
+            <span class="qicon">🩺</span><span class="qlabel">Ansprache KH</span>
+            <span class="qxp">+2 XP</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:18px;">
+        <h2>Manareserve <span class="tag">tagesenergie</span></h2>
+        <div class="energy-row" id="energyRow"></div>
+        <div class="energy-label" id="energyLabel"></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="card">
+        <h2>Handlungen <span class="tag">im dungeon</span></h2>
+        <div class="action-btns" id="actionGrid"></div>
+      </div>
+
+      <div class="card" style="margin-top:18px;">
+        <h2>Quests <span class="tag">täglich/wöchentlich</span></h2>
+        <div id="questList"></div>
+      </div>
+
+      <div class="card" style="margin-top:18px;">
+        <h2>Quest-Ketten <span class="tag">meilensteine</span></h2>
+        <div id="chainList"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:18px;">
+    <h2>Abenteuerlog <span class="tag" id="logCount"></span></h2>
+    <div class="log" id="logList"></div>
+  </div>
+
+  <div class="totalxp" id="totalXpFooter" style="margin-top:14px;"></div>
+
+</div>
+
+<script>
+(function(){
+  // ---- Verbindung zur Datenbank ----
+  const SUPABASE_URL = 'https://aaqbbkcghxldsbhqwcyh.supabase.co';
+  const SUPABASE_ANON_KEY = 'sb_publishable_X_ltuj_9Hejeu5WKENaSZQ_DfNmUNrK';
+  const DEFAULT_ORG_ID = '00000000-0000-0000-0000-000000000001';
+  const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+  let session=null, profile=null, org=null, config=null, log=[];
+  let phoneTally = 0;
+  let lastKnownLevel = 1;
+  const QUICKBAR_KEYS = ['telefon_5','termin_vereinbart','ansprache_assistenz'];
+
+  // ---- Zeit / Zeitzone (kommt aus der Organisation, Vorkehrung für Skalierung) ----
+  function localPartsInTZ(d, tz){
+    const fmt = new Intl.DateTimeFormat('en-CA', {timeZone:tz, year:'numeric', month:'2-digit', day:'2-digit'});
+    const map = {};
+    fmt.formatToParts(new Date(d)).forEach(p=>{ map[p.type]=p.value; });
+    return { year:+map.year, month:+map.month, day:+map.day };
+  }
+  function tz(){ return (org && org.timezone) || 'Europe/Berlin'; }
+  function todayKey(d){
+    const p = localPartsInTZ(d, tz());
+    return `${p.year}-${String(p.month).padStart(2,'0')}-${String(p.day).padStart(2,'0')}`;
+  }
+  function weekKey(d){
+    const p = localPartsInTZ(d, tz());
+    const localNoon = new Date(Date.UTC(p.year, p.month-1, p.day, 12));
+    const onejan = new Date(Date.UTC(p.year, 0, 1));
+    const week = Math.ceil((((localNoon-onejan)/86400000)+onejan.getUTCDay()+1)/7);
+    return p.year+'-W'+week;
+  }
+  function fmtTime(ts){
+    const d=new Date(ts), now=new Date();
+    const timeStr = d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
+    if(todayKey(d)===todayKey(now)) return 'heute ' + timeStr;
+    return d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'}) + ' ' + timeStr;
+  }
+
+  // ---- Level-Kurve ----
+  function xpForLevel(level){ return Math.round(config.levelBase*Math.pow(level,config.levelExponent)); }
+  function levelInfo(totalXp){
+    let level=1, remaining=totalXp, need=xpForLevel(level);
+    while(remaining>=need){ remaining-=need; level++; need=xpForLevel(level); }
+    return { level, into:remaining, need };
+  }
+
+  // ---- Ableitungen aus dem Log (nichts davon wird redundant gespeichert) ----
+  function computeTotals(){
+    let totalXp=0;
+    const skillXp={};
+    Object.keys(config.skills).forEach(k=>skillXp[k]=0);
+    log.forEach(e=>{
+      totalXp+=e.xp;
+      if(e.skill) skillXp[e.skill]=(skillXp[e.skill]||0)+e.xp;
+      if(e.skill2) skillXp[e.skill2]=(skillXp[e.skill2]||0)+Math.round(e.xp*0.4);
+    });
+    return {totalXp, skillXp};
+  }
+  function energyUsedToday(){
+    const t=todayKey(new Date());
+    return log.filter(e=>todayKey(e.created_at)===t).reduce((s,e)=>s+(e.energy||0),0);
+  }
+  function countInPeriod(actionsList, period){
+    const now=new Date();
+    const f = period==='daily' ? e=>todayKey(e.created_at)===todayKey(now) : e=>weekKey(e.created_at)===weekKey(now);
+    return log.filter(e=>actionsList.includes(e.action_key) && f(e)).length;
+  }
+  function recurringQuestBonusEarned(q, key){
+    return log.some(e=>e.action_key==='quest_bonus' && e.meta && e.meta.questId===q.id && e.meta.periodKey===key);
+  }
+  function abschlussContextGroups(){
+    const groups={};
+    log.filter(e=>e.action_key==='abschluss' && e.context).forEach(e=>{
+      const k=e.context.trim().toLowerCase(); if(!k) return;
+      groups[k]=(groups[k]||0)+1;
+    });
+    return groups;
+  }
+  function evalChainRule(ruleStr, ctxGroups){
+    const m = ruleStr.match(/^(same_context_count|distinct_contexts)>=(\d+)$/);
+    if(!m) return false;
+    const num=+m[2];
+    if(m[1]==='same_context_count') return Object.values(ctxGroups).some(c=>c>=num);
+    return Object.keys(ctxGroups).length>=num;
+  }
+
+  // ---- Auth ----
+  let isSignUpMode = false;
+  document.getElementById('authToggleLink').addEventListener('click', ()=>{
+    isSignUpMode = !isSignUpMode;
+    document.getElementById('authSubmitBtn').textContent = isSignUpMode ? 'Registrieren' : 'Anmelden';
+    document.getElementById('authSubtitle').textContent = isSignUpMode ? 'Neues Konto erstellen.' : 'Melde dich an, um deinen Charakter zu sehen.';
+    document.getElementById('authSwitch').innerHTML = isSignUpMode
+      ? 'Schon ein Konto? <a id="authToggleLink2">Anmelden</a>'
+      : 'Noch kein Konto? <a id="authToggleLink2">Registrieren</a>';
+    document.getElementById('authToggleLink2').addEventListener('click', ()=>document.getElementById('authToggleLink').click());
+  });
+
+  document.getElementById('authSubmitBtn').addEventListener('click', async ()=>{
+    const email = document.getElementById('authEmail').value.trim();
+    const password = document.getElementById('authPassword').value;
+    const errEl = document.getElementById('authError');
+    errEl.textContent = '';
+    if(!email || !password){ errEl.textContent='Bitte E-Mail und Passwort eingeben.'; return; }
+    let result;
+    if(isSignUpMode){ result = await sb.auth.signUp({email,password}); }
+    else{ result = await sb.auth.signInWithPassword({email,password}); }
+    if(result.error){ errEl.textContent = result.error.message; return; }
+    session = result.data.session;
+    if(session) await afterLogin();
+    else errEl.textContent = 'Bitte prüfe dein E-Mail-Postfach zur Bestätigung.';
+  });
+
+  document.getElementById('logoutBtn').addEventListener('click', async ()=>{
+    await sb.auth.signOut();
+    location.reload();
+  });
+
+  async function ensureProfile(){
+    const uid = session.user.id;
+    let { data } = await sb.from('profiles').select('*').eq('id', uid).maybeSingle();
+    if(!data){
+      const displayName = (session.user.email||'Held').split('@')[0];
+      const { data: inserted, error } = await sb.from('profiles').insert({
+        id: uid, org_id: DEFAULT_ORG_ID, display_name: displayName, role:'member', character_class:'hexer'
+      }).select().single();
+      if(error){ alert('Profil konnte nicht angelegt werden: '+error.message); return; }
+      data = inserted;
+    }
+    profile = data;
+  }
+  async function loadOrg(){
+    const { data } = await sb.from('organizations').select('*').eq('id', profile.org_id).maybeSingle();
+    org = data;
+  }
+  async function loadConfig(){
+    const { data } = await sb.from('rule_configs').select('*').eq('org_id', profile.org_id).maybeSingle();
+    config = data.config;
+  }
+  async function loadLog(){
+    const { data } = await sb.from('action_log').select('*').eq('user_id', profile.id).order('created_at',{ascending:true});
+    log = data || [];
+  }
+
+  async function afterLogin(){
+    document.getElementById('authScreen').style.display='none';
+    document.getElementById('loading').style.display='flex';
+    await ensureProfile();
+    await loadOrg();
+    await loadConfig();
+    await loadLog();
+    phoneTally = Number(localStorage.getItem('phoneTally_'+profile.id) || 0);
+    lastKnownLevel = levelInfo(computeTotals().totalXp).level;
+    document.getElementById('loading').style.display='none';
+    document.getElementById('app').style.display='block';
+    document.getElementById('nameInput').value = profile.display_name;
+    document.getElementById('orgSubtitle').textContent = `Klasse: ${profile.character_class} · Organisation: ${org ? org.name : ''}`;
+    document.getElementById('adminToggleBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
+    buildActionGrid();
+    render();
+  }
+
+  document.getElementById('nameInput').addEventListener('change', async (e)=>{
+    const name = e.target.value.trim() || 'Namenloser Held';
+    profile.display_name = name;
+    await sb.from('profiles').update({display_name:name}).eq('id', profile.id);
+  });
+
+  // ---- Admin: Regelwerk bearbeiten ----
+  document.getElementById('adminToggleBtn').addEventListener('click', ()=>{
+    const panel = document.getElementById('adminPanel');
+    const open = panel.style.display==='block';
+    panel.style.display = open ? 'none' : 'block';
+    if(!open) document.getElementById('configEditor').value = JSON.stringify(config, null, 2);
+  });
+  document.getElementById('cancelConfigBtn').addEventListener('click', ()=>{
+    document.getElementById('adminPanel').style.display='none';
+  });
+  document.getElementById('saveConfigBtn').addEventListener('click', async ()=>{
+    let parsed;
+    try{ parsed = JSON.parse(document.getElementById('configEditor').value); }
+    catch(err){ alert('Ungültiges JSON: '+err.message); return; }
+    const { error } = await sb.from('rule_configs').update({config:parsed, updated_at:new Date().toISOString()}).eq('org_id', profile.org_id);
+    if(error){ alert('Fehler beim Speichern: '+error.message); return; }
+    config = parsed;
+    document.getElementById('adminPanel').style.display='none';
+    buildActionGrid();
+    render();
+  });
+
+  // ---- Sigil zeichnen (mit Obergrenze, damit Luft nach oben bleibt) ----
+  function drawSigil(skillXp, totalXp, skillsMap){
+    const svg = document.getElementById('sigil');
+    const cx=130, cy=130, r=95;
+    const keys = Object.keys(skillsMap);
+    const n = keys.length;
+    const VISUAL_CAP = 0.88;
+    const ceiling = Math.max(150, totalXp*0.45);
+    const angle=(i)=> (Math.PI*2*i/n) - Math.PI/2;
+    function pt(i, val, radius){ const a=angle(i); const rad = radius*Math.min(VISUAL_CAP, val/ceiling); return [cx+Math.cos(a)*rad, cy+Math.sin(a)*rad]; }
+    function ringPts(radius){ return keys.map((k,i)=>{ const a=angle(i); return [cx+Math.cos(a)*radius, cy+Math.sin(a)*radius]; }); }
+    let s='';
+    [0.25,0.5,0.75,1].forEach(f=>{ s+=`<polygon points="${ringPts(r*f).map(p=>p.join(',')).join(' ')}" fill="none" stroke="#2c2540" stroke-width="1"/>`; });
+    keys.forEach((k,i)=>{ const [x,y]=ringPts(r)[i]; s+=`<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="#2c2540" stroke-width="1"/>`; });
+    s+=`<polygon points="${keys.map((k,i)=>pt(i,skillXp[k]||0,r).join(',')).join(' ')}" fill="rgba(139,92,246,0.28)" stroke="#a78bfa" stroke-width="2" style="filter:drop-shadow(0 0 6px rgba(139,92,246,0.6))"/>`;
+    keys.forEach((k,i)=>{ const [x,y]=pt(i,skillXp[k]||0,r); s+=`<circle cx="${x}" cy="${y}" r="3.5" fill="#22d3c8"/>`; });
+    keys.forEach((k,i)=>{ const a=angle(i); const lx=cx+Math.cos(a)*(r+22), ly=cy+Math.sin(a)*(r+22); const short=skillsMap[k].split(' ')[0].split('&')[0].slice(0,10);
+      s+=`<text x="${lx}" y="${ly}" fill="#9089a8" font-size="9.5" font-family="JetBrains Mono, monospace" text-anchor="middle" dominant-baseline="middle">${short}</text>`; });
+    svg.innerHTML = s;
+  }
+
+  // ---- Aktionsraster dynamisch aus dem Regelwerk (Admin kann Aktionen ändern/hinzufügen) ----
+  function buildActionGrid(){
+    const grid = document.getElementById('actionGrid');
+    const entries = Object.entries(config.actions).filter(([key])=>!QUICKBAR_KEYS.includes(key));
+    entries.sort((a,b)=>a[1].xp-b[1].xp);
+    grid.innerHTML = entries.map(([key,a])=>{
+      const bossClass = key==='boss' ? ' boss' : '';
+      const bossIcon = key==='boss' ? '🐲 ' : '';
+      return `<button class="abtn${bossClass}" data-action="${key}">${bossIcon}${a.label}<span class="xp">+${a.xp} XP · ${a.energy} Energie</span></button>`;
+    }).join('');
+  }
+  document.getElementById('actionGrid').addEventListener('click', (e)=>{
+    const btn = e.target.closest('.abtn');
+    if(btn) logAction(btn.dataset.action);
+  });
+
+  function flashButton(btn){ btn.classList.add('flash'); setTimeout(()=>btn.classList.remove('flash'),400); }
+
+  async function checkAndAwardRecurringQuests(){
+    const now=new Date();
+    for(const q of (config.recurringQuests||[])){
+      const key = q.period==='daily' ? todayKey(now) : weekKey(now);
+      const allMet = q.conditions.every(c=>countInPeriod(c.actions,q.period)>=c.count);
+      if(allMet && !recurringQuestBonusEarned(q,key)){
+        const row = { user_id:profile.id, org_id:profile.org_id, action_key:'quest_bonus', label:'Quest erfüllt: '+q.name, xp:q.bonus, energy:0, meta:{questId:q.id, periodKey:key} };
+        const { data } = await sb.from('action_log').insert(row).select().single();
+        if(data) log.push(data);
+      }
+    }
+  }
+  async function checkAndAwardChains(){
+    const ctxGroups = abschlussContextGroups();
+    for(const chain of (config.questChains||[])){
+      for(let i=0;i<chain.stages.length;i++){
+        const stage = chain.stages[i];
+        const already = log.some(e=>e.action_key==='chain_bonus' && e.meta && e.meta.chainId===chain.id && e.meta.stageId===stage.id);
+        if(already) continue;
+        const prevDone = i===0 || log.some(e=>e.action_key==='chain_bonus' && e.meta && e.meta.chainId===chain.id && e.meta.stageId===chain.stages[i-1].id);
+        if(prevDone && evalChainRule(stage.rule, ctxGroups)){
+          const row = { user_id:profile.id, org_id:profile.org_id, action_key:'chain_bonus', label:'Kette erfüllt: '+chain.name+' — '+stage.name, xp:stage.bonus, energy:0, meta:{chainId:chain.id, stageId:stage.id} };
+          const { data } = await sb.from('action_log').insert(row).select().single();
+          if(data) log.push(data);
+        }
+      }
+    }
+  }
+
+  async function logAction(key){
+    const a = config.actions[key];
+    if(!a) return;
+    const remaining = config.energyMax - energyUsedToday();
+    if(a.energy > remaining) return;
+    let context = null;
+    if(a.context){
+      context = prompt(`${a.context} eintragen (optional, für Quest-Ketten wichtig):`, '');
+      if(context===null) return;
+    }
+    const row = { user_id:profile.id, org_id:profile.org_id, action_key:key, label:a.label, xp:a.xp, energy:a.energy, skill:a.skill||null, skill2:a.skill2||null, context: context ? context.trim() : null };
+    const { data, error } = await sb.from('action_log').insert(row).select().single();
+    if(error){ alert('Fehler beim Speichern: '+error.message); return; }
+    log.push(data);
+    await checkAndAwardRecurringQuests();
+    await checkAndAwardChains();
+    render();
+  }
+
+  // Schnellzugriff
+  document.getElementById('qbtn_telefon').addEventListener('click', async ()=>{
+    const a = config.actions.telefon_5;
+    const remaining = config.energyMax - energyUsedToday();
+    if(a.energy > remaining) return;
+    phoneTally++;
+    localStorage.setItem('phoneTally_'+profile.id, phoneTally);
+    flashButton(document.getElementById('qbtn_telefon'));
+    if(phoneTally>=5){
+      phoneTally=0;
+      localStorage.setItem('phoneTally_'+profile.id, 0);
+      const row = { user_id:profile.id, org_id:profile.org_id, action_key:'telefon_5', label:a.label, xp:a.xp, energy:a.energy, skill:a.skill||null };
+      const { data, error } = await sb.from('action_log').insert(row).select().single();
+      if(!error){ log.push(data); await checkAndAwardRecurringQuests(); await checkAndAwardChains(); }
+    }
+    render();
+  });
+  document.getElementById('qbtn_termin').addEventListener('click', ()=> logAction('termin_vereinbart'));
+  document.getElementById('qbtn_ansprache').addEventListener('click', ()=> logAction('ansprache_assistenz'));
+
+  function render(){
+    const {totalXp, skillXp} = computeTotals();
+    const lvl = levelInfo(totalXp);
+
+    document.getElementById('levelNum').textContent = lvl.level;
+    document.getElementById('xpCurrentLabel').textContent = `${lvl.into} / ${lvl.need} XP`;
+    document.getElementById('xpToNextLabel').textContent = `${lvl.need-lvl.into} XP bis Level ${lvl.level+1}`;
+    document.getElementById('xpFill').style.width = Math.round(100*lvl.into/lvl.need)+'%';
+    document.getElementById('totalXpFooter').textContent = `Gesamt: ${totalXp} XP · ${log.length} Einträge`;
+
+    if(lvl.level>lastKnownLevel){
+      const banner=document.getElementById('levelUpBanner');
+      banner.style.display='block';
+      banner.textContent=`⬆ Level Up! Willkommen auf Level ${lvl.level}.`;
+      setTimeout(()=>{banner.style.display='none';},4000);
+    }
+    lastKnownLevel = lvl.level;
+
+    drawSigil(skillXp, totalXp, config.skills);
+    document.getElementById('skillList').innerHTML = Object.keys(config.skills).map(k=>{
+      const xp = skillXp[k]||0, slvl = Math.floor(xp/50)+1, into = xp%50, pct = Math.round(100*into/50);
+      return `<div class="skill-row"><div class="skill-row-top"><span class="sname">${config.skills[k]}</span><span class="slvl">Lv.${slvl} · ${xp} XP</span></div><div class="skill-track"><div class="skill-fill" style="width:${pct}%"></div></div></div>`;
+    }).join('');
+
+    const used = energyUsedToday();
+    const remaining = Math.max(0, config.energyMax-used);
+    document.getElementById('energyRow').innerHTML = Array.from({length:config.energyMax}).map((_,i)=> `<div class="pip ${i<remaining ? 'full':''}"></div>`).join('');
+    document.getElementById('energyLabel').textContent = `${remaining} / ${config.energyMax} Energie verfügbar (regeneriert morgen)`;
+
+    document.querySelectorAll('.abtn').forEach(btn=>{
+      const a = config.actions[btn.dataset.action];
+      if(a) btn.disabled = a.energy > remaining;
+    });
+    document.getElementById('phoneTallyPips').innerHTML = Array.from({length:5}).map((_,i)=> `<span class="tpip ${i<phoneTally?'on':''}"></span>`).join('');
+    document.getElementById('qbtn_telefon').disabled = config.actions.telefon_5.energy > remaining;
+    document.getElementById('qbtn_termin').disabled = config.actions.termin_vereinbart.energy > remaining;
+    document.getElementById('qbtn_ansprache').disabled = config.actions.ansprache_assistenz.energy > remaining;
+
+    document.getElementById('questList').innerHTML = (config.recurringQuests||[]).map(q=>{
+      const progressParts = q.conditions.map(c=>Math.min(countInPeriod(c.actions,q.period), c.count));
+      const cur = progressParts.reduce((a,b)=>a+b,0);
+      const max = q.conditions.reduce((a,c)=>a+c.count,0);
+      const key = q.period==='daily'?todayKey(new Date()):weekKey(new Date());
+      const done = recurringQuestBonusEarned(q,key);
+      const pct = Math.round(100*cur/max);
+      return `<div class="quest"><div class="quest-top"><span class="qname">${q.name} <span style="color:var(--muted-2)">(+${q.bonus} XP)</span></span><span class="qprog ${done?'done':''}">${done?'✓ erfüllt':cur+'/'+max}</span></div><div class="quest-track"><div class="quest-fill" style="width:${pct}%"></div></div></div>`;
+    }).join('');
+
+    const ctxGroups = abschlussContextGroups();
+    document.getElementById('chainList').innerHTML = (config.questChains||[]).map(chain=>{
+      let prevDone = true;
+      const stagesHtml = chain.stages.map(stage=>{
+        const awarded = log.some(e=>e.action_key==='chain_bonus' && e.meta && e.meta.chainId===chain.id && e.meta.stageId===stage.id);
+        const isLocked = !prevDone && !awarded;
+        const cls = awarded?'done':(isLocked?'locked':'');
+        const icon = awarded?'✓':(isLocked?'🔒':'▸');
+        prevDone = awarded;
+        return `<div class="chain-stage ${cls}"><span class="icon">${icon}</span><span>${stage.name}</span><span class="reward">+${stage.bonus} XP</span></div>`;
+      }).join('');
+      return `<div class="chain"><div class="chain-title">${chain.name}</div>${stagesHtml}</div>`;
+    }).join('');
+
+    document.getElementById('logCount').textContent = log.length+' einträge';
+    const logListEl = document.getElementById('logList');
+    if(log.length===0){
+      logListEl.innerHTML = '<div class="log-empty">Noch keine Taten vollbracht. Betritt den Dungeon.</div>';
+    } else {
+      logListEl.innerHTML = log.slice(-150).map(e=>
+        `<div class="log-entry"><span class="lname">${e.label}${e.context?` <span class="lctx">(${e.context})</span>`:''}</span><span class="ltime">${fmtTime(e.created_at)}</span><span class="lxp">+${e.xp} XP</span></div>`
+      ).join('');
+    }
+  }
+
+  // ---- Start ----
+  (async function init(){
+    const { data: { session: s } } = await sb.auth.getSession();
+    session = s;
+    document.getElementById('loading').style.display='none';
+    if(session){ await afterLogin(); }
+    else{ document.getElementById('authScreen').style.display='block'; }
+  })();
+})();
+</script>
+</body>
+</html>
