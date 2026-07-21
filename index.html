@@ -57,6 +57,33 @@
 
   .grid{display:grid;grid-template-columns:1.1fr 1fr;gap:18px;}
   @media (max-width:860px){.grid{grid-template-columns:1fr;}}
+
+  .app-shell{display:flex;gap:18px;align-items:flex-start;}
+  .sidebar{
+    flex:0 0 190px;display:flex;flex-direction:column;gap:6px;
+    background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:12px;
+    position:sticky;top:20px;
+  }
+  .nav-btn{
+    background:transparent;border:1px solid transparent;border-radius:9px;
+    padding:11px 14px;color:var(--muted);text-align:left;cursor:pointer;
+    font-family:'Inter',sans-serif;font-size:13.5px;font-weight:500;transition:all .15s;
+  }
+  .nav-btn:hover{background:rgba(139,92,246,0.08);color:var(--text);}
+  .nav-btn.active{background:rgba(139,92,246,0.15);border-color:rgba(139,92,246,0.4);color:var(--text);}
+  .content{flex:1;min-width:0;}
+  .page{display:block;}
+  @media (max-width:720px){
+    .app-shell{flex-direction:column;}
+    .sidebar{position:static;flex-direction:row;width:100%;overflow-x:auto;}
+  }
+
+  .char-art-placeholder{
+    min-height:260px;display:flex;align-items:center;justify-content:center;
+    border:1px dashed var(--border);background:repeating-linear-gradient(135deg, rgba(139,92,246,0.03) 0 12px, transparent 12px 24px);
+  }
+  .char-art-hint{color:var(--muted-2);font-size:12.5px;font-family:'JetBrains Mono',monospace;text-align:center;max-width:300px;}
+  .empty-page-hint{color:var(--muted-2);font-size:12.5px;font-family:'JetBrains Mono',monospace;text-align:center;padding:30px 0;}
   .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:20px;}
   .card h2{font-family:'Cinzel',serif;font-size:15px;font-weight:700;margin:0 0 14px;color:var(--text);letter-spacing:.03em;display:flex;align-items:center;justify-content:space-between;}
   .card h2 .tag{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted-2);text-transform:none;letter-spacing:0;}
@@ -187,65 +214,94 @@
     </div>
   </div>
 
-  <div class="grid">
-    <div>
-      <div class="card">
-        <h2>Sigil der Fähigkeiten <span class="tag">skill radar</span></h2>
-        <svg id="sigil" width="260" height="260" viewBox="0 0 260 260"></svg>
-        <div class="skill-list" id="skillList"></div>
-      </div>
+  <div class="app-shell">
+    <nav class="sidebar">
+      <button class="nav-btn active" data-page="charakter">🧙 Charakter</button>
+      <button class="nav-btn" data-page="handlungen">⚔ Handlungen</button>
+      <button class="nav-btn" data-page="tagebuch">📖 Abenteuerlog</button>
+    </nav>
 
-      <div class="card" style="margin-top:18px;">
-        <h2>Schnellzugriff <span class="tag">im gespräch</span></h2>
-        <div class="quickbar">
-          <button class="qbtn" id="qbtn_telefon">
-            <span class="qicon">📞</span><span class="qlabel">Telefon</span>
-            <span class="qxp">+2 XP je 5</span>
-            <span class="qtally" id="phoneTallyPips"></span>
-          </button>
-          <button class="qbtn" id="qbtn_termin">
-            <span class="qicon">📅</span><span class="qlabel">Termin vereinbart</span>
-            <span class="qxp">+5 XP</span>
-          </button>
-          <button class="qbtn" id="qbtn_ansprache">
-            <span class="qicon">🩺</span><span class="qlabel">Ansprache KH</span>
-            <span class="qxp">+2 XP</span>
-          </button>
+    <div class="content">
+
+      <!-- SEITE 1: CHARAKTER -->
+      <div class="page" id="page-charakter">
+        <div class="card">
+          <h2>Sigil der Fähigkeiten <span class="tag">skill radar</span></h2>
+          <svg id="sigil" width="260" height="260" viewBox="0 0 260 260"></svg>
+          <div class="skill-list" id="skillList"></div>
+        </div>
+
+        <div class="card char-art-placeholder" style="margin-top:18px;">
+          <div class="char-art-hint">Hier entsteht später die Charakterdarstellung — je nach Klasse und Level.</div>
         </div>
       </div>
 
-      <div class="card" style="margin-top:18px;">
-        <h2>Manareserve <span class="tag">tagesenergie</span></h2>
-        <div class="energy-row" id="energyRow"></div>
-        <div class="energy-label" id="energyLabel"></div>
-      </div>
-    </div>
+      <!-- SEITE 2: HANDLUNGEN -->
+      <div class="page" id="page-handlungen" style="display:none;">
+        <div class="grid">
+          <div>
+            <div class="card">
+              <h2>Schnellzugriff <span class="tag">im gespräch</span></h2>
+              <div class="quickbar">
+                <button class="qbtn" id="qbtn_telefon">
+                  <span class="qicon">📞</span><span class="qlabel">Telefon</span>
+                  <span class="qxp">+2 XP je 5</span>
+                  <span class="qtally" id="phoneTallyPips"></span>
+                </button>
+                <button class="qbtn" id="qbtn_termin">
+                  <span class="qicon">📅</span><span class="qlabel">Termin vereinbart</span>
+                  <span class="qxp">+5 XP</span>
+                </button>
+                <button class="qbtn" id="qbtn_ansprache">
+                  <span class="qicon">🩺</span><span class="qlabel">Ansprache KH</span>
+                  <span class="qxp">+2 XP</span>
+                </button>
+              </div>
+            </div>
 
-    <div>
-      <div class="card">
-        <h2>Handlungen <span class="tag">im dungeon</span></h2>
-        <div class="action-btns" id="actionGrid"></div>
+            <div class="card" style="margin-top:18px;">
+              <h2>Manareserve <span class="tag">tagesenergie</span></h2>
+              <div class="energy-row" id="energyRow"></div>
+              <div class="energy-label" id="energyLabel"></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="card">
+              <h2>Handlungen <span class="tag">im dungeon</span></h2>
+              <div class="action-btns" id="actionGrid"></div>
+            </div>
+
+            <div class="card" style="margin-top:18px;">
+              <h2>Quests <span class="tag">täglich/wöchentlich</span></h2>
+              <div id="questList"></div>
+            </div>
+
+            <div class="card" style="margin-top:18px;">
+              <h2>Quest-Ketten <span class="tag">meilensteine</span></h2>
+              <div id="chainList"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:18px;">
+          <h2>Chronik <span class="tag" id="logCount"></span></h2>
+          <div class="log" id="logList"></div>
+        </div>
+
+        <div class="totalxp" id="totalXpFooter" style="margin-top:14px;"></div>
       </div>
 
-      <div class="card" style="margin-top:18px;">
-        <h2>Quests <span class="tag">täglich/wöchentlich</span></h2>
-        <div id="questList"></div>
+      <!-- SEITE 3: ABENTEUERLOG (Tagebuch) -->
+      <div class="page" id="page-tagebuch" style="display:none;">
+        <div class="card">
+          <h2>Abenteuerlog</h2>
+          <div class="empty-page-hint">Diese Seite ist noch leer — wird zu einem späteren Zeitpunkt gemeinsam ausgestaltet.</div>
+        </div>
       </div>
 
-      <div class="card" style="margin-top:18px;">
-        <h2>Quest-Ketten <span class="tag">meilensteine</span></h2>
-        <div id="chainList"></div>
-      </div>
     </div>
   </div>
-
-  <div class="card" style="margin-top:18px;">
-    <h2>Abenteuerlog <span class="tag" id="logCount"></span></h2>
-    <div class="log" id="logList"></div>
-  </div>
-
-  <div class="totalxp" id="totalXpFooter" style="margin-top:14px;"></div>
-
 </div>
 
 <script>
@@ -629,6 +685,16 @@
       ).join('');
     }
   }
+
+  // ---- Seitennavigation ----
+  document.querySelectorAll('.nav-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+      document.querySelectorAll('.page').forEach(p=>p.style.display='none');
+      btn.classList.add('active');
+      document.getElementById('page-'+btn.dataset.page).style.display='block';
+    });
+  });
 
   // ---- Start ----
   (async function init(){
