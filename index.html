@@ -289,6 +289,12 @@
 
   // ---- Level-Kurve ----
   function xpForLevel(level){ return Math.round(config.levelBase*Math.pow(level,config.levelExponent)); }
+  function maxLevelTotalXp(){
+    // Summe aller XP-Schwellen von Level 1 bis 99 = Gesamt-XP, um Level 100 zu erreichen.
+    let sum=0;
+    for(let L=1; L<100; L++){ sum += xpForLevel(L); }
+    return sum;
+  }
   function levelInfo(totalXp){
     let level=1, remaining=totalXp, need=xpForLevel(level);
     while(remaining>=need){ remaining-=need; level++; need=xpForLevel(level); }
@@ -446,7 +452,10 @@
     const keys = Object.keys(skillsMap);
     const n = keys.length;
     const VISUAL_CAP = 0.88;
-    const ceiling = Math.max(150, totalXp*0.45);
+    // Feste Obergrenze, abgeleitet aus dem GESAMTEN 10-Jahres-Ziel (Level 100) —
+    // nicht aus dem aktuellen Fortschritt. Dadurch bleibt die Füllung im 1. Jahr
+    // minimal und wächst erst spürbar, je näher man dem Maximallevel kommt.
+    const ceiling = Math.max(150, maxLevelTotalXp()*0.4);
     const angle=(i)=> (Math.PI*2*i/n) - Math.PI/2;
     function pt(i, val, radius){ const a=angle(i); const rad = radius*Math.min(VISUAL_CAP, val/ceiling); return [cx+Math.cos(a)*rad, cy+Math.sin(a)*rad]; }
     function ringPts(radius){ return keys.map((k,i)=>{ const a=angle(i); return [cx+Math.cos(a)*radius, cy+Math.sin(a)*radius]; }); }
@@ -454,7 +463,6 @@
     [0.25,0.5,0.75,1].forEach(f=>{ s+=`<polygon points="${ringPts(r*f).map(p=>p.join(',')).join(' ')}" fill="none" stroke="#2c2540" stroke-width="1"/>`; });
     keys.forEach((k,i)=>{ const [x,y]=ringPts(r)[i]; s+=`<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="#2c2540" stroke-width="1"/>`; });
     s+=`<polygon points="${keys.map((k,i)=>pt(i,skillXp[k]||0,r).join(',')).join(' ')}" fill="rgba(139,92,246,0.28)" stroke="#a78bfa" stroke-width="2" style="filter:drop-shadow(0 0 6px rgba(139,92,246,0.6))"/>`;
-    keys.forEach((k,i)=>{ const [x,y]=pt(i,skillXp[k]||0,r); s+=`<circle cx="${x}" cy="${y}" r="3.5" fill="#22d3c8"/>`; });
     keys.forEach((k,i)=>{ const a=angle(i); const lx=cx+Math.cos(a)*(r+22), ly=cy+Math.sin(a)*(r+22); const short=skillsMap[k].split(' ')[0].split('&')[0].slice(0,10);
       s+=`<text x="${lx}" y="${ly}" fill="#9089a8" font-size="9.5" font-family="JetBrains Mono, monospace" text-anchor="middle" dominant-baseline="middle">${short}</text>`; });
     svg.innerHTML = s;
@@ -573,7 +581,10 @@
     const used = energyUsedToday();
     const remaining = Math.max(0, config.energyMax-used);
     document.getElementById('energyRow').innerHTML = Array.from({length:config.energyMax}).map((_,i)=> `<div class="pip ${i<remaining ? 'full':''}"></div>`).join('');
-    document.getElementById('energyLabel').textContent = `${remaining} / ${config.energyMax} Energie verfügbar (regeneriert morgen)`;
+    document.getElementById('energyLabel').textContent = remaining>0
+      ? `${remaining} / ${config.energyMax} Energie verfügbar (regeneriert morgen)`
+      : `⚡ Mana verbraucht — keine weiteren Kommandos möglich, regeneriert morgen früh.`;
+    document.getElementById('energyLabel').style.color = remaining>0 ? '' : 'var(--danger)';
 
     document.querySelectorAll('.abtn').forEach(btn=>{
       const a = config.actions[btn.dataset.action];
