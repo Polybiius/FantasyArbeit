@@ -86,9 +86,7 @@
   .empty-page-hint{color:var(--muted-2);font-size:12.5px;font-family:'JetBrains Mono',monospace;text-align:center;padding:30px 0;}
 
   .journal-hint{color:var(--muted);font-size:12.5px;margin-bottom:16px;line-height:1.6;font-family:'JetBrains Mono',monospace;}
-  .journal-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;}
-  @media (max-width:960px){.journal-grid{grid-template-columns:1fr 1fr;}}
-  @media (max-width:560px){.journal-grid{grid-template-columns:1fr;}}
+  .journal-grid{display:grid;grid-template-columns:1fr;gap:12px;}
   .journal-col{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px;position:relative;}
   .journal-ta{
     width:100%;min-height:220px;background:transparent;border:none;outline:none;resize:vertical;
@@ -305,16 +303,18 @@
               <h2>Handlungen <span class="tag">im dungeon</span></h2>
               <div class="action-btns" id="actionGrid"></div>
             </div>
+          </div>
+        </div>
 
-            <div class="card" style="margin-top:18px;">
-              <h2>Quests <span class="tag">täglich/wöchentlich</span></h2>
-              <div id="questList"></div>
-            </div>
+        <div class="grid" style="margin-top:18px;">
+          <div class="card">
+            <h2>Quests <span class="tag">täglich/wöchentlich</span></h2>
+            <div id="questList"></div>
+          </div>
 
-            <div class="card" style="margin-top:18px;">
-              <h2>Quest-Ketten <span class="tag">meilensteine</span></h2>
-              <div id="chainList"></div>
-            </div>
+          <div class="card">
+            <h2>Quest-Ketten <span class="tag">meilensteine</span></h2>
+            <div id="chainList"></div>
           </div>
         </div>
 
@@ -328,8 +328,6 @@
 
       <!-- SEITE 3: ABENTEUERLOG (Tagebuch) -->
       <div class="page" id="page-tagebuch" style="display:none;">
-        <div class="journal-hint">Nur du siehst diese Einträge — niemand sonst, auch kein Admin. Heute ist frei bearbeitbar, bis Mitternacht. Danach beginnt ein neuer, leerer Tag; das Geschriebene bleibt für dich erhalten.</div>
-
         <div class="journal-grid">
           <div class="journal-col">
             <div class="journal-savestate" id="jsave1"></div>
