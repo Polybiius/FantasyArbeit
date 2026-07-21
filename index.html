@@ -84,6 +84,40 @@
   }
   .char-art-hint{color:var(--muted-2);font-size:12.5px;font-family:'JetBrains Mono',monospace;text-align:center;max-width:300px;}
   .empty-page-hint{color:var(--muted-2);font-size:12.5px;font-family:'JetBrains Mono',monospace;text-align:center;padding:30px 0;}
+
+  .journal-hint{color:var(--muted);font-size:12.5px;margin-bottom:16px;line-height:1.6;font-family:'JetBrains Mono',monospace;}
+  .journal-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;}
+  @media (max-width:960px){.journal-grid{grid-template-columns:1fr 1fr;}}
+  @media (max-width:560px){.journal-grid{grid-template-columns:1fr;}}
+  .journal-col{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px;position:relative;}
+  .journal-ta{
+    width:100%;min-height:220px;background:transparent;border:none;outline:none;resize:vertical;
+    color:var(--text);font-family:'Inter',sans-serif;font-size:13px;line-height:1.6;
+  }
+  .journal-ta::placeholder{color:var(--muted-2);font-weight:300;line-height:1.6;opacity:1;}
+  .journal-savestate{position:absolute;top:8px;right:12px;font-size:10px;font-family:'JetBrains Mono',monospace;color:var(--success);opacity:0;transition:opacity .3s;}
+  .journal-savestate.show{opacity:1;}
+
+  .cal-nav{display:flex;gap:8px;margin-bottom:12px;}
+  .cal-nav-btn{background:var(--panel-2);border:1px solid var(--border);color:var(--muted);border-radius:8px;padding:6px 12px;font-size:12px;cursor:pointer;font-family:'JetBrains Mono',monospace;}
+  .cal-nav-btn:hover{border-color:var(--arcane);color:var(--text);}
+  .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;}
+  .cal-day{
+    aspect-ratio:1;border-radius:8px;border:1px solid var(--border);background:var(--panel-2);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+    font-size:12px;color:var(--muted);cursor:pointer;font-family:'JetBrains Mono',monospace;
+  }
+  .cal-day:hover{border-color:var(--arcane);}
+  .cal-day.empty{visibility:hidden;cursor:default;}
+  .cal-day.today{border-color:var(--arcane);color:var(--text);}
+  .cal-day .dot{width:5px;height:5px;border-radius:50%;background:var(--mana);}
+  .cal-preview{margin-top:16px;border-top:1px solid var(--border);padding-top:14px;font-size:12.5px;color:var(--text);display:none;}
+  .cal-preview.show{display:block;}
+  .cal-preview h3{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted-2);text-transform:uppercase;letter-spacing:.05em;margin:0 0 10px;}
+  .cal-preview .cpq{margin-bottom:10px;}
+  .cal-preview .cpq .cplabel{color:var(--arcane-glow);font-size:11px;display:block;margin-bottom:2px;}
+  .cal-preview .cpq .cptext{color:var(--text);white-space:pre-wrap;}
+  .cal-preview .cpempty{color:var(--muted-2);font-style:italic;}
   .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:20px;}
   .card h2{font-family:'Cinzel',serif;font-size:15px;font-weight:700;margin:0 0 14px;color:var(--text);letter-spacing:.03em;display:flex;align-items:center;justify-content:space-between;}
   .card h2 .tag{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted-2);text-transform:none;letter-spacing:0;}
@@ -294,9 +328,45 @@
 
       <!-- SEITE 3: ABENTEUERLOG (Tagebuch) -->
       <div class="page" id="page-tagebuch" style="display:none;">
-        <div class="card">
-          <h2>Abenteuerlog</h2>
-          <div class="empty-page-hint">Diese Seite ist noch leer — wird zu einem späteren Zeitpunkt gemeinsam ausgestaltet.</div>
+        <div class="journal-hint">Nur du siehst diese Einträge — niemand sonst, auch kein Admin. Heute ist frei bearbeitbar, bis Mitternacht. Danach beginnt ein neuer, leerer Tag; das Geschriebene bleibt für dich erhalten.</div>
+
+        <div class="journal-grid">
+          <div class="journal-col">
+            <div class="journal-savestate" id="jsave1"></div>
+            <textarea class="journal-ta" id="j1" placeholder="Welche Etappe habe ich heute gemeistert?
+Was war mein wichtigster Fortschritt oder Erfolg?"></textarea>
+          </div>
+          <div class="journal-col">
+            <div class="journal-savestate" id="jsave2"></div>
+            <textarea class="journal-ta" id="j2" placeholder="Welcher Herausforderung bin ich begegnet?
+Welcher Einwand, welche Situation oder welches Hindernis hat mich heute gefordert?"></textarea>
+          </div>
+          <div class="journal-col">
+            <div class="journal-savestate" id="jsave3"></div>
+            <textarea class="journal-ta" id="j3" placeholder="Welche Entdeckung habe ich gemacht?
+Was habe ich heute über Kunden, den Markt oder mich selbst gelernt?"></textarea>
+          </div>
+          <div class="journal-col">
+            <div class="journal-savestate" id="jsave4"></div>
+            <textarea class="journal-ta" id="j4" placeholder="Welche Spur nehme ich mit?
+Welche Erkenntnis oder Strategie möchte ich künftig wieder anwenden oder vermeiden?"></textarea>
+          </div>
+          <div class="journal-col">
+            <div class="journal-savestate" id="jsave5"></div>
+            <textarea class="journal-ta" id="j5" placeholder="Wohin führt meine nächste Etappe?
+Was ist morgen der wichtigste konkrete Schritt?"></textarea>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:18px;">
+          <h2>Kalender <span class="tag" id="calMonthLabel"></span></h2>
+          <div class="cal-nav">
+            <button class="cal-nav-btn" id="calPrevBtn">‹ zurück</button>
+            <button class="cal-nav-btn" id="calTodayBtn">heute</button>
+            <button class="cal-nav-btn" id="calNextBtn">weiter ›</button>
+          </div>
+          <div class="cal-grid" id="calGrid"></div>
+          <div class="cal-preview" id="calPreview"></div>
         </div>
       </div>
 
@@ -471,9 +541,8 @@
     document.getElementById('adminToggleBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
     buildActionGrid();
     render();
-  }
-
-  document.getElementById('nameInput').addEventListener('change', async (e)=>{
+    initJournal();
+  }, async (e)=>{
     const name = e.target.value.trim() || 'Namenloser Held';
     profile.display_name = name;
     await sb.from('profiles').update({display_name:name}).eq('id', profile.id);
@@ -684,6 +753,120 @@
         `<div class="log-entry"><span class="lname">${e.label}${e.context?` <span class="lctx">(${e.context})</span>`:''}</span><span class="ltime">${fmtTime(e.created_at)}</span><span class="lxp">+${e.xp} XP</span></div>`
       ).join('');
     }
+  }
+
+  // ---- Tagebuch / Abenteuerlog ----
+  const JOURNAL_FIELDS = ['j1','j2','j3','j4','j5'];
+  let journalSaveTimers = {};
+  let calViewYear, calViewMonth; // 0-basiert
+  let calEntryDates = new Set(); // Tage im aktuell angezeigten Monat mit Eintrag
+
+  async function initJournal(){
+    const today = todayKey(new Date());
+    const { data } = await sb.from('journal_entries').select('*').eq('user_id', profile.id).eq('entry_date', today).maybeSingle();
+    JOURNAL_FIELDS.forEach((f,i)=>{
+      document.getElementById(f).value = data ? (data['q'+(i+1)] || '') : '';
+    });
+    JOURNAL_FIELDS.forEach((f,i)=>{
+      document.getElementById(f).addEventListener('input', ()=> scheduleJournalSave(i+1));
+    });
+
+    const now = new Date();
+    const p = localPartsInTZ(now, tz());
+    calViewYear = p.year; calViewMonth = p.month-1;
+    document.getElementById('calPrevBtn').addEventListener('click', ()=>{ changeCalMonth(-1); });
+    document.getElementById('calNextBtn').addEventListener('click', ()=>{ changeCalMonth(1); });
+    document.getElementById('calTodayBtn').addEventListener('click', ()=>{
+      const p2 = localPartsInTZ(new Date(), tz());
+      calViewYear=p2.year; calViewMonth=p2.month-1;
+      renderCalendar();
+    });
+    await renderCalendar();
+  }
+
+  function scheduleJournalSave(qIndex){
+    const indicator = document.getElementById('jsave'+qIndex);
+    clearTimeout(journalSaveTimers[qIndex]);
+    journalSaveTimers[qIndex] = setTimeout(async ()=>{
+      const today = todayKey(new Date());
+      const row = { user_id: profile.id, org_id: profile.org_id, entry_date: today, updated_at: new Date().toISOString() };
+      JOURNAL_FIELDS.forEach((f,i)=>{ row['q'+(i+1)] = document.getElementById(f).value; });
+      const { error } = await sb.from('journal_entries').upsert(row, { onConflict: 'user_id,entry_date' });
+      if(!error){
+        indicator.textContent = 'gespeichert';
+        indicator.classList.add('show');
+        setTimeout(()=>indicator.classList.remove('show'), 1500);
+        calEntryDates.add(today);
+        renderCalendarDots();
+      }
+    }, 700);
+  }
+
+  function daysInMonth(y,m){ return new Date(y, m+1, 0).getDate(); }
+  function pad2(n){ return String(n).padStart(2,'0'); }
+
+  async function changeCalMonth(delta){
+    calViewMonth += delta;
+    if(calViewMonth<0){ calViewMonth=11; calViewYear--; }
+    if(calViewMonth>11){ calViewMonth=0; calViewYear++; }
+    await renderCalendar();
+  }
+
+  async function renderCalendar(){
+    document.getElementById('calMonthLabel').textContent =
+      new Date(calViewYear, calViewMonth, 1).toLocaleDateString('de-DE',{month:'long', year:'numeric'});
+
+    const from = `${calViewYear}-${pad2(calViewMonth+1)}-01`;
+    const to = `${calViewYear}-${pad2(calViewMonth+1)}-${pad2(daysInMonth(calViewYear,calViewMonth))}`;
+    const { data } = await sb.from('journal_entries').select('entry_date').eq('user_id', profile.id).gte('entry_date', from).lte('entry_date', to);
+    calEntryDates = new Set((data||[]).map(r=>r.entry_date));
+
+    const grid = document.getElementById('calGrid');
+    const firstWeekday = (new Date(calViewYear, calViewMonth, 1).getDay()+6)%7; // Montag=0
+    const total = daysInMonth(calViewYear, calViewMonth);
+    const todayStr = todayKey(new Date());
+    let html='';
+    for(let i=0;i<firstWeekday;i++) html += `<div class="cal-day empty"></div>`;
+    for(let d=1; d<=total; d++){
+      const dateStr = `${calViewYear}-${pad2(calViewMonth+1)}-${pad2(d)}`;
+      const isToday = dateStr===todayStr;
+      html += `<div class="cal-day ${isToday?'today':''}" data-date="${dateStr}">${d}${calEntryDates.has(dateStr)?'<span class="dot"></span>':''}</div>`;
+    }
+    grid.innerHTML = html;
+    grid.querySelectorAll('.cal-day:not(.empty)').forEach(el=>{
+      el.addEventListener('click', ()=> showDayPreview(el.dataset.date));
+    });
+  }
+
+  function renderCalendarDots(){
+    document.querySelectorAll('.cal-day:not(.empty)').forEach(el=>{
+      const has = calEntryDates.has(el.dataset.date);
+      const existingDot = el.querySelector('.dot');
+      if(has && !existingDot){ el.insertAdjacentHTML('beforeend','<span class="dot"></span>'); }
+    });
+  }
+
+  const JOURNAL_LABELS = [
+    'Welche Etappe habe ich heute gemeistert?',
+    'Welcher Herausforderung bin ich begegnet?',
+    'Welche Entdeckung habe ich gemacht?',
+    'Welche Spur nehme ich mit?',
+    'Wohin führt meine nächste Etappe?'
+  ];
+
+  async function showDayPreview(dateStr){
+    const preview = document.getElementById('calPreview');
+    const { data } = await sb.from('journal_entries').select('*').eq('user_id', profile.id).eq('entry_date', dateStr).maybeSingle();
+    const niceDate = new Date(dateStr+'T12:00:00').toLocaleDateString('de-DE',{weekday:'long', day:'2-digit', month:'2-digit', year:'numeric'});
+    if(!data){
+      preview.innerHTML = `<h3>${niceDate}</h3><div class="cpempty">Kein Eintrag an diesem Tag.</div>`;
+    } else {
+      preview.innerHTML = `<h3>${niceDate}</h3>` + JOURNAL_LABELS.map((label,i)=>{
+        const val = data['q'+(i+1)];
+        return `<div class="cpq"><span class="cplabel">${label}</span><span class="cptext">${val ? val.replace(/</g,'&lt;') : '—'}</span></div>`;
+      }).join('');
+    }
+    preview.classList.add('show');
   }
 
   // ---- Seitennavigation ----
