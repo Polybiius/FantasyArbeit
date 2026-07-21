@@ -542,7 +542,9 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     buildActionGrid();
     render();
     initJournal();
-  }, async (e)=>{
+  }
+
+  document.getElementById('nameInput').addEventListener('change', async (e)=>{
     const name = e.target.value.trim() || 'Namenloser Held';
     profile.display_name = name;
     await sb.from('profiles').update({display_name:name}).eq('id', profile.id);
