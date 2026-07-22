@@ -12,9 +12,10 @@
     --void:#0b0a12; --panel:#151220; --panel-2:#1c1830; --border:#2c2540;
     --arcane:#8b5cf6; --arcane-glow:#a78bfa; --mana:#22d3c8; --amber:#f2a154;
     --success:#34d399; --danger:#f16565; --text:#ede9f5; --muted:#9089a8; --muted-2:#6b6483;
+    --bg-glow-1: rgba(139,92,246,0.14); --bg-glow-2: rgba(34,211,200,0.10);
   }
   *{box-sizing:border-box;}
-  body{margin:0;background:radial-gradient(ellipse 900px 500px at 20% -10%, rgba(139,92,246,0.14), transparent),radial-gradient(ellipse 700px 500px at 100% 10%, rgba(34,211,200,0.10), transparent),var(--void);color:var(--text);font-family:'Inter',sans-serif;padding:28px 16px 60px;min-height:100vh;}
+  body{margin:0;background:radial-gradient(ellipse 900px 500px at 20% -10%, var(--bg-glow-1), transparent),radial-gradient(ellipse 700px 500px at 100% 10%, var(--bg-glow-2), transparent),var(--void);color:var(--text);font-family:'Inter',sans-serif;padding:28px 16px 60px;min-height:100vh;transition:background-color .4s ease;}
   .wrap{max-width:1040px;margin:0 auto;}
   .mono{font-family:'JetBrains Mono',monospace;}
   .display{font-family:'Cinzel',serif;}
@@ -583,17 +584,35 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   });
 
   const CLASS_THEMES = {
-    hexer:    { arcane:'#8b5cf6', glow:'#a78bfa', mana:'#22d3c8' },
-    krieger:  { arcane:'#d1453d', glow:'#f2726b', mana:'#ffb15c' },
-    schuetze: { arcane:'#3f9142', glow:'#6bc26e', mana:'#c9a13c' },
+    hexer: {
+      void:'#0b0a12', panel:'#151220', panel2:'#1c1830', border:'#2c2540',
+      arcane:'#8b5cf6', glow:'#a78bfa', mana:'#22d3c8',
+      bgGlow1:'rgba(139,92,246,0.16)', bgGlow2:'rgba(34,211,200,0.11)'
+    },
+    krieger: {
+      void:'#160b0a', panel:'#211514', panel2:'#2d1a18', border:'#40221e',
+      arcane:'#d1453d', glow:'#f2726b', mana:'#ffb15c',
+      bgGlow1:'rgba(209,69,61,0.18)', bgGlow2:'rgba(255,177,92,0.11)'
+    },
+    schuetze: {
+      void:'#0a1210', panel:'#101f18', panel2:'#162b20', border:'#213b2c',
+      arcane:'#3f9142', glow:'#6bc26e', mana:'#c9a13c',
+      bgGlow1:'rgba(63,145,66,0.17)', bgGlow2:'rgba(201,161,60,0.11)'
+    },
   };
   const CLASS_LABELS = { hexer:'Hexer', krieger:'Krieger', schuetze:'Schütze' };
   function applyClassTheme(cls){
     const t = CLASS_THEMES[cls] || CLASS_THEMES.hexer;
     const root = document.documentElement.style;
+    root.setProperty('--void', t.void);
+    root.setProperty('--panel', t.panel);
+    root.setProperty('--panel-2', t.panel2);
+    root.setProperty('--border', t.border);
     root.setProperty('--arcane', t.arcane);
     root.setProperty('--arcane-glow', t.glow);
     root.setProperty('--mana', t.mana);
+    root.setProperty('--bg-glow-1', t.bgGlow1);
+    root.setProperty('--bg-glow-2', t.bgGlow2);
   }
 
   let selectedClass = null;
