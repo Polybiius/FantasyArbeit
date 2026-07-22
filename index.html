@@ -691,6 +691,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     render();
     initJournal();
     initInventory();
+    restoreLastPage();
   }
 
   document.getElementById('nameInput').addEventListener('change', async (e)=>{
@@ -1118,14 +1119,29 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   });
 
   // ---- Seitennavigation ----
+  const VALID_PAGES = ['charakter','handlungen','inventar','tagebuch'];
+
+  function showPage(pageName, updateHash){
+    if(!VALID_PAGES.includes(pageName)) pageName = 'charakter';
+    document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active', b.dataset.page===pageName));
+    document.querySelectorAll('.page').forEach(p=>p.style.display='none');
+    document.getElementById('page-'+pageName).style.display='block';
+    if(updateHash!==false) location.hash = pageName;
+  }
+
   document.querySelectorAll('.nav-btn').forEach(btn=>{
-    btn.addEventListener('click', ()=>{
-      document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
-      document.querySelectorAll('.page').forEach(p=>p.style.display='none');
-      btn.classList.add('active');
-      document.getElementById('page-'+btn.dataset.page).style.display='block';
-    });
+    btn.addEventListener('click', ()=> showPage(btn.dataset.page));
   });
+
+  // Browser-Vor-/Zurück-Buttons ebenfalls unterstützen
+  window.addEventListener('hashchange', ()=>{
+    showPage(location.hash.replace('#',''), false);
+  });
+
+  function restoreLastPage(){
+    const fromHash = location.hash.replace('#','');
+    showPage(fromHash || 'charakter', !fromHash);
+  }
 
   // ---- Start ----
   (async function init(){
