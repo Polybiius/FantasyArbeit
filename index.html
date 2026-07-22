@@ -206,11 +206,12 @@
   .chain-stage .reward{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:11px;}
 
   .log{max-height:260px;overflow-y:auto;display:flex;flex-direction:column-reverse;gap:6px;padding-right:4px;}
-  .log-entry{display:flex;justify-content:space-between;gap:10px;font-family:'JetBrains Mono',monospace;font-size:11.5px;padding:7px 10px;border-radius:6px;background:var(--panel-2);border:1px solid var(--border);}
-  .log-entry .lname{color:var(--text);}
+  .log-entry{display:flex;justify-content:space-between;align-items:center;gap:10px;font-family:'JetBrains Mono',monospace;font-size:11.5px;padding:7px 10px;border-radius:6px;background:var(--panel-2);border:1px solid var(--border);}
+  .log-entry .lname{color:var(--text);flex:1;min-width:0;}
   .log-entry .lctx{color:var(--arcane-glow);}
-  .log-entry .ltime{color:var(--muted-2);}
-  .log-entry .lxp{color:var(--success);white-space:nowrap;}
+  .log-entry .lright{display:flex;flex-direction:column;align-items:flex-end;gap:2px;min-width:96px;flex-shrink:0;}
+  .log-entry .ltime{color:var(--muted-2);text-align:right;}
+  .log-entry .lxp{color:var(--success);white-space:nowrap;text-align:right;}
   .log-empty{color:var(--muted-2);font-size:12px;font-family:'JetBrains Mono',monospace;text-align:center;padding:20px 0;}
   .totalxp{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--muted);}
 
@@ -323,52 +324,48 @@
 
       <!-- SEITE 1: CHARAKTER -->
       <div class="page" id="page-charakter">
-        <div class="card">
+        <div class="card char-art-placeholder">
+          <div class="char-art-hint">Hier entsteht später die Charakterdarstellung — je nach Klasse und Level.</div>
+        </div>
+
+        <div class="card" style="margin-top:18px;">
           <h2>Sigil der Fähigkeiten <span class="tag">skill radar</span></h2>
           <svg id="sigil" width="260" height="260" viewBox="0 0 260 260"></svg>
           <div class="skill-list" id="skillList"></div>
-        </div>
-
-        <div class="card char-art-placeholder" style="margin-top:18px;">
-          <div class="char-art-hint">Hier entsteht später die Charakterdarstellung — je nach Klasse und Level.</div>
         </div>
       </div>
 
       <!-- SEITE 2: HANDLUNGEN -->
       <div class="page" id="page-handlungen" style="display:none;">
-        <div class="grid">
-          <div>
-            <div class="card">
-              <h2>Schnellzugriff <span class="tag">im gespräch</span></h2>
-              <div class="quickbar">
-                <button class="qbtn" id="qbtn_telefon">
-                  <span class="qicon">📞</span><span class="qlabel">Telefon</span>
-                  <span class="qxp">+2 XP je 5</span>
-                  <span class="qtally" id="phoneTallyPips"></span>
-                </button>
-                <button class="qbtn" id="qbtn_termin">
-                  <span class="qicon">📅</span><span class="qlabel">Termin vereinbart</span>
-                  <span class="qxp">+5 XP</span>
-                </button>
-                <button class="qbtn" id="qbtn_ansprache">
-                  <span class="qicon">🩺</span><span class="qlabel">Ansprache KH</span>
-                  <span class="qxp">+2 XP</span>
-                </button>
-              </div>
-            </div>
+        <div class="card">
+          <h2>Manareserve <span class="tag">tagesenergie</span></h2>
+          <div class="energy-row" id="energyRow"></div>
+          <div class="energy-label" id="energyLabel"></div>
+        </div>
 
-            <div class="card" style="margin-top:18px;">
-              <h2>Manareserve <span class="tag">tagesenergie</span></h2>
-              <div class="energy-row" id="energyRow"></div>
-              <div class="energy-label" id="energyLabel"></div>
+        <div class="grid" style="margin-top:18px;">
+          <div class="card">
+            <h2>Schnellzugriff <span class="tag">im gespräch</span></h2>
+            <div class="quickbar">
+              <button class="qbtn" id="qbtn_telefon">
+                <span class="qicon">📞</span><span class="qlabel">Telefon</span>
+                <span class="qxp">+2 XP je 5</span>
+                <span class="qtally" id="phoneTallyPips"></span>
+              </button>
+              <button class="qbtn" id="qbtn_termin">
+                <span class="qicon">📅</span><span class="qlabel">Termin vereinbart</span>
+                <span class="qxp">+5 XP</span>
+              </button>
+              <button class="qbtn" id="qbtn_ansprache">
+                <span class="qicon">🩺</span><span class="qlabel">Ansprache KH</span>
+                <span class="qxp">+2 XP</span>
+              </button>
             </div>
           </div>
 
-          <div>
-            <div class="card">
-              <h2>Handlungen <span class="tag">im dungeon</span></h2>
-              <div class="action-btns" id="actionGrid"></div>
-            </div>
+          <div class="card">
+            <h2>Handlungen <span class="tag">im dungeon</span></h2>
+            <div class="action-btns" id="actionGrid"></div>
           </div>
         </div>
 
@@ -915,7 +912,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       logListEl.innerHTML = '<div class="log-empty">Noch keine Taten vollbracht. Betritt den Dungeon.</div>';
     } else {
       logListEl.innerHTML = log.slice(-150).map(e=>
-        `<div class="log-entry"><span class="lname">${e.label}${e.context?` <span class="lctx">(${e.context})</span>`:''}</span><span class="ltime">${fmtTime(e.created_at)}</span><span class="lxp">+${e.xp} XP</span></div>`
+        `<div class="log-entry"><span class="lname">${e.label}${e.context?` <span class="lctx">(${e.context})</span>`:''}</span><span class="lright"><span class="ltime">${fmtTime(e.created_at)}</span><span class="lxp">+${e.xp} XP</span></span></div>`
       ).join('');
     }
   }
