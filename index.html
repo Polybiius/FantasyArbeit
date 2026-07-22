@@ -85,6 +85,15 @@
   .char-art-hint{color:var(--muted-2);font-size:12.5px;font-family:'JetBrains Mono',monospace;text-align:center;max-width:300px;}
   .empty-page-hint{color:var(--muted-2);font-size:12.5px;font-family:'JetBrains Mono',monospace;text-align:center;padding:30px 0;}
 
+  .inv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;}
+  .inv-item{background:var(--panel-2);border:1px solid var(--border);border-radius:12px;padding:14px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:6px;}
+  .inv-item .inv-icon{font-size:30px;}
+  .inv-item .inv-name{font-size:12.5px;font-weight:600;color:var(--text);}
+  .inv-item .inv-qty{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);}
+  .inv-item .inv-use{margin-top:4px;background:var(--arcane);color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:11.5px;cursor:pointer;font-weight:600;}
+  .inv-item .inv-use:hover{opacity:.88;}
+  .inv-item .inv-use:disabled{opacity:.4;cursor:not-allowed;}
+
   .journal-hint{color:var(--muted);font-size:12.5px;margin-bottom:16px;line-height:1.6;font-family:'JetBrains Mono',monospace;}
   .journal-grid{display:grid;grid-template-columns:1fr;gap:12px;}
   .journal-col{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:12px;position:relative;}
@@ -250,6 +259,7 @@
     <nav class="sidebar">
       <button class="nav-btn active" data-page="charakter">🧙 Charakter</button>
       <button class="nav-btn" data-page="handlungen">⚔ Handlungen</button>
+      <button class="nav-btn" data-page="inventar">🎒 Inventar</button>
       <button class="nav-btn" data-page="tagebuch">📖 Abenteuerlog</button>
     </nav>
 
@@ -324,6 +334,26 @@
         </div>
 
         <div class="totalxp" id="totalXpFooter" style="margin-top:14px;"></div>
+      </div>
+
+      <!-- SEITE: INVENTAR -->
+      <div class="page" id="page-inventar" style="display:none;">
+        <div class="card">
+          <h2>Consumables <span class="tag">verbrauchbar</span></h2>
+          <div class="inv-grid" id="inv_consumables"></div>
+        </div>
+        <div class="card" style="margin-top:18px;">
+          <h2>Waffen <span class="tag">ausrüstung</span></h2>
+          <div class="inv-grid" id="inv_waffen"></div>
+        </div>
+        <div class="card" style="margin-top:18px;">
+          <h2>Rüstung <span class="tag">ausrüstung</span></h2>
+          <div class="inv-grid" id="inv_ruestung"></div>
+        </div>
+        <div class="card" style="margin-top:18px;">
+          <h2>Accessories <span class="tag">ausrüstung</span></h2>
+          <div class="inv-grid" id="inv_accessories"></div>
+        </div>
       </div>
 
       <!-- SEITE 3: ABENTEUERLOG (Tagebuch) -->
@@ -540,6 +570,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     buildActionGrid();
     render();
     initJournal();
+    initInventory();
   }
 
   document.getElementById('nameInput').addEventListener('change', async (e)=>{
@@ -611,6 +642,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   function flashButton(btn){ btn.classList.add('flash'); setTimeout(()=>btn.classList.remove('flash'),400); }
 
+  async function grantItem(itemKey, qty){
+    if(!itemKey || !qty) return;
+    const { data: existing } = await sb.from('user_inventory').select('*').eq('user_id', profile.id).eq('item_key', itemKey).maybeSingle();
+    const newQty = (existing ? existing.quantity : 0) + qty;
+    await sb.from('user_inventory').upsert({ user_id:profile.id, org_id:profile.org_id, item_key:itemKey, quantity:newQty, updated_at:new Date().toISOString() }, { onConflict:'user_id,item_key' });
+    await loadInventory();
+    renderInventory();
+  }
+
   async function checkAndAwardRecurringQuests(){
     const now=new Date();
     for(const q of (config.recurringQuests||[])){
@@ -620,6 +660,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         const row = { user_id:profile.id, org_id:profile.org_id, action_key:'quest_bonus', label:'Quest erfüllt: '+q.name, xp:q.bonus, energy:0, meta:{questId:q.id, periodKey:key} };
         const { data } = await sb.from('action_log').insert(row).select().single();
         if(data) log.push(data);
+        if(q.itemReward) await grantItem(q.itemReward.key, q.itemReward.qty||1);
       }
     }
   }
@@ -635,6 +676,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
           const row = { user_id:profile.id, org_id:profile.org_id, action_key:'chain_bonus', label:'Kette erfüllt: '+chain.name+' — '+stage.name, xp:stage.bonus, energy:0, meta:{chainId:chain.id, stageId:stage.id} };
           const { data } = await sb.from('action_log').insert(row).select().single();
           if(data) log.push(data);
+          if(stage.itemReward) await grantItem(stage.itemReward.key, stage.itemReward.qty||1);
         }
       }
     }
@@ -867,6 +909,74 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       }).join('');
     }
     preview.classList.add('show');
+  }
+
+  // ---- Inventar ----
+  let inventory = []; // [{item_key, quantity}]
+
+  async function initInventory(){
+    await loadInventory();
+    renderInventory();
+  }
+  async function loadInventory(){
+    const { data } = await sb.from('user_inventory').select('*').eq('user_id', profile.id).gt('quantity', 0);
+    inventory = data || [];
+  }
+
+  const INV_CATEGORY_TO_CONTAINER = {
+    consumables:'inv_consumables', waffen:'inv_waffen', ruestung:'inv_ruestung', accessories:'inv_accessories'
+  };
+
+  function renderInventory(){
+    const items = config.items || {};
+    Object.values(INV_CATEGORY_TO_CONTAINER).forEach(id=>{ document.getElementById(id).innerHTML=''; });
+
+    const grouped = { consumables:[], waffen:[], ruestung:[], accessories:[] };
+    inventory.forEach(inv=>{
+      const def = items[inv.item_key];
+      if(!def) return;
+      if(grouped[def.category]) grouped[def.category].push({...def, key:inv.item_key, quantity:inv.quantity});
+    });
+
+    Object.entries(grouped).forEach(([cat, list])=>{
+      const container = document.getElementById(INV_CATEGORY_TO_CONTAINER[cat]);
+      if(list.length===0){
+        container.innerHTML = '<div class="empty-page-hint">Noch nichts gefunden.</div>';
+        return;
+      }
+      container.innerHTML = list.map(it=>{
+        const useBtn = it.category==='consumables'
+          ? `<button class="inv-use" data-use="${it.key}">Benutzen</button>`
+          : '';
+        return `<div class="inv-item"><span class="inv-icon">${it.icon||'❔'}</span><span class="inv-name">${it.label}</span><span class="inv-qty">×${it.quantity}</span>${useBtn}</div>`;
+      }).join('');
+    });
+
+    document.querySelectorAll('.inv-use').forEach(btn=>{
+      btn.addEventListener('click', ()=> useItem(btn.dataset.use));
+    });
+  }
+
+  async function useItem(itemKey){
+    const def = (config.items||{})[itemKey];
+    if(!def) return;
+    const invRow = inventory.find(i=>i.item_key===itemKey);
+    if(!invRow || invRow.quantity<=0) return;
+
+    if(def.effect==='full_energy_refill'){
+      const usedToday = energyUsedToday();
+      if(usedToday>0){
+        const row = { user_id:profile.id, org_id:profile.org_id, action_key:'item_use', label:'Benutzt: '+def.label, xp:0, energy:-usedToday, meta:{itemKey} };
+        const { data } = await sb.from('action_log').insert(row).select().single();
+        if(data) log.push(data);
+      }
+    }
+
+    const newQty = invRow.quantity-1;
+    await sb.from('user_inventory').update({ quantity:newQty, updated_at:new Date().toISOString() }).eq('user_id', profile.id).eq('item_key', itemKey);
+    await loadInventory();
+    renderInventory();
+    render();
   }
 
   // ---- Seitennavigation ----
