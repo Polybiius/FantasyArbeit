@@ -148,6 +148,9 @@
   .cal-preview .cpq .cplabel{color:var(--arcane-glow);font-size:11px;display:block;margin-bottom:2px;}
   .cal-preview .cpq .cptext{color:var(--text);white-space:pre-wrap;}
   .cal-preview .cpempty{color:var(--muted-2);font-style:italic;}
+  .photo-preview{margin-top:12px;}
+  .photo-thumb{max-width:260px;width:100%;border-radius:12px;border:1px solid var(--border);display:block;}
+  .photo-hint{color:var(--muted-2);font-size:12px;font-family:'JetBrains Mono',monospace;}
   .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:20px;}
   .card h2{font-family:'Cinzel',serif;font-size:15px;font-weight:700;margin:0 0 14px;color:var(--text);letter-spacing:.03em;display:flex;align-items:center;justify-content:space-between;}
   .card h2 .tag{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted-2);text-transform:none;letter-spacing:0;}
@@ -437,6 +440,13 @@ Welche Erkenntnis oder Strategie möchte ich künftig wieder anwenden oder verme
             <textarea class="journal-ta" id="j5" placeholder="Wohin führt meine nächste Etappe?
 Was ist morgen der wichtigste konkrete Schritt?"></textarea>
           </div>
+        </div>
+
+        <div class="card" style="margin-top:18px;">
+          <h2>Schnappschuss des Tages <span class="tag">optional</span></h2>
+          <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none;">
+          <button class="cal-nav-btn" id="photoBtn">📷 Foto aufnehmen</button>
+          <div class="photo-preview" id="photoPreview"></div>
         </div>
 
         <div class="card" style="margin-top:18px;">
@@ -945,6 +955,46 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       renderCalendar();
     });
     await renderCalendar();
+    initPhotoCapture();
+  }
+
+  // ---- Schnappschuss des Tages ----
+  const PHOTO_BUCKET = 'journal-photos';
+
+  function initPhotoCapture(){
+    document.getElementById('photoBtn').addEventListener('click', ()=>{
+      document.getElementById('photoInput').click();
+    });
+    document.getElementById('photoInput').addEventListener('change', async (e)=>{
+      const file = e.target.files[0];
+      if(!file) return;
+      await uploadTodayPhoto(file);
+      e.target.value = ''; // erlaubt erneutes Aufnehmen desselben Dateinamens
+    });
+    loadTodayPhoto();
+  }
+
+  async function uploadTodayPhoto(file){
+    const preview = document.getElementById('photoPreview');
+    preview.innerHTML = '<div class="photo-hint">Wird hochgeladen …</div>';
+    const today = todayKey(new Date());
+    const path = `${profile.id}/${today}.jpg`;
+    const { error: upErr } = await sb.storage.from(PHOTO_BUCKET).upload(path, file, { upsert:true, contentType: file.type||'image/jpeg' });
+    if(upErr){ preview.innerHTML = `<div class="photo-hint">Fehler: ${upErr.message}</div>`; return; }
+    const { error: dbErr } = await sb.from('journal_photos').upsert({
+      user_id:profile.id, org_id:profile.org_id, entry_date:today, storage_path:path
+    }, { onConflict:'user_id,entry_date' });
+    if(dbErr){ preview.innerHTML = `<div class="photo-hint">Fehler: ${dbErr.message}</div>`; return; }
+    await loadTodayPhoto();
+  }
+
+  async function loadTodayPhoto(){
+    const today = todayKey(new Date());
+    const { data } = await sb.from('journal_photos').select('*').eq('user_id', profile.id).eq('entry_date', today).maybeSingle();
+    const preview = document.getElementById('photoPreview');
+    if(!data){ preview.innerHTML = '<div class="photo-hint">Noch kein Foto für heute.</div>'; return; }
+    const { data: signed } = await sb.storage.from(PHOTO_BUCKET).createSignedUrl(data.storage_path, 3600);
+    preview.innerHTML = signed ? `<img class="photo-thumb" src="${signed.signedUrl}">` : '<div class="photo-hint">Foto konnte nicht geladen werden.</div>';
   }
 
   function scheduleJournalSave(qIndex){
@@ -1020,14 +1070,20 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   async function showDayPreview(dateStr){
     const preview = document.getElementById('calPreview');
     const { data } = await sb.from('journal_entries').select('*').eq('user_id', profile.id).eq('entry_date', dateStr).maybeSingle();
+    const { data: photoRow } = await sb.from('journal_photos').select('*').eq('user_id', profile.id).eq('entry_date', dateStr).maybeSingle();
+    let photoHtml = '';
+    if(photoRow){
+      const { data: signed } = await sb.storage.from(PHOTO_BUCKET).createSignedUrl(photoRow.storage_path, 3600);
+      if(signed) photoHtml = `<img class="photo-thumb" src="${signed.signedUrl}" style="margin-bottom:12px;">`;
+    }
     const niceDate = new Date(dateStr+'T12:00:00').toLocaleDateString('de-DE',{weekday:'long', day:'2-digit', month:'2-digit', year:'numeric'});
-    if(!data){
+    if(!data && !photoRow){
       preview.innerHTML = `<h3>${niceDate}</h3><div class="cpempty">Kein Eintrag an diesem Tag.</div>`;
     } else {
-      preview.innerHTML = `<h3>${niceDate}</h3>` + JOURNAL_LABELS.map((label,i)=>{
+      preview.innerHTML = `<h3>${niceDate}</h3>` + photoHtml + (data ? JOURNAL_LABELS.map((label,i)=>{
         const val = data['q'+(i+1)];
         return `<div class="cpq"><span class="cplabel">${label}</span><span class="cptext">${val ? val.replace(/</g,'&lt;') : '—'}</span></div>`;
-      }).join('');
+      }).join('') : '');
     }
     preview.classList.add('show');
   }
