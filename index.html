@@ -106,6 +106,10 @@
     border:1px dashed var(--border);background:repeating-linear-gradient(135deg, rgba(139,92,246,0.03) 0 12px, transparent 12px 24px);
   }
   .char-art-hint{color:var(--muted-2);font-size:12.5px;font-family:'JetBrains Mono',monospace;text-align:center;max-width:300px;}
+  .char-art-stack{position:relative;width:100%;height:220px;display:flex;align-items:center;justify-content:center;}
+  .char-art-stack img{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain;}
+  .char-equip-badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;justify-content:center;}
+  .char-badge{background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--text);display:flex;align-items:center;gap:6px;}
   .empty-page-hint{color:var(--muted-2);font-size:12.5px;font-family:'JetBrains Mono',monospace;text-align:center;padding:30px 0;}
 
   .inv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;}
@@ -116,6 +120,7 @@
   .inv-item .inv-use{margin-top:4px;background:var(--arcane);color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:11.5px;cursor:pointer;font-weight:600;}
   .inv-item .inv-use:hover{opacity:.88;}
   .inv-item .inv-use:disabled{opacity:.4;cursor:not-allowed;}
+  .inv-item .inv-use.equipped{background:var(--success);}
 
   .journal-hint{color:var(--muted);font-size:12.5px;margin-bottom:16px;line-height:1.6;font-family:'JetBrains Mono',monospace;}
   .journal-grid{display:grid;grid-template-columns:1fr;gap:12px;}
@@ -328,7 +333,10 @@
       <!-- SEITE 1: CHARAKTER -->
       <div class="page" id="page-charakter">
         <div class="card char-art-placeholder">
-          <div class="char-art-hint">Hier entsteht später die Charakterdarstellung — je nach Klasse und Level.</div>
+          <div class="char-art-stack" id="charArtStack">
+            <div class="char-art-hint">Hier entsteht später die Charakterdarstellung — je nach Klasse und Level.</div>
+          </div>
+          <div class="char-equip-badges" id="charEquipBadges"></div>
         </div>
 
         <div class="card" style="margin-top:18px;">
@@ -701,6 +709,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     render();
     initJournal();
     initInventory();
+    renderCharacterEquipment();
     restoreLastPage();
   }
 
@@ -1104,6 +1113,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     consumables:'inv_consumables', waffen:'inv_waffen', ruestung:'inv_ruestung', accessories:'inv_accessories'
   };
 
+  const EQUIP_SLOT_FIELD = { waffen:'equipped_weapon', ruestung:'equipped_armor', accessories:'equipped_accessory' };
+
   function renderInventory(){
     const items = config.items || {};
     Object.values(INV_CATEGORY_TO_CONTAINER).forEach(id=>{ document.getElementById(id).innerHTML=''; });
@@ -1122,16 +1133,31 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         return;
       }
       container.innerHTML = list.map(it=>{
-        const useBtn = it.category==='consumables'
-          ? `<button class="inv-use" data-use="${it.key}">Benutzen</button>`
-          : '';
-        return `<div class="inv-item"><span class="inv-icon">${it.icon||'❔'}</span><span class="inv-name">${it.label}</span><span class="inv-qty">×${it.quantity}</span>${useBtn}</div>`;
+        if(it.category==='consumables'){
+          return `<div class="inv-item"><span class="inv-icon">${it.icon||'❔'}</span><span class="inv-name">${it.label}</span><span class="inv-qty">×${it.quantity}</span><button class="inv-use" data-use="${it.key}">Benutzen</button></div>`;
+        }
+        const slotField = EQUIP_SLOT_FIELD[it.category];
+        const isEquipped = profile[slotField] === it.key;
+        return `<div class="inv-item"><span class="inv-icon">${it.icon||'❔'}</span><span class="inv-name">${it.label}</span><span class="inv-qty">×${it.quantity}</span><button class="inv-use ${isEquipped?'equipped':''}" data-equip="${it.key}" data-slot="${slotField}">${isEquipped?'Ablegen':'Anlegen'}</button></div>`;
       }).join('');
     });
 
-    document.querySelectorAll('.inv-use').forEach(btn=>{
+    document.querySelectorAll('.inv-use[data-use]').forEach(btn=>{
       btn.addEventListener('click', ()=> useItem(btn.dataset.use));
     });
+    document.querySelectorAll('.inv-use[data-equip]').forEach(btn=>{
+      btn.addEventListener('click', ()=> toggleEquip(btn.dataset.equip, btn.dataset.slot));
+    });
+  }
+
+  async function toggleEquip(itemKey, slotField){
+    const currentlyEquipped = profile[slotField] === itemKey;
+    const newValue = currentlyEquipped ? null : itemKey;
+    const { error } = await sb.from('profiles').update({ [slotField]: newValue }).eq('id', profile.id);
+    if(error){ alert('Fehler: '+error.message); return; }
+    profile[slotField] = newValue;
+    renderInventory();
+    renderCharacterEquipment();
   }
 
   async function useItem(itemKey){
@@ -1173,6 +1199,34 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       document.getElementById('orgSubtitle').textContent = `Klasse: ${CLASS_LABELS[newClass]||newClass} · Organisation: ${org ? org.name : ''}`;
     });
   });
+
+  function renderCharacterEquipment(){
+    const items = config.items || {};
+    const stack = document.getElementById('charArtStack');
+    const badges = document.getElementById('charEquipBadges');
+    const slots = [
+      { field:'equipped_weapon', label:'Waffe' },
+      { field:'equipped_armor', label:'Rüstung' },
+      { field:'equipped_accessory', label:'Accessoire' },
+    ];
+    const equippedDefs = slots
+      .map(s => ({ ...s, key: profile[s.field], def: profile[s.field] ? items[profile[s.field]] : null }))
+      .filter(s => s.def);
+
+    // Layer-Bilder: sobald ein Item ein "image"-Feld hat, wird es hier automatisch
+    // als Ebene über die Basisfigur gelegt. Aktuell hat noch kein Item ein Bild,
+    // deshalb bleibt vorerst der Hinweistext sichtbar.
+    const withImage = equippedDefs.filter(s => s.def.image);
+    if(withImage.length > 0){
+      stack.innerHTML = withImage.map(s => `<img src="${s.def.image}" alt="${s.def.label}">`).join('');
+    } else {
+      stack.innerHTML = '<div class="char-art-hint">Hier entsteht später die Charakterdarstellung — je nach Klasse und Level.</div>';
+    }
+
+    badges.innerHTML = equippedDefs.map(s =>
+      `<div class="char-badge"><span>${s.def.icon||'❔'}</span><span>${s.def.label}</span></div>`
+    ).join('');
+  }
 
   // ---- Seitennavigation ----
   const VALID_PAGES = ['charakter','handlungen','inventar','tagebuch'];
