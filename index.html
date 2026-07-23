@@ -110,6 +110,24 @@
   .char-art-stack img{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain;}
   .char-equip-badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;justify-content:center;}
   .char-badge{background:var(--panel-2);border:1px solid var(--border);border-radius:8px;padding:6px 12px;font-size:12px;color:var(--text);display:flex;align-items:center;gap:6px;}
+
+  .guild-create-row{display:flex;gap:10px;margin-bottom:10px;}
+  .guild-create-row input{flex:1;background:#0e0c17;border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-family:'Inter',sans-serif;font-size:13px;}
+  .guild-create-row input:focus{outline:none;border-color:var(--arcane);}
+  .guild-actions-row{display:flex;justify-content:space-between;margin-bottom:16px;}
+  .guild-join-row, .guild-picker-row{
+    display:flex;justify-content:space-between;align-items:center;
+    background:var(--panel-2);border:1px solid var(--border);border-radius:9px;
+    padding:10px 14px;margin-bottom:8px;font-size:13px;
+  }
+  .guild-join-row .gname{font-weight:600;}
+  .guild-join-row .gmeta{color:var(--muted);font-size:11.5px;font-family:'JetBrains Mono',monospace;}
+  .guild-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:14px;}
+  .guild-tile{background:var(--panel-2);border:1px solid var(--border);border-radius:12px;padding:16px 10px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:6px;}
+  .guild-tile .gt-icon{font-size:34px;}
+  .guild-tile .gt-name{font-weight:600;font-size:13px;color:var(--text);}
+  .guild-tile .gt-level{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--arcane-glow);}
+  .guild-tile .gt-founder{font-size:10px;color:var(--muted-2);text-transform:uppercase;letter-spacing:.05em;}
   .empty-page-hint{color:var(--muted-2);font-size:12.5px;font-family:'JetBrains Mono',monospace;text-align:center;padding:30px 0;}
 
   .inv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;}
@@ -325,6 +343,7 @@
       <button class="nav-btn active" data-page="charakter">🧙 Charakter</button>
       <button class="nav-btn" data-page="handlungen">⚔ Handlungen</button>
       <button class="nav-btn" data-page="inventar">🎒 Inventar</button>
+      <button class="nav-btn" data-page="gilde" id="navGildeBtn">🛡 Gilde</button>
       <button class="nav-btn" data-page="tagebuch">📖 Abenteuerlog</button>
     </nav>
 
@@ -417,6 +436,35 @@
         <div class="card" style="margin-top:18px;">
           <h2>Accessories <span class="tag">ausrüstung</span></h2>
           <div class="inv-grid" id="inv_accessories"></div>
+        </div>
+      </div>
+
+      <!-- SEITE: GILDE -->
+      <div class="page" id="page-gilde" style="display:none;">
+        <div class="card">
+          <h2 id="guildHeaderTitle">Gilde</h2>
+
+          <div id="guildNoGuildView" style="display:none;">
+            <div class="guild-create-row">
+              <input type="text" id="guildNameInput" placeholder="Name deiner neuen Gilde">
+              <button class="cal-nav-btn" id="guildCreateBtn">Gründen</button>
+            </div>
+            <div class="empty-page-hint" style="margin-top:6px;">oder einer bestehenden Gilde beitreten:</div>
+            <div id="guildJoinList"></div>
+          </div>
+
+          <div id="guildMemberView" style="display:none;">
+            <div class="guild-actions-row">
+              <button class="cal-nav-btn" id="guildAddBtn" style="display:none;">+ hinzufügen</button>
+              <button class="cal-nav-btn" id="guildLeaveBtn">Gilde verlassen</button>
+            </div>
+            <div class="guild-grid" id="guildGrid"></div>
+          </div>
+        </div>
+
+        <div class="card guild-picker" id="guildPickerCard" style="display:none;margin-top:18px;">
+          <h2>Mitglied auswählen</h2>
+          <div id="guildPickerList"></div>
         </div>
       </div>
 
@@ -710,6 +758,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     initJournal();
     initInventory();
     renderCharacterEquipment();
+    initGuild();
     restoreLastPage();
   }
 
@@ -864,6 +913,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   function render(){
     const {totalXp, skillXp} = computeTotals();
     const lvl = levelInfo(totalXp);
+    syncProfileStatsCache(totalXp, lvl.level);
 
     document.getElementById('levelNum').textContent = lvl.level;
     document.getElementById('xpCurrentLabel').textContent = `${lvl.into} / ${lvl.need} XP`;
@@ -1197,6 +1247,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       applyClassTheme(newClass);
       updateClassSwitcherActive();
       document.getElementById('orgSubtitle').textContent = `Klasse: ${CLASS_LABELS[newClass]||newClass} · Organisation: ${org ? org.name : ''}`;
+      updateGuildLabels();
     });
   });
 
@@ -1228,8 +1279,146 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     ).join('');
   }
 
+  // ---- Gilde / Orden / Legion / Bund ----
+  const CLASS_ICONS = { hexer:'🧙', krieger:'⚔️', schuetze:'🏹' };
+  const CLASS_GUILD_LABELS = {
+    hexer:    { navLabel:'Orden', addBtn:'Arkanisten hinzufügen' },
+    krieger:  { navLabel:'Legion', addBtn:'Legionäre hinzufügen' },
+    schuetze: { navLabel:'Bund', addBtn:'Bundesbrüder hinzufügen' },
+  };
+  let currentGuild = null;
+  let statsSyncTimer = null;
+
+  function syncProfileStatsCache(totalXp, level){
+    if(profile.total_xp===totalXp && profile.level===level) return;
+    clearTimeout(statsSyncTimer);
+    statsSyncTimer = setTimeout(async ()=>{
+      profile.total_xp = totalXp;
+      profile.level = level;
+      await sb.from('profiles').update({ total_xp:totalXp, level:level }).eq('id', profile.id);
+    }, 800);
+  }
+
+  function updateGuildLabels(){
+    const labels = CLASS_GUILD_LABELS[profile.character_class] || CLASS_GUILD_LABELS.hexer;
+    document.getElementById('navGildeBtn').textContent = '🛡 ' + labels.navLabel;
+    document.getElementById('guildHeaderTitle').textContent = labels.navLabel;
+    document.getElementById('guildAddBtn').textContent = '+ ' + labels.addBtn;
+  }
+
+  async function initGuild(){
+    updateGuildLabels();
+    await loadGuildState();
+  }
+
+  async function loadGuildState(){
+    const { data: membership } = await sb.from('guild_members').select('*').eq('member_id', profile.id).maybeSingle();
+    if(!membership){
+      currentGuild = null;
+      document.getElementById('guildNoGuildView').style.display='block';
+      document.getElementById('guildMemberView').style.display='none';
+      document.getElementById('guildPickerCard').style.display='none';
+      await renderJoinableGuilds();
+      return;
+    }
+    document.getElementById('guildNoGuildView').style.display='none';
+    document.getElementById('guildMemberView').style.display='block';
+    const { data: guild } = await sb.from('guilds').select('*').eq('id', membership.guild_id).maybeSingle();
+    currentGuild = guild;
+    document.getElementById('guildAddBtn').style.display = (guild && guild.founder_id===profile.id) ? 'inline-block' : 'none';
+    if(guild) await renderGuildMembers(guild.id);
+  }
+
+  async function renderJoinableGuilds(){
+    const { data: guilds } = await sb.from('guilds').select('*').eq('org_id', profile.org_id);
+    const listEl = document.getElementById('guildJoinList');
+    if(!guilds || guilds.length===0){ listEl.innerHTML = '<div class="empty-page-hint">Noch keine Gilden vorhanden.</div>'; return; }
+    const { data: allMembers } = await sb.from('guild_members').select('guild_id').eq('org_id', profile.org_id);
+    const counts = {};
+    (allMembers||[]).forEach(m=> counts[m.guild_id]=(counts[m.guild_id]||0)+1);
+    const founderIds = [...new Set(guilds.map(g=>g.founder_id))];
+    const { data: founders } = await sb.from('profiles').select('id,display_name').in('id', founderIds);
+    const founderMap = {}; (founders||[]).forEach(f=>founderMap[f.id]=f.display_name);
+    listEl.innerHTML = guilds.map(g=>`
+      <div class="guild-join-row">
+        <div><span class="gname">${g.name}</span><br><span class="gmeta">Gegründet von ${founderMap[g.founder_id]||'?'} · ${counts[g.id]||0} Mitglieder</span></div>
+        <button class="cal-nav-btn" data-join="${g.id}">Beitreten</button>
+      </div>`).join('');
+    listEl.querySelectorAll('[data-join]').forEach(btn=>{
+      btn.addEventListener('click', ()=> joinGuild(btn.dataset.join));
+    });
+  }
+
+  async function joinGuild(guildId){
+    const { error } = await sb.from('guild_members').insert({ member_id:profile.id, guild_id:guildId, org_id:profile.org_id });
+    if(error){ alert('Fehler: '+error.message); return; }
+    await loadGuildState();
+  }
+
+  document.getElementById('guildCreateBtn').addEventListener('click', async ()=>{
+    const name = document.getElementById('guildNameInput').value.trim();
+    if(!name) return;
+    const { data: guild, error } = await sb.from('guilds').insert({ org_id:profile.org_id, name, founder_id:profile.id }).select().single();
+    if(error){ alert('Fehler: '+error.message); return; }
+    const { error: memErr } = await sb.from('guild_members').insert({ member_id:profile.id, guild_id:guild.id, org_id:profile.org_id });
+    if(memErr){ alert('Fehler: '+memErr.message); return; }
+    await loadGuildState();
+  });
+
+  document.getElementById('guildLeaveBtn').addEventListener('click', async ()=>{
+    if(!confirm('Gilde wirklich verlassen?')) return;
+    const { error } = await sb.from('guild_members').delete().eq('member_id', profile.id);
+    if(error){ alert('Fehler: '+error.message); return; }
+    document.getElementById('guildPickerCard').style.display='none';
+    await loadGuildState();
+  });
+
+  async function renderGuildMembers(guildId){
+    const { data: members } = await sb.from('guild_members').select('member_id').eq('guild_id', guildId);
+    const ids = (members||[]).map(m=>m.member_id);
+    const grid = document.getElementById('guildGrid');
+    if(ids.length===0){ grid.innerHTML=''; return; }
+    const { data: memberProfiles } = await sb.from('profiles').select('id,display_name,character_class,level').in('id', ids);
+    grid.innerHTML = (memberProfiles||[]).map(m=>{
+      const icon = CLASS_ICONS[m.character_class] || '❔';
+      const isFounder = currentGuild && currentGuild.founder_id===m.id;
+      return `<div class="guild-tile">
+        ${isFounder?'<span class="gt-founder">Gründer</span>':''}
+        <span class="gt-icon">${icon}</span>
+        <span class="gt-name">${m.display_name}</span>
+        <span class="gt-level">Level ${m.level}</span>
+      </div>`;
+    }).join('');
+  }
+
+  document.getElementById('guildAddBtn').addEventListener('click', ()=> renderGuildPicker());
+
+  async function renderGuildPicker(){
+    const card = document.getElementById('guildPickerCard');
+    card.style.display='block';
+    const { data: orgMembers } = await sb.from('profiles').select('id,display_name,character_class').eq('org_id', profile.org_id);
+    const { data: existing } = await sb.from('guild_members').select('member_id').eq('guild_id', currentGuild.id);
+    const existingIds = new Set((existing||[]).map(e=>e.member_id));
+    const candidates = (orgMembers||[]).filter(m=>!existingIds.has(m.id));
+    const listEl = document.getElementById('guildPickerList');
+    if(candidates.length===0){ listEl.innerHTML = '<div class="empty-page-hint">Alle Kollegen sind schon Mitglied.</div>'; return; }
+    listEl.innerHTML = candidates.map(m=>`
+      <div class="guild-picker-row">
+        <span>${CLASS_ICONS[m.character_class]||'❔'} ${m.display_name}</span>
+        <button class="cal-nav-btn" data-add="${m.id}">Hinzufügen</button>
+      </div>`).join('');
+    listEl.querySelectorAll('[data-add]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const { error } = await sb.from('guild_members').insert({ member_id:btn.dataset.add, guild_id:currentGuild.id, org_id:profile.org_id });
+        if(error){ alert('Fehler: '+error.message); return; }
+        card.style.display='none';
+        await renderGuildMembers(currentGuild.id);
+      });
+    });
+  }
+
   // ---- Seitennavigation ----
-  const VALID_PAGES = ['charakter','handlungen','inventar','tagebuch'];
+  const VALID_PAGES = ['charakter','handlungen','inventar','gilde','tagebuch'];
 
   function showPage(pageName, updateHash){
     if(!VALID_PAGES.includes(pageName)) pageName = 'charakter';
