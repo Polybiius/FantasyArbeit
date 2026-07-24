@@ -140,6 +140,8 @@
   .guild-tile .gt-name{font-weight:600;font-size:13px;color:var(--text);}
   .guild-tile .gt-level{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--arcane-glow);}
   .guild-tile .gt-founder{font-size:10px;color:var(--muted-2);text-transform:uppercase;letter-spacing:.05em;}
+  .friend-remove-btn{margin-top:4px;background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:7px;padding:4px 10px;font-size:10.5px;cursor:pointer;}
+  .friend-remove-btn:hover{border-color:var(--danger);color:var(--danger);}
   .empty-page-hint{color:var(--muted-2);font-size:12.5px;font-family:'JetBrains Mono',monospace;text-align:center;padding:30px 0;}
 
   .inv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;}
@@ -1349,7 +1351,20 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         <span class="gt-icon">${CLASS_ICONS[m.character_class]||'❔'}</span>
         <span class="gt-name">${m.display_name}</span>
         <span class="gt-level">Level ${m.level}</span>
+        <button class="friend-remove-btn" data-remove="${m.id}">Entfernen</button>
       </div>`).join('');
+    grid.querySelectorAll('[data-remove]').forEach(btn=>{
+      btn.addEventListener('click', ()=> removeFriend(btn.dataset.remove));
+    });
+  }
+
+  async function removeFriend(otherId){
+    if(!confirm('Diese Freundschaft wirklich entfernen?')) return;
+    // Die Freundschaft kann in beide Richtungen gespeichert sein
+    // (je nachdem wer die Anfrage gestellt hat) — beide Fälle abdecken.
+    await sb.from('friends').delete()
+      .or(`and(owner_id.eq.${profile.id},friend_id.eq.${otherId}),and(owner_id.eq.${otherId},friend_id.eq.${profile.id})`);
+    await renderFriendGrid();
   }
 
   document.getElementById('friendSearchBtn').addEventListener('click', ()=> searchFriendByName());
