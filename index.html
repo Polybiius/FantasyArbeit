@@ -442,6 +442,19 @@
       <!-- SEITE: GILDE -->
       <div class="page" id="page-gilde" style="display:none;">
         <div class="card">
+          <h2>Freunde <span class="tag">unabhängig von Gilden</span></h2>
+          <div class="guild-actions-row">
+            <button class="cal-nav-btn" id="friendAddBtn">+ Freund hinzufügen</button>
+          </div>
+          <div class="guild-grid" id="friendGrid"></div>
+        </div>
+
+        <div class="card friend-picker" id="friendPickerCard" style="display:none;margin-top:18px;">
+          <h2>Freund auswählen</h2>
+          <div id="friendPickerList"></div>
+        </div>
+
+        <div class="card" style="margin-top:18px;">
           <h2 id="guildHeaderTitle">Gilde</h2>
 
           <div id="guildNoGuildView" style="display:none;">
@@ -759,6 +772,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     initInventory();
     renderCharacterEquipment();
     initGuild();
+    initFriends();
     restoreLastPage();
   }
 
@@ -1277,6 +1291,51 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     badges.innerHTML = equippedDefs.map(s =>
       `<div class="char-badge"><span>${s.def.icon||'❔'}</span><span>${s.def.label}</span></div>`
     ).join('');
+  }
+
+  // ---- Freunde (unabhängig von Gilden) ----
+  async function initFriends(){
+    await renderFriendGrid();
+  }
+
+  async function renderFriendGrid(){
+    const { data: rows } = await sb.from('friends').select('friend_id').eq('owner_id', profile.id);
+    const ids = (rows||[]).map(r=>r.friend_id);
+    const grid = document.getElementById('friendGrid');
+    if(ids.length===0){ grid.innerHTML = '<div class="empty-page-hint">Noch keine Freunde hinzugefügt.</div>'; return; }
+    const { data: friendProfiles } = await sb.from('profiles').select('id,display_name,character_class,level').in('id', ids);
+    grid.innerHTML = (friendProfiles||[]).map(m=>`
+      <div class="guild-tile">
+        <span class="gt-icon">${CLASS_ICONS[m.character_class]||'❔'}</span>
+        <span class="gt-name">${m.display_name}</span>
+        <span class="gt-level">Level ${m.level}</span>
+      </div>`).join('');
+  }
+
+  document.getElementById('friendAddBtn').addEventListener('click', ()=> renderFriendPicker());
+
+  async function renderFriendPicker(){
+    const card = document.getElementById('friendPickerCard');
+    card.style.display='block';
+    const { data: orgMembers } = await sb.from('profiles').select('id,display_name,character_class').eq('org_id', profile.org_id).neq('id', profile.id);
+    const { data: existing } = await sb.from('friends').select('friend_id').eq('owner_id', profile.id);
+    const existingIds = new Set((existing||[]).map(e=>e.friend_id));
+    const candidates = (orgMembers||[]).filter(m=>!existingIds.has(m.id));
+    const listEl = document.getElementById('friendPickerList');
+    if(candidates.length===0){ listEl.innerHTML = '<div class="empty-page-hint">Alle Kollegen sind schon in deiner Freundesliste.</div>'; return; }
+    listEl.innerHTML = candidates.map(m=>`
+      <div class="guild-picker-row">
+        <span>${CLASS_ICONS[m.character_class]||'❔'} ${m.display_name}</span>
+        <button class="cal-nav-btn" data-addfriend="${m.id}">Hinzufügen</button>
+      </div>`).join('');
+    listEl.querySelectorAll('[data-addfriend]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const { error } = await sb.from('friends').insert({ owner_id:profile.id, friend_id:btn.dataset.addfriend, org_id:profile.org_id });
+        if(error){ alert('Fehler: '+error.message); return; }
+        card.style.display='none';
+        await renderFriendGrid();
+      });
+    });
   }
 
   // ---- Gilde / Orden / Legion / Bund ----
