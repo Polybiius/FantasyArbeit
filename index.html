@@ -115,6 +115,15 @@
   .friend-search-row{display:flex;gap:10px;margin-bottom:6px;}
   .friend-search-row input{flex:1;background:#0e0c17;border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-family:'Inter',sans-serif;font-size:13px;}
   .friend-search-row input:focus{outline:none;border-color:var(--arcane);}
+  .friend-requests{margin-top:10px;}
+  .friend-req-row{
+    display:flex;justify-content:space-between;align-items:center;
+    background:var(--panel-2);border:1px solid var(--arcane);border-radius:9px;
+    padding:10px 14px;margin-bottom:8px;font-size:13px;
+  }
+  .friend-req-row .freq-actions{display:flex;gap:8px;}
+  .friend-req-row .freq-accept{background:var(--success);color:#fff;border:none;border-radius:7px;padding:6px 12px;font-size:11.5px;cursor:pointer;font-weight:600;}
+  .friend-req-row .freq-decline{background:transparent;color:var(--danger);border:1px solid var(--danger);border-radius:7px;padding:6px 12px;font-size:11.5px;cursor:pointer;}
   .guild-create-row input{flex:1;background:#0e0c17;border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-family:'Inter',sans-serif;font-size:13px;}
   .guild-create-row input:focus{outline:none;border-color:var(--arcane);}
   .guild-actions-row{display:flex;justify-content:space-between;margin-bottom:16px;}
@@ -451,6 +460,7 @@
             <button class="cal-nav-btn" id="friendSearchBtn">Suchen</button>
           </div>
           <div id="friendSearchResult"></div>
+          <div class="friend-requests" id="friendRequestsList"></div>
           <div class="guild-grid" id="friendGrid" style="margin-top:16px;"></div>
         </div>
 
@@ -1295,14 +1305,44 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   // ---- Freunde (unabhängig von Gilden) ----
   async function initFriends(){
+    await renderFriendRequests();
     await renderFriendGrid();
   }
 
+  async function renderFriendRequests(){
+    const { data: incoming } = await sb.from('friends').select('owner_id').eq('friend_id', profile.id).eq('status','pending');
+    const listEl = document.getElementById('friendRequestsList');
+    const ids = (incoming||[]).map(r=>r.owner_id);
+    if(ids.length===0){ listEl.innerHTML=''; return; }
+    const { data: requesters } = await sb.from('profiles').select('id,display_name,character_class').in('id', ids);
+    listEl.innerHTML = (requesters||[]).map(r=>`
+      <div class="friend-req-row">
+        <span>${CLASS_ICONS[r.character_class]||'❔'} <strong>${r.display_name}</strong> möchte dich hinzufügen</span>
+        <span class="freq-actions">
+          <button class="freq-accept" data-accept="${r.id}">Annehmen</button>
+          <button class="freq-decline" data-decline="${r.id}">Ablehnen</button>
+        </span>
+      </div>`).join('');
+    listEl.querySelectorAll('[data-accept]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        await sb.from('friends').update({status:'accepted'}).eq('owner_id', btn.dataset.accept).eq('friend_id', profile.id);
+        await renderFriendRequests();
+        await renderFriendGrid();
+      });
+    });
+    listEl.querySelectorAll('[data-decline]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        await sb.from('friends').delete().eq('owner_id', btn.dataset.decline).eq('friend_id', profile.id);
+        await renderFriendRequests();
+      });
+    });
+  }
+
   async function renderFriendGrid(){
-    const { data: rows } = await sb.from('friends').select('friend_id').eq('owner_id', profile.id);
-    const ids = (rows||[]).map(r=>r.friend_id);
+    const { data: rows } = await sb.from('friends').select('owner_id,friend_id').or(`owner_id.eq.${profile.id},friend_id.eq.${profile.id}`).eq('status','accepted');
+    const ids = [...new Set((rows||[]).map(r => r.owner_id===profile.id ? r.friend_id : r.owner_id))];
     const grid = document.getElementById('friendGrid');
-    if(ids.length===0){ grid.innerHTML = '<div class="empty-page-hint">Noch keine Freunde hinzugefügt.</div>'; return; }
+    if(ids.length===0){ grid.innerHTML = '<div class="empty-page-hint">Noch keine Freunde.</div>'; return; }
     const { data: friendProfiles } = await sb.from('profiles').select('id,display_name,character_class,level').in('id', ids);
     grid.innerHTML = (friendProfiles||[]).map(m=>`
       <div class="guild-tile">
@@ -1326,7 +1366,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const { data: matches, error } = await sb.from('profiles')
       .select('id,display_name,character_class')
       .eq('org_id', profile.org_id)
-      .eq('display_name', name); // exakte Übereinstimmung, kein Teiltreffer
+      .ilike('display_name', name); // exakte Übereinstimmung, Groß-/Kleinschreibung egal
 
     if(error){ resultEl.innerHTML = `<div class="empty-page-hint">Fehler: ${error.message}</div>`; return; }
     const match = (matches||[]).find(m=>m.id!==profile.id);
@@ -1335,21 +1375,23 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       resultEl.innerHTML = '<div class="empty-page-hint">Kein exakter Treffer.</div>';
       return;
     }
-    const { data: existing } = await sb.from('friends').select('friend_id').eq('owner_id', profile.id).eq('friend_id', match.id).maybeSingle();
-    if(existing){
-      resultEl.innerHTML = '<div class="empty-page-hint">Ist bereits in deiner Freundesliste.</div>';
+    const { data: existingA } = await sb.from('friends').select('status').eq('owner_id', profile.id).eq('friend_id', match.id).maybeSingle();
+    const { data: existingB } = await sb.from('friends').select('status').eq('owner_id', match.id).eq('friend_id', profile.id).maybeSingle();
+    if(existingA || existingB){
+      const status = (existingA||existingB).status;
+      resultEl.innerHTML = `<div class="empty-page-hint">${status==='accepted' ? 'Ist bereits dein Freund.' : 'Anfrage bereits gestellt, wartet auf Bestätigung.'}</div>`;
       return;
     }
     resultEl.innerHTML = `
       <div class="guild-picker-row">
         <span>${CLASS_ICONS[match.character_class]||'❔'} ${match.display_name}</span>
-        <button class="cal-nav-btn" id="friendConfirmAddBtn">Hinzufügen</button>
+        <button class="cal-nav-btn" id="friendConfirmAddBtn">Anfrage senden</button>
       </div>`;
     document.getElementById('friendConfirmAddBtn').addEventListener('click', async ()=>{
-      const { error: insErr } = await sb.from('friends').insert({ owner_id:profile.id, friend_id:match.id, org_id:profile.org_id });
+      const { error: insErr } = await sb.from('friends').insert({ owner_id:profile.id, friend_id:match.id, org_id:profile.org_id, status:'pending' });
       if(insErr){ resultEl.innerHTML = `<div class="empty-page-hint">Fehler: ${insErr.message}</div>`; return; }
       document.getElementById('friendSearchInput').value = '';
-      resultEl.innerHTML = '';
+      resultEl.innerHTML = '<div class="empty-page-hint">Anfrage gesendet, wartet auf Bestätigung.</div>';
       await renderFriendGrid();
     });
   }
