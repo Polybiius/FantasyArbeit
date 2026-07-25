@@ -205,7 +205,10 @@
   .cal-day:hover{border-color:var(--arcane);}
   .cal-day.empty{visibility:hidden;cursor:default;}
   .cal-day.today{border-color:var(--arcane);color:var(--text);}
-  .cal-day .dot{width:5px;height:5px;border-radius:50%;background:var(--mana);}
+  .cal-day .dot{width:5px;height:5px;border-radius:50%;}
+  .cal-day .dot-text{background:#22d3c8;}
+  .cal-day .dot-photo{background:#f2a154;}
+  .cal-day .dot-mixed{background:linear-gradient(90deg, #22d3c8 50%, #f2a154 50%);}
   .cal-preview{margin-top:16px;border-top:1px solid var(--border);padding-top:14px;font-size:12.5px;color:var(--text);display:none;}
   .cal-preview.show{display:block;}
   .cal-preview h3{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted-2);text-transform:uppercase;letter-spacing:.05em;margin:0 0 10px;}
@@ -385,8 +388,8 @@
       <button class="nav-btn active" data-page="charakter">🧙 Charakter</button>
       <button class="nav-btn" data-page="handlungen">⚔ Handlungen</button>
       <button class="nav-btn" data-page="inventar">🎒 Inventar</button>
-      <button class="nav-btn" data-page="gilde" id="navGildeBtn">🛡 Gilde</button>
       <button class="nav-btn" data-page="dungeons">🗺 Dungeons</button>
+      <button class="nav-btn" data-page="gilde" id="navGildeBtn">🛡 Gilde</button>
       <button class="nav-btn" data-page="tagebuch">📖 Abenteuerlog</button>
     </nav>
 
@@ -1072,7 +1075,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   const JOURNAL_FIELDS = ['j1','j2','j3','j4','j5'];
   let journalSaveTimers = {};
   let calViewYear, calViewMonth; // 0-basiert
-  let calEntryDates = new Set(); // Tage im aktuell angezeigten Monat mit Eintrag
+  let calEntryDates = new Set(); // Tage im aktuell angezeigten Monat mit Text-Eintrag
+  let calPhotoDates = new Set(); // Tage im aktuell angezeigten Monat mit Foto
 
   async function initJournal(){
     const today = todayKey(new Date());
@@ -1125,6 +1129,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       user_id:profile.id, org_id:profile.org_id, entry_date:today, storage_path:path
     }, { onConflict:'user_id,entry_date' });
     if(dbErr){ preview.innerHTML = `<div class="photo-hint">Fehler: ${dbErr.message}</div>`; return; }
+    calPhotoDates.add(today);
+    refreshDotForDate(today);
     await loadTodayPhoto();
   }
 
@@ -1150,7 +1156,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         indicator.classList.add('show');
         setTimeout(()=>indicator.classList.remove('show'), 1500);
         calEntryDates.add(today);
-        renderCalendarDots();
+        refreshDotForDate(today);
       }
     }, 700);
   }
@@ -1173,6 +1179,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const to = `${calViewYear}-${pad2(calViewMonth+1)}-${pad2(daysInMonth(calViewYear,calViewMonth))}`;
     const { data } = await sb.from('journal_entries').select('entry_date').eq('user_id', profile.id).gte('entry_date', from).lte('entry_date', to);
     calEntryDates = new Set((data||[]).map(r=>r.entry_date));
+    const { data: photoData } = await sb.from('journal_photos').select('entry_date').eq('user_id', profile.id).gte('entry_date', from).lte('entry_date', to);
+    calPhotoDates = new Set((photoData||[]).map(r=>r.entry_date));
 
     const grid = document.getElementById('calGrid');
     const firstWeekday = (new Date(calViewYear, calViewMonth, 1).getDay()+6)%7; // Montag=0
@@ -1183,7 +1191,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     for(let d=1; d<=total; d++){
       const dateStr = `${calViewYear}-${pad2(calViewMonth+1)}-${pad2(d)}`;
       const isToday = dateStr===todayStr;
-      html += `<div class="cal-day ${isToday?'today':''}" data-date="${dateStr}">${d}${calEntryDates.has(dateStr)?'<span class="dot"></span>':''}</div>`;
+      html += `<div class="cal-day ${isToday?'today':''}" data-date="${dateStr}">${d}${dotMarkupForDate(dateStr)}</div>`;
     }
     grid.innerHTML = html;
     grid.querySelectorAll('.cal-day:not(.empty)').forEach(el=>{
@@ -1191,12 +1199,21 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     });
   }
 
-  function renderCalendarDots(){
-    document.querySelectorAll('.cal-day:not(.empty)').forEach(el=>{
-      const has = calEntryDates.has(el.dataset.date);
-      const existingDot = el.querySelector('.dot');
-      if(has && !existingDot){ el.insertAdjacentHTML('beforeend','<span class="dot"></span>'); }
-    });
+  function dotMarkupForDate(dateStr){
+    const hasText = calEntryDates.has(dateStr);
+    const hasPhoto = calPhotoDates.has(dateStr);
+    if(hasText && hasPhoto) return '<span class="dot dot-mixed"></span>';
+    if(hasText) return '<span class="dot dot-text"></span>';
+    if(hasPhoto) return '<span class="dot dot-photo"></span>';
+    return '';
+  }
+
+  function refreshDotForDate(dateStr){
+    const el = document.querySelector(`.cal-day[data-date="${dateStr}"]`);
+    if(!el) return; // Tag liegt evtl. nicht im aktuell angezeigten Monat
+    const existingDot = el.querySelector('.dot');
+    if(existingDot) existingDot.remove();
+    el.insertAdjacentHTML('beforeend', dotMarkupForDate(dateStr));
   }
 
   const JOURNAL_LABELS = [
