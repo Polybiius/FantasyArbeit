@@ -7,6 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
   :root{
     --void:#0b0a12; --panel:#151220; --panel-2:#1c1830; --border:#2c2540;
@@ -142,6 +144,32 @@
   .guild-tile .gt-founder{font-size:10px;color:var(--muted-2);text-transform:uppercase;letter-spacing:.05em;}
   .friend-remove-btn{margin-top:4px;background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:7px;padding:4px 10px;font-size:10.5px;cursor:pointer;}
   .friend-remove-btn:hover{border-color:var(--danger);color:var(--danger);}
+
+  .dungeon-add-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
+  .dungeon-add-row input, .dungeon-add-row select{
+    background:#0e0c17;border:1px solid var(--border);border-radius:8px;padding:9px 12px;
+    color:var(--text);font-family:'Inter',sans-serif;font-size:13px;
+  }
+  .dungeon-add-row input{flex:1;min-width:140px;}
+  #dungeonMap{height:480px;border-radius:12px;overflow:hidden;margin-top:6px;border:1px solid var(--border);}
+  .dungeon-pin{
+    width:34px;height:34px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);
+    background:var(--arcane);border:2px solid var(--arcane-glow);
+    display:flex;align-items:center;justify-content:center;
+  }
+  .dungeon-pin span{transform:rotate(45deg);font-size:16px;}
+
+  .loc-modal{
+    position:fixed;inset:0;background:rgba(6,5,10,0.75);z-index:1000;
+    display:flex;align-items:center;justify-content:center;padding:20px;
+  }
+  .loc-modal-inner{
+    background:var(--panel);border:1px solid var(--border);border-radius:14px;
+    padding:22px;max-width:480px;width:100%;max-height:80vh;overflow-y:auto;
+  }
+  .loc-modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
+  .loc-modal-header span{font-family:'Cinzel',serif;font-weight:700;font-size:17px;}
+  .loc-modal-header button{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:7px;padding:4px 10px;cursor:pointer;}
   .empty-page-hint{color:var(--muted-2);font-size:12.5px;font-family:'JetBrains Mono',monospace;text-align:center;padding:30px 0;}
 
   .inv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;}
@@ -358,6 +386,7 @@
       <button class="nav-btn" data-page="handlungen">⚔ Handlungen</button>
       <button class="nav-btn" data-page="inventar">🎒 Inventar</button>
       <button class="nav-btn" data-page="gilde" id="navGildeBtn">🛡 Gilde</button>
+      <button class="nav-btn" data-page="dungeons">🗺 Dungeons</button>
       <button class="nav-btn" data-page="tagebuch">📖 Abenteuerlog</button>
     </nav>
 
@@ -493,6 +522,21 @@
         </div>
       </div>
 
+      <!-- SEITE: DUNGEONS -->
+      <div class="page" id="page-dungeons" style="display:none;">
+        <div class="card">
+          <h2>Dungeons <span class="tag">karte</span></h2>
+          <div class="dungeon-add-row" id="dungeonAddRow" style="display:none;">
+            <input type="text" id="locNameInput" placeholder="Name (z.B. Klinikum Mitte)">
+            <input type="text" id="locAddressInput" placeholder="Adresse">
+            <select id="locTypeSelect"></select>
+            <button class="cal-nav-btn" id="locAddBtn">+ Ort hinzufügen</button>
+          </div>
+          <div id="dungeonAddStatus" class="empty-page-hint"></div>
+          <div id="dungeonMap"></div>
+        </div>
+      </div>
+
       <!-- SEITE 3: ABENTEUERLOG (Tagebuch) -->
       <div class="page" id="page-tagebuch" style="display:none;">
         <div class="journal-grid">
@@ -543,6 +587,16 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       </div>
 
     </div>
+  </div>
+</div>
+
+<div class="loc-modal" id="locActionModal" style="display:none;">
+  <div class="loc-modal-inner">
+    <div class="loc-modal-header">
+      <span id="locModalTitle">Ort</span>
+      <button id="locModalClose">✕</button>
+    </div>
+    <div class="action-btns" id="locActionGrid"></div>
   </div>
 </div>
 
@@ -625,8 +679,9 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
   function abschlussContextGroups(){
     const groups={};
-    log.filter(e=>e.action_key==='abschluss' && e.context).forEach(e=>{
-      const k=e.context.trim().toLowerCase(); if(!k) return;
+    log.filter(e=>e.action_key==='abschluss').forEach(e=>{
+      const k = e.location_id ? ('loc:'+e.location_id) : (e.context ? e.context.trim().toLowerCase() : null);
+      if(!k) return;
       groups[k]=(groups[k]||0)+1;
     });
     return groups;
@@ -1549,8 +1604,119 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     });
   }
 
+  // ---- Dungeons (Karte) ----
+  let dungeonMap = null;
+  let dungeonMapInitialized = false;
+  let dungeonMarkers = [];
+
+  async function ensureDungeonMap(){
+    if(dungeonMapInitialized) return;
+    dungeonMapInitialized = true;
+
+    dungeonMap = L.map('dungeonMap').setView([51.1657, 10.4515], 6); // Mitte Deutschlands als Start
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      attribution: '&copy; OpenStreetMap &copy; CARTO',
+      maxZoom: 19
+    }).addTo(dungeonMap);
+
+    const typeSelect = document.getElementById('locTypeSelect');
+    const types = config.locationTypes || {};
+    typeSelect.innerHTML = Object.entries(types).map(([key,t])=>`<option value="${key}">${t.icon} ${t.label}</option>`).join('');
+
+    if(profile.role==='admin'){
+      document.getElementById('dungeonAddRow').style.display='flex';
+    }
+
+    await loadAndRenderLocations();
+    setTimeout(()=> dungeonMap.invalidateSize(), 200);
+  }
+
+  async function loadAndRenderLocations(){
+    const { data: locations } = await sb.from('locations').select('*').eq('org_id', profile.org_id);
+    dungeonMarkers.forEach(m=>dungeonMap.removeLayer(m));
+    dungeonMarkers = [];
+    const types = config.locationTypes || {};
+    (locations||[]).forEach(loc=>{
+      const t = types[loc.type] || { icon:'❔', label:loc.type };
+      const icon = L.divIcon({
+        html:`<div class="dungeon-pin"><span>${t.icon}</span></div>`,
+        className:'', iconSize:[34,34], iconAnchor:[17,34]
+      });
+      const marker = L.marker([loc.lat, loc.lng], { icon }).addTo(dungeonMap);
+      marker.on('click', ()=> openLocationActionModal(loc));
+      dungeonMarkers.push(marker);
+    });
+    if(locations && locations.length>0){
+      dungeonMap.fitBounds(locations.map(l=>[l.lat,l.lng]), { padding:[40,40], maxZoom:12 });
+    }
+  }
+
+  document.getElementById('locAddBtn').addEventListener('click', async ()=>{
+    const name = document.getElementById('locNameInput').value.trim();
+    const address = document.getElementById('locAddressInput').value.trim();
+    const type = document.getElementById('locTypeSelect').value;
+    const statusEl = document.getElementById('dungeonAddStatus');
+    if(!name || !address){ statusEl.textContent = 'Bitte Name und Adresse eingeben.'; return; }
+    statusEl.textContent = 'Suche Koordinaten …';
+    try{
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(address)}`);
+      const results = await res.json();
+      if(!results || results.length===0){ statusEl.textContent = 'Adresse nicht gefunden.'; return; }
+      const { lat, lon } = results[0];
+      const { error } = await sb.from('locations').insert({
+        org_id:profile.org_id, name, type, lat:parseFloat(lat), lng:parseFloat(lon),
+        address, created_by:profile.id
+      });
+      if(error){ statusEl.textContent = 'Fehler: '+error.message; return; }
+      document.getElementById('locNameInput').value = '';
+      document.getElementById('locAddressInput').value = '';
+      statusEl.textContent = `"${name}" wurde hinzugefügt.`;
+      await loadAndRenderLocations();
+    }catch(err){
+      statusEl.textContent = 'Fehler bei der Adresssuche: '+err.message;
+    }
+  });
+
+  function openLocationActionModal(loc){
+    document.getElementById('locModalTitle').textContent = loc.name;
+    const grid = document.getElementById('locActionGrid');
+    const entries = Object.entries(config.actions).filter(([key])=>!QUICKBAR_KEYS.includes(key));
+    entries.sort((a,b)=>a[1].xp-b[1].xp);
+    grid.innerHTML = entries.map(([key,a])=>{
+      const bossClass = key==='boss' ? ' boss' : '';
+      const bossIcon = key==='boss' ? '🐲 ' : '';
+      return `<button class="abtn${bossClass}" data-locaction="${key}">${bossIcon}${a.label}<span class="xp">+${a.xp} XP · ${a.energy} Energie</span></button>`;
+    }).join('');
+    grid.querySelectorAll('[data-locaction]').forEach(btn=>{
+      btn.addEventListener('click', ()=> logActionAtLocation(btn.dataset.locaction, loc));
+    });
+    document.getElementById('locActionModal').style.display='flex';
+  }
+  document.getElementById('locModalClose').addEventListener('click', ()=>{
+    document.getElementById('locActionModal').style.display='none';
+  });
+
+  async function logActionAtLocation(key, loc){
+    const a = config.actions[key];
+    if(!a) return;
+    const remaining = config.energyMax - energyUsedToday();
+    if(a.energy > remaining) return;
+    const row = {
+      user_id:profile.id, org_id:profile.org_id, action_key:key, label:a.label,
+      xp:a.xp, energy:a.energy, skill:a.skill||null, skill2:a.skill2||null,
+      context: loc.name, location_id: loc.id
+    };
+    const { data, error } = await sb.from('action_log').insert(row).select().single();
+    if(error){ alert('Fehler beim Speichern: '+error.message); return; }
+    log.push(data);
+    await checkAndAwardRecurringQuests();
+    await checkAndAwardChains();
+    document.getElementById('locActionModal').style.display='none';
+    render();
+  }
+
   // ---- Seitennavigation ----
-  const VALID_PAGES = ['charakter','handlungen','inventar','gilde','tagebuch'];
+  const VALID_PAGES = ['charakter','handlungen','inventar','gilde','dungeons','tagebuch'];
 
   function showPage(pageName, updateHash){
     if(!VALID_PAGES.includes(pageName)) pageName = 'charakter';
@@ -1558,6 +1724,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.querySelectorAll('.page').forEach(p=>p.style.display='none');
     document.getElementById('page-'+pageName).style.display='block';
     if(updateHash!==false) location.hash = pageName;
+    if(pageName==='dungeons'){ ensureDungeonMap(); if(dungeonMap) setTimeout(()=>dungeonMap.invalidateSize(),150); }
   }
 
   document.querySelectorAll('.nav-btn').forEach(btn=>{
