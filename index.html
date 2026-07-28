@@ -129,11 +129,13 @@
   .guild-create-row input{flex:1;background:#0e0c17;border:1px solid var(--border);border-radius:8px;padding:9px 12px;color:var(--text);font-family:'Inter',sans-serif;font-size:13px;}
   .guild-create-row input:focus{outline:none;border-color:var(--arcane);}
   .guild-actions-row{display:flex;justify-content:space-between;margin-bottom:16px;}
-  .guild-join-row, .guild-picker-row{
+  .guild-join-row, .guild-picker-row, .account-row{
     display:flex;justify-content:space-between;align-items:center;
     background:var(--panel-2);border:1px solid var(--border);border-radius:9px;
     padding:10px 14px;margin-bottom:8px;font-size:13px;
   }
+  .account-row select{background:#0e0c17;border:1px solid var(--border);border-radius:7px;padding:6px 10px;color:var(--text);font-size:12.5px;}
+  .account-row .ar-owner{font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;}
   .guild-join-row .gname{font-weight:600;}
   .guild-join-row .gmeta{color:var(--muted);font-size:11.5px;font-family:'JetBrains Mono',monospace;}
   .guild-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:14px;}
@@ -170,6 +172,33 @@
   .loc-modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;}
   .loc-modal-header span{font-family:'Cinzel',serif;font-weight:700;font-size:17px;}
   .loc-modal-header button{background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:7px;padding:4px 10px;cursor:pointer;}
+
+  .contact-add-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:8px;}
+  .contact-add-row input, .contact-add-row select, .contact-add-row textarea, #contactNotesInput{
+    background:#0e0c17;border:1px solid var(--border);border-radius:8px;padding:9px 12px;
+    color:var(--text);font-family:'Inter',sans-serif;font-size:13px;
+  }
+  .contact-add-row input{flex:1;min-width:140px;}
+  .contact-add-row textarea{flex:1;min-width:200px;resize:vertical;}
+  #contactNotesInput{width:100%;resize:vertical;}
+  .contact-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;}
+  .contact-card{background:var(--panel-2);border:1px solid var(--border);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:6px;}
+  .contact-card .cc-name{font-weight:600;font-size:14px;color:var(--text);}
+  .contact-card .cc-role{font-size:11.5px;color:var(--muted);}
+  .contact-card .cc-loc{font-size:11.5px;color:var(--arcane-glow);}
+  .contact-card .cc-last{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--muted-2);}
+  .contact-card .cc-notes{font-size:11.5px;color:var(--muted);white-space:pre-wrap;}
+  .cc-status{align-self:flex-start;font-size:10px;text-transform:uppercase;letter-spacing:.04em;padding:3px 9px;border-radius:999px;font-family:'JetBrains Mono',monospace;}
+  .cc-status.kalt{background:rgba(144,137,168,0.2);color:var(--muted);}
+  .cc-status.warm{background:rgba(242,161,84,0.2);color:var(--amber);}
+  .cc-status.kunde{background:rgba(52,211,153,0.2);color:var(--success);}
+  .cc-status.verloren{background:rgba(241,101,101,0.2);color:var(--danger);}
+  .cc-actions{display:flex;gap:8px;margin-top:4px;}
+  .cc-actions button{flex:1;font-size:11px;padding:6px;border-radius:7px;cursor:pointer;background:var(--panel);border:1px solid var(--border);color:var(--text);}
+  .cc-actions button:hover{border-color:var(--arcane);}
+  .cc-sales-block{display:flex;flex-direction:column;gap:3px;border-top:1px solid var(--border);padding-top:8px;margin-top:4px;}
+  .cc-sales-block button{background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:5px;font-size:11px;cursor:pointer;}
+  .cc-sales-block button:hover{border-color:var(--success);}
   .empty-page-hint{color:var(--muted-2);font-size:12.5px;font-family:'JetBrains Mono',monospace;text-align:center;padding:30px 0;}
 
   .inv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;}
@@ -389,6 +418,7 @@
       <button class="nav-btn" data-page="handlungen">⚔ Handlungen</button>
       <button class="nav-btn" data-page="inventar">🎒 Inventar</button>
       <button class="nav-btn" data-page="dungeons">🗺 Dungeons</button>
+      <button class="nav-btn" data-page="kontakte" id="navKontakteBtn">📇 Register</button>
       <button class="nav-btn" data-page="gilde" id="navGildeBtn">🛡 Gilde</button>
       <button class="nav-btn" data-page="tagebuch">📖 Abenteuerlog</button>
     </nav>
@@ -525,6 +555,39 @@
         </div>
       </div>
 
+      <!-- SEITE: KONTAKTE -->
+      <div class="page" id="page-kontakte" style="display:none;">
+        <div class="card">
+          <h2 id="contactsHeaderTitle">Register</h2>
+
+          <div class="contact-add-row">
+            <input type="text" id="contactVornameInput" placeholder="Vorname">
+            <input type="text" id="contactNachnameInput" placeholder="Nachname">
+            <select id="contactRoleSelect"></select>
+            <select id="contactLocationSelect"><option value="">Kein Dungeon</option></select>
+            <select id="contactStatusSelect">
+              <option value="kalt">Kalt</option>
+              <option value="warm">Warm</option>
+              <option value="kunde">Kunde</option>
+              <option value="verloren">Verloren</option>
+            </select>
+          </div>
+          <div class="contact-add-row">
+            <textarea id="contactBedarfIstInput" placeholder="Bedarf – Ist-Zustand (was er bereits hat)" rows="2"></textarea>
+            <textarea id="contactBedarfWunschInput" placeholder="Bedarf – Wunsch (was er gerne möchte)" rows="2"></textarea>
+          </div>
+          <div class="contact-add-row">
+            <label class="cc-role" style="align-self:center;">Nächster Kontakt (Wiedervorlage):</label>
+            <input type="date" id="contactNextContactInput">
+          </div>
+          <textarea id="contactNotesInput" placeholder="Allgemeine Notizen (optional)" rows="2"></textarea>
+          <button class="cal-nav-btn" id="contactAddBtn" style="margin-top:8px;">+ Kontakt anlegen</button>
+          <div class="empty-page-hint" id="contactAddStatus"></div>
+
+          <div class="contact-grid" id="contactGrid" style="margin-top:18px;"></div>
+        </div>
+      </div>
+
       <!-- SEITE: DUNGEONS -->
       <div class="page" id="page-dungeons" style="display:none;">
         <div class="card">
@@ -537,6 +600,12 @@
           </div>
           <div id="dungeonAddStatus" class="empty-page-hint"></div>
           <div id="dungeonMap"></div>
+        </div>
+
+        <div class="card" id="accountPoolCard" style="display:none;margin-top:18px;">
+          <h2>Accounts verwalten <span class="tag">nur admin</span></h2>
+          <div class="empty-page-hint" style="margin-bottom:8px;">Jeder Account gehört genau einem Mitarbeiter, oder liegt unzugewiesen im Pool.</div>
+          <div id="accountPoolList"></div>
         </div>
       </div>
 
@@ -568,6 +637,16 @@ Welche Erkenntnis oder Strategie möchte ich künftig wieder anwenden oder verme
             <textarea class="journal-ta" id="j5" placeholder="Wohin führt meine nächste Etappe?
 Was ist morgen der wichtigste konkrete Schritt?"></textarea>
           </div>
+        </div>
+
+        <div class="card" style="margin-top:18px;">
+          <h2>Kunde markieren <span class="tag">persönlich, keine CRM-Statistik</span></h2>
+          <div class="empty-page-hint" style="margin-bottom:8px;">Für die Geschichte am Jahresende, nicht für die Verkaufsauswertung — welcher Kontakt gehört gedanklich zu diesem Tag?</div>
+          <div class="friend-search-row">
+            <input type="text" id="journalContactInput" placeholder="Exakter Name des Kontakts">
+            <button class="cal-nav-btn" id="journalContactSearchBtn">Suchen</button>
+          </div>
+          <div id="journalContactResult"></div>
         </div>
 
         <div class="card" style="margin-top:18px;">
@@ -614,7 +693,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   let session=null, profile=null, org=null, config=null, log=[];
   let phoneTally = 0;
   let lastKnownLevel = 1;
-  const QUICKBAR_KEYS = ['telefon_5','termin_vereinbart','ansprache_assistenz'];
+  const QUICKBAR_KEYS = ['telefon_5','termin_vereinbart','ansprache'];
 
   // ---- Zeit / Zeitzone (kommt aus der Organisation, Vorkehrung für Skalierung) ----
   function localPartsInTZ(d, tz){
@@ -843,6 +922,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     renderCharacterEquipment();
     initGuild();
     initFriends();
+    initContacts();
     restoreLastPage();
   }
 
@@ -992,7 +1072,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     render();
   });
   document.getElementById('qbtn_termin').addEventListener('click', ()=> logAction('termin_vereinbart'));
-  document.getElementById('qbtn_ansprache').addEventListener('click', ()=> logAction('ansprache_assistenz'));
+  document.getElementById('qbtn_ansprache').addEventListener('click', ()=> logAction('ansprache'));
 
   function render(){
     const {totalXp, skillXp} = computeTotals();
@@ -1034,7 +1114,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('phoneTallyPips').innerHTML = Array.from({length:5}).map((_,i)=> `<span class="tpip ${i<phoneTally?'on':''}"></span>`).join('');
     document.getElementById('qbtn_telefon').disabled = config.actions.telefon_5.energy > remaining;
     document.getElementById('qbtn_termin').disabled = config.actions.termin_vereinbart.energy > remaining;
-    document.getElementById('qbtn_ansprache').disabled = config.actions.ansprache_assistenz.energy > remaining;
+    document.getElementById('qbtn_ansprache').disabled = config.actions.ansprache.energy > remaining;
 
     document.getElementById('questList').innerHTML = (config.recurringQuests||[]).map(q=>{
       const progressParts = q.conditions.map(c=>Math.min(countInPeriod(c.actions,q.period), c.count));
@@ -1100,6 +1180,56 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     });
     await renderCalendar();
     initPhotoCapture();
+    await initJournalContactTag(data);
+  }
+
+  // ---- Tagebuch-Kundenmarkierung (persönlich, keine CRM-Statistik) ----
+  async function initJournalContactTag(existingEntry){
+    document.getElementById('journalContactSearchBtn').addEventListener('click', ()=> searchJournalContact());
+    document.getElementById('journalContactInput').addEventListener('keydown', (e)=>{
+      if(e.key==='Enter') searchJournalContact();
+    });
+    if(existingEntry && existingEntry.tagged_contact_id){
+      const { data: c } = await sb.from('contacts').select('name').eq('id', existingEntry.tagged_contact_id).maybeSingle();
+      if(c) renderJournalContactTagged(c.name, existingEntry.tagged_contact_id);
+    }
+  }
+
+  function renderJournalContactTagged(name, contactId){
+    document.getElementById('journalContactResult').innerHTML = `
+      <div class="guild-picker-row">
+        <span>📇 ${name}</span>
+        <button class="cal-nav-btn" id="journalContactRemoveBtn">Entfernen</button>
+      </div>`;
+    document.getElementById('journalContactRemoveBtn').addEventListener('click', async ()=>{
+      const today = todayKey(new Date());
+      await sb.from('journal_entries').update({tagged_contact_id:null}).eq('user_id', profile.id).eq('entry_date', today);
+      document.getElementById('journalContactResult').innerHTML = '';
+      document.getElementById('journalContactInput').value = '';
+    });
+  }
+
+  async function searchJournalContact(){
+    const resultEl = document.getElementById('journalContactResult');
+    const name = document.getElementById('journalContactInput').value.trim();
+    if(!name){ resultEl.innerHTML=''; return; }
+    resultEl.innerHTML = '<div class="empty-page-hint">Suche …</div>';
+    const { data: matches, error } = await sb.from('contacts').select('id,name').ilike('name', name);
+    if(error){ resultEl.innerHTML = `<div class="empty-page-hint">Fehler: ${error.message}</div>`; return; }
+    const match = (matches||[])[0];
+    if(!match){ resultEl.innerHTML = '<div class="empty-page-hint">Kein exakter Treffer.</div>'; return; }
+    resultEl.innerHTML = `
+      <div class="guild-picker-row">
+        <span>📇 ${match.name}</span>
+        <button class="cal-nav-btn" id="journalContactConfirmBtn">Verknüpfen</button>
+      </div>`;
+    document.getElementById('journalContactConfirmBtn').addEventListener('click', async ()=>{
+      const today = todayKey(new Date());
+      const row = { user_id:profile.id, org_id:profile.org_id, entry_date:today, tagged_contact_id:match.id, updated_at:new Date().toISOString() };
+      const { error: upErr } = await sb.from('journal_entries').upsert(row, { onConflict:'user_id,entry_date' });
+      if(upErr){ resultEl.innerHTML = `<div class="empty-page-hint">Fehler: ${upErr.message}</div>`; return; }
+      renderJournalContactTagged(match.name, match.id);
+    });
   }
 
   // ---- Schnappschuss des Tages ----
@@ -1346,6 +1476,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       updateClassSwitcherActive();
       document.getElementById('orgSubtitle').textContent = `Klasse: ${CLASS_LABELS[newClass]||newClass} · Organisation: ${org ? org.name : ''}`;
       updateGuildLabels();
+      updateContactLabels();
     });
   });
 
@@ -1503,6 +1634,209 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     }, 800);
   }
 
+  // ---- Kontakte (Arkanes Register / Kriegsarchiv / Jägerchronik) ----
+  const CLASS_CONTACT_LABELS = { hexer:'Arkanes Register', krieger:'Kriegsarchiv', schuetze:'Jägerchronik' };
+  let editingContactId = null;
+
+  function updateContactLabels(){
+    const label = CLASS_CONTACT_LABELS[profile.character_class] || CLASS_CONTACT_LABELS.hexer;
+    document.getElementById('navKontakteBtn').textContent = '📇 ' + label;
+    document.getElementById('contactsHeaderTitle').textContent = label;
+  }
+
+  async function initContacts(){
+    updateContactLabels();
+    const roles = config.contactRoles || {};
+    document.getElementById('contactRoleSelect').innerHTML =
+      Object.entries(roles).map(([key,label])=>`<option value="${key}">${label}</option>`).join('');
+
+    const { data: locs } = await sb.from('locations').select('id,name').eq('org_id', profile.org_id);
+    const locSelect = document.getElementById('contactLocationSelect');
+    locSelect.innerHTML = '<option value="">Kein Dungeon</option>' +
+      (locs||[]).map(l=>`<option value="${l.id}">${l.name}</option>`).join('');
+
+    await renderContactGrid();
+  }
+
+  async function renderContactGrid(){
+    const grid = document.getElementById('contactGrid');
+    const { data: contacts, error } = await sb.from('contacts').select('*').order('created_at', {ascending:false});
+    if(error){ grid.innerHTML = `<div class="empty-page-hint">Fehler: ${error.message}</div>`; return; }
+    if(!contacts || contacts.length===0){ grid.innerHTML = '<div class="empty-page-hint">Noch keine Kontakte angelegt.</div>'; return; }
+
+    const { data: locs } = await sb.from('locations').select('id,name').eq('org_id', profile.org_id);
+    const locMap = {}; (locs||[]).forEach(l=>locMap[l.id]=l.name);
+    const roles = config.contactRoles || {};
+
+    const { data: journalMentions } = await sb.from('journal_entries').select('entry_date,tagged_contact_id').eq('user_id', profile.id).not('tagged_contact_id','is',null);
+    const mentionMap = {};
+    (journalMentions||[]).forEach(m=>{
+      if(!mentionMap[m.tagged_contact_id]) mentionMap[m.tagged_contact_id]=[];
+      mentionMap[m.tagged_contact_id].push(m.entry_date);
+    });
+
+    const { data: sales } = await sb.from('sales').select('*').in('contact_id', contacts.map(c=>c.id)).order('datum', {ascending:false});
+    const salesMap = {};
+    (sales||[]).forEach(s=>{ if(!salesMap[s.contact_id]) salesMap[s.contact_id]=[]; salesMap[s.contact_id].push(s); });
+
+    const fmtDate = (d) => d ? new Date(d+'T12:00:00').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'}) : '';
+
+    grid.innerHTML = contacts.map(c=>{
+      const canEdit = c.owner_id===profile.id || profile.role==='admin';
+      const myEntries = log.filter(e=>e.contact_id===c.id);
+      const lastTs = myEntries.length ? myEntries[myEntries.length-1].created_at : null;
+      const lastLabel = lastTs ? 'Zuletzt (von dir): '+fmtTime(lastTs) : 'Noch kein eigener Kontaktpunkt';
+      const mentions = mentionMap[c.id];
+      const mentionLabel = mentions ? `📖 Im Tagebuch erwähnt: ${mentions.slice(0,3).map(d=>new Date(d+'T12:00:00').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'})).join(', ')}${mentions.length>3?' …':''}` : '';
+      const cSales = salesMap[c.id]||[];
+      const salesHtml = cSales.length
+        ? cSales.map(s=>`<div class="cc-notes">${s.status==='gewonnen'?'✅':'❌'} ${s.produkt} — ${fmtDate(s.datum)}</div>`).join('')
+        : '<div class="cc-notes">Noch keine Verkaufshistorie.</div>';
+      return `<div class="contact-card">
+        <span class="cc-status ${c.status}">${c.status}</span>
+        <span class="cc-name">${c.name}</span>
+        <span class="cc-role">${roles[c.role]||c.role||''}</span>
+        ${c.location_id ? `<span class="cc-loc">🗺 ${locMap[c.location_id]||'?'}</span>` : ''}
+        ${c.bedarf_ist ? `<span class="cc-notes"><strong>Ist:</strong> ${c.bedarf_ist.replace(/</g,'&lt;')}</span>` : ''}
+        ${c.bedarf_wunsch ? `<span class="cc-notes"><strong>Wunsch:</strong> ${c.bedarf_wunsch.replace(/</g,'&lt;')}</span>` : ''}
+        ${c.naechster_kontakt ? `<span class="cc-last">📅 Wiedervorlage: ${fmtDate(c.naechster_kontakt)}</span>` : ''}
+        <span class="cc-last">${lastLabel}</span>
+        ${mentionLabel ? `<span class="cc-last">${mentionLabel}</span>` : ''}
+        ${c.notes ? `<span class="cc-notes">${c.notes.replace(/</g,'&lt;')}</span>` : ''}
+        <div class="cc-sales-block">
+          <span class="cc-role">Verkaufshistorie</span>
+          ${salesHtml}
+          ${canEdit ? `<button data-addsale="${c.id}" style="margin-top:4px;">+ Verkauf eintragen</button>` : ''}
+        </div>
+        <div class="cc-actions">
+          <button data-log="${c.id}">Aktion loggen</button>
+          ${canEdit ? `<button data-edit="${c.id}">Bearbeiten</button><button data-del="${c.id}">Löschen</button>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+
+    grid.querySelectorAll('[data-addsale]').forEach(btn=>{
+      btn.addEventListener('click', ()=> addSaleForContact(btn.dataset.addsale));
+    });
+
+    grid.querySelectorAll('[data-log]').forEach(btn=>{
+      const c = contacts.find(x=>x.id===btn.dataset.log);
+      btn.addEventListener('click', ()=> openContactActionModal(c));
+    });
+    grid.querySelectorAll('[data-edit]').forEach(btn=>{
+      const c = contacts.find(x=>x.id===btn.dataset.edit);
+      btn.addEventListener('click', ()=> startEditContact(c));
+    });
+    grid.querySelectorAll('[data-del]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        if(!confirm('Kontakt wirklich löschen?')) return;
+        await sb.from('contacts').delete().eq('id', btn.dataset.del);
+        await renderContactGrid();
+      });
+    });
+  }
+
+  async function addSaleForContact(contactId){
+    const produkt = prompt('Welches Produkt?');
+    if(!produkt || !produkt.trim()) return;
+    const gewonnen = confirm('Gewonnen? (Abbrechen = Verloren)');
+    const { error } = await sb.from('sales').insert({
+      contact_id: contactId, org_id: profile.org_id, produkt: produkt.trim(),
+      status: gewonnen ? 'gewonnen' : 'verloren', created_by: profile.id
+    });
+    if(error){ alert('Fehler: '+error.message); return; }
+    await renderContactGrid();
+  }
+
+  function startEditContact(c){
+    editingContactId = c.id;
+    document.getElementById('contactVornameInput').value = c.vorname||'';
+    document.getElementById('contactNachnameInput').value = c.nachname||'';
+    document.getElementById('contactRoleSelect').value = c.role||'';
+    document.getElementById('contactLocationSelect').value = c.location_id||'';
+    document.getElementById('contactStatusSelect').value = c.status;
+    document.getElementById('contactBedarfIstInput').value = c.bedarf_ist||'';
+    document.getElementById('contactBedarfWunschInput').value = c.bedarf_wunsch||'';
+    document.getElementById('contactNextContactInput').value = c.naechster_kontakt||'';
+    document.getElementById('contactNotesInput').value = c.notes||'';
+    document.getElementById('contactAddBtn').textContent = 'Änderungen speichern';
+    document.getElementById('page-kontakte').scrollIntoView({behavior:'smooth', block:'start'});
+  }
+
+  document.getElementById('contactAddBtn').addEventListener('click', async ()=>{
+    const vorname = document.getElementById('contactVornameInput').value.trim();
+    const nachname = document.getElementById('contactNachnameInput').value.trim();
+    const role = document.getElementById('contactRoleSelect').value;
+    const location_id = document.getElementById('contactLocationSelect').value || null;
+    const status = document.getElementById('contactStatusSelect').value;
+    const bedarf_ist = document.getElementById('contactBedarfIstInput').value.trim();
+    const bedarf_wunsch = document.getElementById('contactBedarfWunschInput').value.trim();
+    const naechster_kontakt = document.getElementById('contactNextContactInput').value || null;
+    const notes = document.getElementById('contactNotesInput').value.trim();
+    const statusEl = document.getElementById('contactAddStatus');
+    if(!vorname && !nachname){ statusEl.textContent = 'Bitte mindestens Vor- oder Nachname eingeben.'; return; }
+
+    if(editingContactId){
+      const { error } = await sb.from('contacts').update({
+        vorname, nachname, role, location_id, status, bedarf_ist, bedarf_wunsch, naechster_kontakt, notes, updated_at:new Date().toISOString()
+      }).eq('id', editingContactId);
+      if(error){ statusEl.textContent = 'Fehler: '+error.message; return; }
+      editingContactId = null;
+      document.getElementById('contactAddBtn').textContent = '+ Kontakt anlegen';
+    } else {
+      const { error } = await sb.from('contacts').insert({
+        org_id:profile.org_id, owner_id:profile.id, vorname, nachname, role, location_id, status, bedarf_ist, bedarf_wunsch, naechster_kontakt, notes
+      });
+      if(error){ statusEl.textContent = 'Fehler: '+error.message; return; }
+    }
+    document.getElementById('contactVornameInput').value = '';
+    document.getElementById('contactNachnameInput').value = '';
+    document.getElementById('contactBedarfIstInput').value = '';
+    document.getElementById('contactBedarfWunschInput').value = '';
+    document.getElementById('contactNextContactInput').value = '';
+    document.getElementById('contactNotesInput').value = '';
+    statusEl.textContent = '';
+    await renderContactGrid();
+  });
+
+  const CONTACT_RELEVANT_ACTIONS = ['ansprache','bedarfsanalyse','abschluss','kundenausbau','empfehlung'];
+
+  function openContactActionModal(contact){
+    document.getElementById('locModalTitle').textContent = contact.name;
+    const grid = document.getElementById('locActionGrid');
+    const entries = Object.entries(config.actions).filter(([key])=>CONTACT_RELEVANT_ACTIONS.includes(key));
+    entries.sort((a,b)=>a[1].xp-b[1].xp);
+    grid.innerHTML = entries.map(([key,a])=>{
+      const bossClass = key==='boss' ? ' boss' : '';
+      const bossIcon = key==='boss' ? '🐲 ' : '';
+      return `<button class="abtn${bossClass}" data-contactaction="${key}">${bossIcon}${a.label}<span class="xp">+${a.xp} XP · ${a.energy} Energie</span></button>`;
+    }).join('');
+    grid.querySelectorAll('[data-contactaction]').forEach(btn=>{
+      btn.addEventListener('click', ()=> logActionForContact(btn.dataset.contactaction, contact));
+    });
+    document.getElementById('locActionModal').style.display='flex';
+  }
+
+  async function logActionForContact(key, contact){
+    const a = config.actions[key];
+    if(!a) return;
+    const remaining = config.energyMax - energyUsedToday();
+    if(a.energy > remaining) return;
+    const row = {
+      user_id:profile.id, org_id:profile.org_id, action_key:key, label:a.label,
+      xp:a.xp, energy:a.energy, skill:a.skill||null, skill2:a.skill2||null,
+      context: contact.name, location_id: contact.location_id||null, contact_id: contact.id
+    };
+    const { data, error } = await sb.from('action_log').insert(row).select().single();
+    if(error){ alert('Fehler beim Speichern: '+error.message); return; }
+    log.push(data);
+    await checkAndAwardRecurringQuests();
+    await checkAndAwardChains();
+    document.getElementById('locActionModal').style.display='none';
+    render();
+    await renderContactGrid();
+  }
+
   function updateGuildLabels(){
     const labels = CLASS_GUILD_LABELS[profile.character_class] || CLASS_GUILD_LABELS.hexer;
     document.getElementById('navGildeBtn').textContent = '🛡 ' + labels.navLabel;
@@ -1642,10 +1976,37 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     if(profile.role==='admin'){
       document.getElementById('dungeonAddRow').style.display='flex';
+      document.getElementById('accountPoolCard').style.display='block';
+      await renderAccountPool();
     }
 
     await loadAndRenderLocations();
     setTimeout(()=> dungeonMap.invalidateSize(), 200);
+  }
+
+  async function renderAccountPool(){
+    const listEl = document.getElementById('accountPoolList');
+    const { data: locs } = await sb.from('locations').select('id,name,owner_id').eq('org_id', profile.org_id).order('name');
+    const { data: members } = await sb.from('profiles').select('id,display_name').eq('org_id', profile.org_id);
+    if(!locs || locs.length===0){ listEl.innerHTML = '<div class="empty-page-hint">Noch keine Accounts angelegt.</div>'; return; }
+    const memberOptions = (members||[]).map(m=>`<option value="${m.id}">${m.display_name}</option>`).join('');
+    listEl.innerHTML = locs.map(l=>`
+      <div class="account-row">
+        <span>${l.name}</span>
+        <select data-assign="${l.id}">
+          <option value="">— Im Pool —</option>
+          ${memberOptions}
+        </select>
+      </div>`).join('');
+    listEl.querySelectorAll('[data-assign]').forEach(sel=>{
+      const loc = locs.find(l=>l.id===sel.dataset.assign);
+      sel.value = loc.owner_id || '';
+      sel.addEventListener('change', async ()=>{
+        const newOwner = sel.value || null;
+        const { error } = await sb.from('locations').update({owner_id:newOwner}).eq('id', sel.dataset.assign);
+        if(error){ alert('Fehler: '+error.message); return; }
+      });
+    });
   }
 
   async function loadAndRenderLocations(){
@@ -1689,6 +2050,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       document.getElementById('locAddressInput').value = '';
       statusEl.textContent = `"${name}" wurde hinzugefügt.`;
       await loadAndRenderLocations();
+      if(profile.role==='admin') await renderAccountPool();
     }catch(err){
       statusEl.textContent = 'Fehler bei der Adresssuche: '+err.message;
     }
@@ -1733,7 +2095,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   // ---- Seitennavigation ----
-  const VALID_PAGES = ['charakter','handlungen','inventar','gilde','dungeons','tagebuch'];
+  const VALID_PAGES = ['charakter','handlungen','inventar','gilde','dungeons','kontakte','tagebuch'];
 
   function showPage(pageName, updateHash){
     if(!VALID_PAGES.includes(pageName)) pageName = 'charakter';
