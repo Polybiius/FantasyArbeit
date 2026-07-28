@@ -573,6 +573,18 @@
             </select>
           </div>
           <div class="contact-add-row">
+            <button type="button" class="cal-nav-btn" id="newBetriebToggleBtn">+ Neuen Betrieb anlegen</button>
+          </div>
+          <div class="contact-add-row" id="newBetriebForm" style="display:none;">
+            <input type="text" id="betriebNameInput" placeholder="Betrieb (Name)">
+            <select id="betriebArtSelect"></select>
+            <input type="text" id="betriebPlzInput" placeholder="Postleitzahl" style="max-width:120px;">
+            <input type="text" id="betriebStrasseInput" placeholder="Straße">
+            <input type="text" id="betriebStadtInput" placeholder="Stadt">
+            <button type="button" class="cal-nav-btn" id="betriebCreateBtn">Anlegen & auswählen</button>
+          </div>
+          <div class="empty-page-hint" id="betriebCreateStatus"></div>
+          <div class="contact-add-row">
             <textarea id="contactBedarfIstInput" placeholder="Bedarf – Ist-Zustand (was er bereits hat)" rows="2"></textarea>
             <textarea id="contactBedarfWunschInput" placeholder="Bedarf – Wunsch (was er gerne möchte)" rows="2"></textarea>
           </div>
@@ -1650,13 +1662,60 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('contactRoleSelect').innerHTML =
       Object.entries(roles).map(([key,label])=>`<option value="${key}">${label}</option>`).join('');
 
-    const { data: locs } = await sb.from('locations').select('id,name').eq('org_id', profile.org_id);
+    const types = config.locationTypes || {};
+    document.getElementById('betriebArtSelect').innerHTML =
+      Object.entries(types).map(([key,t])=>`<option value="${key}">${t.icon} ${t.label}</option>`).join('');
+
+    await refreshContactLocationSelect();
+    await renderContactGrid();
+  }
+
+  async function refreshContactLocationSelect(selectId){
+    const { data: locs } = await sb.from('locations').select('id,name').eq('org_id', profile.org_id).order('name');
     const locSelect = document.getElementById('contactLocationSelect');
     locSelect.innerHTML = '<option value="">Kein Dungeon</option>' +
       (locs||[]).map(l=>`<option value="${l.id}">${l.name}</option>`).join('');
-
-    await renderContactGrid();
+    if(selectId) locSelect.value = selectId;
   }
+
+  document.getElementById('newBetriebToggleBtn').addEventListener('click', ()=>{
+    const form = document.getElementById('newBetriebForm');
+    form.style.display = form.style.display==='none' ? 'flex' : 'none';
+  });
+
+  document.getElementById('betriebCreateBtn').addEventListener('click', async ()=>{
+    const name = document.getElementById('betriebNameInput').value.trim();
+    const type = document.getElementById('betriebArtSelect').value;
+    const plz = document.getElementById('betriebPlzInput').value.trim();
+    const strasse = document.getElementById('betriebStrasseInput').value.trim();
+    const stadt = document.getElementById('betriebStadtInput').value.trim();
+    const statusEl = document.getElementById('betriebCreateStatus');
+    if(!name || !strasse || !stadt){ statusEl.textContent = 'Bitte mindestens Betrieb, Straße und Stadt eingeben.'; return; }
+
+    const fullAddress = `${strasse}, ${plz} ${stadt}`.trim();
+    statusEl.textContent = 'Suche Koordinaten …';
+    try{
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(fullAddress)}`);
+      const results = await res.json();
+      if(!results || results.length===0){ statusEl.textContent = 'Adresse nicht gefunden — bitte prüfen.'; return; }
+      const { lat, lon } = results[0];
+      const { data: inserted, error } = await sb.from('locations').insert({
+        org_id:profile.org_id, name, type, lat:parseFloat(lat), lng:parseFloat(lon),
+        address:fullAddress, plz, strasse, stadt, created_by:profile.id, owner_id:profile.id
+      }).select().single();
+      if(error){ statusEl.textContent = 'Fehler: '+error.message; return; }
+
+      statusEl.textContent = `"${name}" wurde angelegt und erscheint auch auf der Dungeons-Karte.`;
+      document.getElementById('betriebNameInput').value = '';
+      document.getElementById('betriebPlzInput').value = '';
+      document.getElementById('betriebStrasseInput').value = '';
+      document.getElementById('betriebStadtInput').value = '';
+      document.getElementById('newBetriebForm').style.display = 'none';
+      await refreshContactLocationSelect(inserted.id);
+    }catch(err){
+      statusEl.textContent = 'Fehler bei der Adresssuche: '+err.message;
+    }
+  });
 
   async function renderContactGrid(){
     const grid = document.getElementById('contactGrid');
