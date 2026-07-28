@@ -180,6 +180,17 @@
   }
   .contact-add-row input{flex:1;min-width:140px;}
   .contact-add-row textarea{flex:1;min-width:200px;resize:vertical;}
+
+  .loc-autocomplete{position:relative;flex:1;min-width:180px;}
+  .loc-autocomplete input{width:100%;}
+  .loc-suggestions{
+    display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:80;
+    background:var(--panel-2);border:1px solid var(--border);border-radius:8px;
+    max-height:240px;overflow-y:auto;box-shadow:0 8px 20px rgba(0,0,0,0.35);
+  }
+  .loc-sugg-item{padding:9px 12px;font-size:13px;cursor:pointer;color:var(--text);}
+  .loc-sugg-item:hover{background:rgba(139,92,246,0.14);}
+  .loc-sugg-new{color:var(--arcane-glow);font-weight:600;border-top:1px solid var(--border);}
   #contactNotesInput{width:100%;resize:vertical;}
   .contact-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;}
   .contact-card{background:var(--panel-2);border:1px solid var(--border);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:6px;}
@@ -564,16 +575,16 @@
             <input type="text" id="contactVornameInput" placeholder="Vorname">
             <input type="text" id="contactNachnameInput" placeholder="Nachname">
             <select id="contactRoleSelect"></select>
-            <select id="contactLocationSelect"><option value="">Kein Dungeon</option></select>
+            <div class="loc-autocomplete">
+              <input type="text" id="contactLocationSearch" placeholder="Betrieb suchen …" autocomplete="off">
+              <div class="loc-suggestions" id="contactLocationSuggestions"></div>
+            </div>
             <select id="contactStatusSelect">
               <option value="kalt">Kalt</option>
               <option value="warm">Warm</option>
               <option value="kunde">Kunde</option>
               <option value="verloren">Verloren</option>
             </select>
-          </div>
-          <div class="contact-add-row">
-            <button type="button" class="cal-nav-btn" id="newBetriebToggleBtn">+ Neuen Betrieb anlegen</button>
           </div>
           <div class="contact-add-row" id="newBetriebForm" style="display:none;">
             <input type="text" id="betriebNameInput" placeholder="Betrieb (Name)">
@@ -1666,22 +1677,53 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('betriebArtSelect').innerHTML =
       Object.entries(types).map(([key,t])=>`<option value="${key}">${t.icon} ${t.label}</option>`).join('');
 
-    await refreshContactLocationSelect();
+    initContactLocationAutocomplete();
     await renderContactGrid();
   }
 
-  async function refreshContactLocationSelect(selectId){
-    const { data: locs } = await sb.from('locations').select('id,name').eq('org_id', profile.org_id).order('name');
-    const locSelect = document.getElementById('contactLocationSelect');
-    locSelect.innerHTML = '<option value="">Kein Dungeon</option>' +
-      (locs||[]).map(l=>`<option value="${l.id}">${l.name}</option>`).join('');
-    if(selectId) locSelect.value = selectId;
+  let contactLocationSelectedId = null;
+  let locSearchTimer = null;
+
+  function initContactLocationAutocomplete(){
+    const input = document.getElementById('contactLocationSearch');
+    const box = document.getElementById('contactLocationSuggestions');
+    input.addEventListener('input', ()=>{
+      contactLocationSelectedId = null;
+      clearTimeout(locSearchTimer);
+      const q = input.value.trim();
+      if(!q){ box.style.display='none'; box.innerHTML=''; return; }
+      locSearchTimer = setTimeout(()=> searchLocationSuggestions(q), 250);
+    });
+    input.addEventListener('focus', ()=>{
+      if(input.value.trim()) searchLocationSuggestions(input.value.trim());
+    });
+    document.addEventListener('click', (e)=>{
+      if(!box.contains(e.target) && e.target!==input) box.style.display='none';
+    });
   }
 
-  document.getElementById('newBetriebToggleBtn').addEventListener('click', ()=>{
-    const form = document.getElementById('newBetriebForm');
-    form.style.display = form.style.display==='none' ? 'flex' : 'none';
-  });
+  async function searchLocationSuggestions(q){
+    const box = document.getElementById('contactLocationSuggestions');
+    const { data: matches } = await sb.from('locations').select('id,name').eq('org_id', profile.org_id).ilike('name', `%${q}%`).limit(8);
+    const safeQ = q.replace(/"/g,'&quot;');
+    let html = (matches||[]).map(m=>`<div class="loc-sugg-item" data-id="${m.id}" data-name="${m.name.replace(/"/g,'&quot;')}">${m.name}</div>`).join('');
+    html += `<div class="loc-sugg-item loc-sugg-new" data-newbetrieb="${safeQ}">+ „${q}" als neuen Betrieb anlegen</div>`;
+    box.innerHTML = html;
+    box.style.display = 'block';
+    box.querySelectorAll('[data-id]').forEach(el=>{
+      el.addEventListener('click', ()=>{
+        contactLocationSelectedId = el.dataset.id;
+        document.getElementById('contactLocationSearch').value = el.dataset.name;
+        box.style.display='none';
+        document.getElementById('newBetriebForm').style.display='none';
+      });
+    });
+    box.querySelector('[data-newbetrieb]').addEventListener('click', ()=>{
+      document.getElementById('betriebNameInput').value = box.querySelector('[data-newbetrieb]').dataset.newbetrieb;
+      document.getElementById('newBetriebForm').style.display='flex';
+      box.style.display='none';
+    });
+  }
 
   document.getElementById('betriebCreateBtn').addEventListener('click', async ()=>{
     const name = document.getElementById('betriebNameInput').value.trim();
@@ -1706,12 +1748,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       if(error){ statusEl.textContent = 'Fehler: '+error.message; return; }
 
       statusEl.textContent = `"${name}" wurde angelegt und erscheint auch auf der Dungeons-Karte.`;
+      contactLocationSelectedId = inserted.id;
+      document.getElementById('contactLocationSearch').value = inserted.name;
       document.getElementById('betriebNameInput').value = '';
       document.getElementById('betriebPlzInput').value = '';
       document.getElementById('betriebStrasseInput').value = '';
       document.getElementById('betriebStadtInput').value = '';
       document.getElementById('newBetriebForm').style.display = 'none';
-      await refreshContactLocationSelect(inserted.id);
     }catch(err){
       statusEl.textContent = 'Fehler bei der Adresssuche: '+err.message;
     }
@@ -1807,12 +1850,17 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     await renderContactGrid();
   }
 
-  function startEditContact(c){
+  async function startEditContact(c){
     editingContactId = c.id;
     document.getElementById('contactVornameInput').value = c.vorname||'';
     document.getElementById('contactNachnameInput').value = c.nachname||'';
     document.getElementById('contactRoleSelect').value = c.role||'';
-    document.getElementById('contactLocationSelect').value = c.location_id||'';
+    contactLocationSelectedId = c.location_id||null;
+    document.getElementById('contactLocationSearch').value = '';
+    if(c.location_id){
+      const { data: loc } = await sb.from('locations').select('name').eq('id', c.location_id).maybeSingle();
+      if(loc) document.getElementById('contactLocationSearch').value = loc.name;
+    }
     document.getElementById('contactStatusSelect').value = c.status;
     document.getElementById('contactBedarfIstInput').value = c.bedarf_ist||'';
     document.getElementById('contactBedarfWunschInput').value = c.bedarf_wunsch||'';
@@ -1826,7 +1874,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const vorname = document.getElementById('contactVornameInput').value.trim();
     const nachname = document.getElementById('contactNachnameInput').value.trim();
     const role = document.getElementById('contactRoleSelect').value;
-    const location_id = document.getElementById('contactLocationSelect').value || null;
+    const location_id = contactLocationSelectedId || null;
     const status = document.getElementById('contactStatusSelect').value;
     const bedarf_ist = document.getElementById('contactBedarfIstInput').value.trim();
     const bedarf_wunsch = document.getElementById('contactBedarfWunschInput').value.trim();
@@ -1850,6 +1898,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     }
     document.getElementById('contactVornameInput').value = '';
     document.getElementById('contactNachnameInput').value = '';
+    document.getElementById('contactLocationSearch').value = '';
+    contactLocationSelectedId = null;
     document.getElementById('contactBedarfIstInput').value = '';
     document.getElementById('contactBedarfWunschInput').value = '';
     document.getElementById('contactNextContactInput').value = '';
