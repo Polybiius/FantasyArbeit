@@ -210,6 +210,26 @@
   .cc-sales-block{display:flex;flex-direction:column;gap:3px;border-top:1px solid var(--border);padding-top:8px;margin-top:4px;}
   .cc-sales-block button{background:var(--panel);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:5px;font-size:11px;cursor:pointer;}
   .cc-sales-block button:hover{border-color:var(--success);}
+
+  .view-switch{display:flex;gap:8px;margin-bottom:16px;}
+  .view-switch-btn.active{background:var(--arcane);color:#fff;border-color:var(--arcane);}
+  .dungeon-list-row{
+    display:flex;justify-content:space-between;align-items:center;cursor:pointer;
+    background:var(--panel-2);border:1px solid var(--border);border-radius:9px;
+    padding:12px 16px;margin-bottom:8px;font-size:13.5px;
+  }
+  .dungeon-list-row:hover{border-color:var(--arcane);}
+  .dungeon-list-row .dlr-count{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--muted);}
+  .contact-table-title{font-family:'Cinzel',serif;font-size:15px;margin:12px 0;}
+  .ctable{width:100%;border-collapse:collapse;font-size:12.5px;}
+  .ctable th{text-align:left;color:var(--muted-2);font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;padding:8px 10px;border-bottom:1px solid var(--border);}
+  .ctable td{padding:9px 10px;border-bottom:1px solid var(--border);color:var(--text);}
+  .ctable tr.ctable-row{cursor:pointer;}
+  .ctable tr.ctable-row:hover td{background:rgba(139,92,246,0.08);}
+  .cd-field{margin-bottom:10px;font-size:13px;}
+  .cd-field .cdl{color:var(--muted-2);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:2px;}
+  .cd-field .cdv{color:var(--text);white-space:pre-wrap;}
+  .cd-mentions a{color:var(--arcane-glow);cursor:pointer;text-decoration:underline;margin-right:8px;font-family:'JetBrains Mono',monospace;font-size:11.5px;}
   .empty-page-hint{color:var(--muted-2);font-size:12.5px;font-family:'JetBrains Mono',monospace;text-align:center;padding:30px 0;}
 
   .inv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;}
@@ -596,6 +616,15 @@
           </div>
           <div class="empty-page-hint" id="betriebCreateStatus"></div>
           <div class="contact-add-row">
+            <input type="date" id="contactGeburtsdatumInput" title="Geburtsdatum">
+            <input type="text" id="contactTelefonInput" placeholder="Telefon">
+            <input type="text" id="contactEmailInput" placeholder="E-Mail">
+          </div>
+          <div class="contact-add-row">
+            <input type="text" id="contactWohnortStrasseInput" placeholder="Wohnort – Straße/Hausnummer">
+            <input type="text" id="contactWohnortOrtInput" placeholder="Wohnort – Ort">
+          </div>
+          <div class="contact-add-row">
             <textarea id="contactBedarfIstInput" placeholder="Bedarf – Ist-Zustand (was er bereits hat)" rows="2"></textarea>
             <textarea id="contactBedarfWunschInput" placeholder="Bedarf – Wunsch (was er gerne möchte)" rows="2"></textarea>
           </div>
@@ -606,8 +635,26 @@
           <textarea id="contactNotesInput" placeholder="Allgemeine Notizen (optional)" rows="2"></textarea>
           <button class="cal-nav-btn" id="contactAddBtn" style="margin-top:8px;">+ Kontakt anlegen</button>
           <div class="empty-page-hint" id="contactAddStatus"></div>
+        </div>
 
-          <div class="contact-grid" id="contactGrid" style="margin-top:18px;"></div>
+        <div class="card" style="margin-top:18px;">
+          <div class="view-switch">
+            <button class="cal-nav-btn view-switch-btn active" id="viewByDungeonBtn">Nach Dungeon</button>
+            <button class="cal-nav-btn view-switch-btn" id="viewAllContactsBtn">Alle Kontakte</button>
+          </div>
+
+          <div id="kontakteByDungeonView">
+            <div id="dungeonWithContactsList"></div>
+            <div id="dungeonContactsTableWrap" style="display:none;margin-top:16px;">
+              <button class="cal-nav-btn" id="backToDungeonListBtn">‹ Zurück zur Dungeon-Liste</button>
+              <h3 class="contact-table-title" id="dungeonContactsTitle"></h3>
+              <div id="dungeonContactsTable"></div>
+            </div>
+          </div>
+
+          <div id="kontakteAllView" style="display:none;">
+            <div id="allContactsTable"></div>
+          </div>
         </div>
       </div>
 
@@ -702,6 +749,16 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       <button id="locModalClose">✕</button>
     </div>
     <div class="action-btns" id="locActionGrid"></div>
+  </div>
+</div>
+
+<div class="loc-modal" id="contactDetailModal" style="display:none;">
+  <div class="loc-modal-inner" style="max-width:560px;">
+    <div class="loc-modal-header">
+      <span id="contactDetailTitle">Kontakt</span>
+      <button id="contactDetailClose">✕</button>
+    </div>
+    <div id="contactDetailBody"></div>
   </div>
 </div>
 
@@ -1678,7 +1735,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       Object.entries(types).map(([key,t])=>`<option value="${key}">${t.icon} ${t.label}</option>`).join('');
 
     initContactLocationAutocomplete();
-    await renderContactGrid();
+    await renderContactsPage();
   }
 
   let contactLocationSelectedId = null;
@@ -1760,15 +1817,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     }
   });
 
-  async function renderContactGrid(){
-    const grid = document.getElementById('contactGrid');
-    const { data: contacts, error } = await sb.from('contacts').select('*').order('created_at', {ascending:false});
-    if(error){ grid.innerHTML = `<div class="empty-page-hint">Fehler: ${error.message}</div>`; return; }
-    if(!contacts || contacts.length===0){ grid.innerHTML = '<div class="empty-page-hint">Noch keine Kontakte angelegt.</div>'; return; }
+  let contactsCurrentView = 'dungeon'; // 'dungeon' | 'all'
+  let contactsBundleCache = null;
 
+  async function loadContactsBundle(){
+    const { data: contacts, error } = await sb.from('contacts').select('*').order('created_at', {ascending:false});
+    if(error) return { error };
     const { data: locs } = await sb.from('locations').select('id,name').eq('org_id', profile.org_id);
     const locMap = {}; (locs||[]).forEach(l=>locMap[l.id]=l.name);
-    const roles = config.contactRoles || {};
 
     const { data: journalMentions } = await sb.from('journal_entries').select('entry_date,tagged_contact_id').eq('user_id', profile.id).not('tagged_contact_id','is',null);
     const mentionMap = {};
@@ -1777,66 +1833,163 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       mentionMap[m.tagged_contact_id].push(m.entry_date);
     });
 
-    const { data: sales } = await sb.from('sales').select('*').in('contact_id', contacts.map(c=>c.id)).order('datum', {ascending:false});
-    const salesMap = {};
-    (sales||[]).forEach(s=>{ if(!salesMap[s.contact_id]) salesMap[s.contact_id]=[]; salesMap[s.contact_id].push(s); });
+    const ids = contacts.map(c=>c.id);
+    let salesMap = {};
+    if(ids.length>0){
+      const { data: sales } = await sb.from('sales').select('*').in('contact_id', ids).order('datum', {ascending:false});
+      (sales||[]).forEach(s=>{ if(!salesMap[s.contact_id]) salesMap[s.contact_id]=[]; salesMap[s.contact_id].push(s); });
+    }
+    return { contacts, locMap, mentionMap, salesMap, roles: config.contactRoles||{} };
+  }
 
-    const fmtDate = (d) => d ? new Date(d+'T12:00:00').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'}) : '';
+  async function renderContactsPage(){
+    const bundle = await loadContactsBundle();
+    if(bundle.error){
+      document.getElementById('dungeonWithContactsList').innerHTML = `<div class="empty-page-hint">Fehler: ${bundle.error.message}</div>`;
+      return;
+    }
+    contactsBundleCache = bundle;
+    renderDungeonList(bundle);
+    renderContactsTableInto('allContactsTable', bundle.contacts, bundle);
+  }
 
-    grid.innerHTML = contacts.map(c=>{
-      const canEdit = c.owner_id===profile.id || profile.role==='admin';
-      const myEntries = log.filter(e=>e.contact_id===c.id);
-      const lastTs = myEntries.length ? myEntries[myEntries.length-1].created_at : null;
-      const lastLabel = lastTs ? 'Zuletzt (von dir): '+fmtTime(lastTs) : 'Noch kein eigener Kontaktpunkt';
-      const mentions = mentionMap[c.id];
-      const mentionLabel = mentions ? `📖 Im Tagebuch erwähnt: ${mentions.slice(0,3).map(d=>new Date(d+'T12:00:00').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'})).join(', ')}${mentions.length>3?' …':''}` : '';
-      const cSales = salesMap[c.id]||[];
-      const salesHtml = cSales.length
-        ? cSales.map(s=>`<div class="cc-notes">${s.status==='gewonnen'?'✅':'❌'} ${s.produkt} — ${fmtDate(s.datum)}</div>`).join('')
-        : '<div class="cc-notes">Noch keine Verkaufshistorie.</div>';
-      return `<div class="contact-card">
-        <span class="cc-status ${c.status}">${c.status}</span>
-        <span class="cc-name">${c.name}</span>
-        <span class="cc-role">${roles[c.role]||c.role||''}</span>
-        ${c.location_id ? `<span class="cc-loc">🗺 ${locMap[c.location_id]||'?'}</span>` : ''}
-        ${c.bedarf_ist ? `<span class="cc-notes"><strong>Ist:</strong> ${c.bedarf_ist.replace(/</g,'&lt;')}</span>` : ''}
-        ${c.bedarf_wunsch ? `<span class="cc-notes"><strong>Wunsch:</strong> ${c.bedarf_wunsch.replace(/</g,'&lt;')}</span>` : ''}
-        ${c.naechster_kontakt ? `<span class="cc-last">📅 Wiedervorlage: ${fmtDate(c.naechster_kontakt)}</span>` : ''}
-        <span class="cc-last">${lastLabel}</span>
-        ${mentionLabel ? `<span class="cc-last">${mentionLabel}</span>` : ''}
-        ${c.notes ? `<span class="cc-notes">${c.notes.replace(/</g,'&lt;')}</span>` : ''}
-        <div class="cc-sales-block">
-          <span class="cc-role">Verkaufshistorie</span>
-          ${salesHtml}
-          ${canEdit ? `<button data-addsale="${c.id}" style="margin-top:4px;">+ Verkauf eintragen</button>` : ''}
-        </div>
-        <div class="cc-actions">
-          <button data-log="${c.id}">Aktion loggen</button>
-          ${canEdit ? `<button data-edit="${c.id}">Bearbeiten</button><button data-del="${c.id}">Löschen</button>` : ''}
-        </div>
-      </div>`;
-    }).join('');
-
-    grid.querySelectorAll('[data-addsale]').forEach(btn=>{
-      btn.addEventListener('click', ()=> addSaleForContact(btn.dataset.addsale));
+  function renderDungeonList(bundle){
+    const listEl = document.getElementById('dungeonWithContactsList');
+    const grouped = {};
+    bundle.contacts.forEach(c=>{
+      if(!c.location_id) return;
+      if(!grouped[c.location_id]) grouped[c.location_id]=[];
+      grouped[c.location_id].push(c);
     });
-
-    grid.querySelectorAll('[data-log]').forEach(btn=>{
-      const c = contacts.find(x=>x.id===btn.dataset.log);
-      btn.addEventListener('click', ()=> openContactActionModal(c));
-    });
-    grid.querySelectorAll('[data-edit]').forEach(btn=>{
-      const c = contacts.find(x=>x.id===btn.dataset.edit);
-      btn.addEventListener('click', ()=> startEditContact(c));
-    });
-    grid.querySelectorAll('[data-del]').forEach(btn=>{
-      btn.addEventListener('click', async ()=>{
-        if(!confirm('Kontakt wirklich löschen?')) return;
-        await sb.from('contacts').delete().eq('id', btn.dataset.del);
-        await renderContactGrid();
+    const dungeonIds = Object.keys(grouped);
+    if(dungeonIds.length===0){ listEl.innerHTML = '<div class="empty-page-hint">Noch keine Kontakte mit zugeordnetem Dungeon.</div>'; return; }
+    listEl.innerHTML = dungeonIds.map(id=>`
+      <div class="dungeon-list-row" data-dungeon="${id}">
+        <span>🗺 ${bundle.locMap[id]||'Unbekannt'}</span>
+        <span class="dlr-count">${grouped[id].length} Kontakt${grouped[id].length===1?'':'e'}</span>
+      </div>`).join('');
+    listEl.querySelectorAll('[data-dungeon]').forEach(row=>{
+      row.addEventListener('click', ()=>{
+        const id = row.dataset.dungeon;
+        document.getElementById('dungeonWithContactsList').parentElement.querySelector('#dungeonWithContactsList').style.display='none';
+        document.getElementById('dungeonContactsTableWrap').style.display='block';
+        document.getElementById('dungeonContactsTitle').textContent = '🗺 ' + (bundle.locMap[id]||'Unbekannt');
+        renderContactsTableInto('dungeonContactsTable', grouped[id], bundle);
       });
     });
   }
+
+  document.getElementById('backToDungeonListBtn').addEventListener('click', ()=>{
+    document.getElementById('dungeonContactsTableWrap').style.display='none';
+    document.getElementById('dungeonWithContactsList').style.display='block';
+  });
+
+  document.getElementById('viewByDungeonBtn').addEventListener('click', ()=>{
+    contactsCurrentView='dungeon';
+    document.getElementById('viewByDungeonBtn').classList.add('active');
+    document.getElementById('viewAllContactsBtn').classList.remove('active');
+    document.getElementById('kontakteByDungeonView').style.display='block';
+    document.getElementById('kontakteAllView').style.display='none';
+  });
+  document.getElementById('viewAllContactsBtn').addEventListener('click', ()=>{
+    contactsCurrentView='all';
+    document.getElementById('viewAllContactsBtn').classList.add('active');
+    document.getElementById('viewByDungeonBtn').classList.remove('active');
+    document.getElementById('kontakteAllView').style.display='block';
+    document.getElementById('kontakteByDungeonView').style.display='none';
+  });
+
+  function renderContactsTableInto(containerId, contactsSubset, bundle){
+    const container = document.getElementById(containerId);
+    if(!contactsSubset || contactsSubset.length===0){ container.innerHTML = '<div class="empty-page-hint">Keine Kontakte.</div>'; return; }
+    const rows = contactsSubset.map(c=>`
+      <tr class="ctable-row" data-contact="${c.id}">
+        <td>${c.name}</td>
+        <td>${bundle.roles[c.role]||c.role||'—'}</td>
+        <td>${c.location_id ? (bundle.locMap[c.location_id]||'?') : '—'}</td>
+        <td><span class="cc-status ${c.status}">${c.status}</span></td>
+        <td>${c.naechster_kontakt ? new Date(c.naechster_kontakt+'T12:00:00').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—'}</td>
+      </tr>`).join('');
+    container.innerHTML = `<table class="ctable">
+      <thead><tr><th>Name</th><th>Berufsstatus</th><th>Betrieb</th><th>Status</th><th>Wiedervorlage</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+    container.querySelectorAll('[data-contact]').forEach(tr=>{
+      const c = contactsSubset.find(x=>x.id===tr.dataset.contact);
+      tr.addEventListener('click', ()=> openContactDetail(c, bundle));
+    });
+  }
+
+  function jumpToJournalDay(dateStr){
+    document.getElementById('contactDetailModal').style.display='none';
+    const p = { year:+dateStr.slice(0,4), month:+dateStr.slice(5,7)-1 };
+    calViewYear = p.year; calViewMonth = p.month;
+    showPage('tagebuch');
+    renderCalendar().then(()=> showDayPreview(dateStr));
+  }
+
+  function openContactDetail(c, bundle){
+    const canEdit = c.owner_id===profile.id || profile.role==='admin';
+    const fmtDate = (d) => d ? new Date(d+'T12:00:00').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
+    document.getElementById('contactDetailTitle').textContent = c.name;
+
+    const myEntries = log.filter(e=>e.contact_id===c.id);
+    const lastTs = myEntries.length ? myEntries[myEntries.length-1].created_at : null;
+    const mentions = bundle.mentionMap[c.id] || [];
+    const cSales = bundle.salesMap[c.id] || [];
+
+    const field = (label, value) => value ? `<div class="cd-field"><span class="cdl">${label}</span><span class="cdv">${value}</span></div>` : '';
+
+    let html = '';
+    html += field('Berufsstatus', bundle.roles[c.role]||c.role);
+    html += field('Betrieb', c.location_id ? (bundle.locMap[c.location_id]||'?') : null);
+    html += field('Geburtsdatum', fmtDate(c.geburtsdatum)!=='—' ? fmtDate(c.geburtsdatum) : null);
+    html += field('Telefon', c.telefon);
+    html += field('E-Mail', c.email);
+    html += field('Wohnort', (c.wohnort_strasse||c.wohnort_ort) ? `${c.wohnort_strasse||''}${c.wohnort_strasse&&c.wohnort_ort?', ':''}${c.wohnort_ort||''}` : null);
+    html += field('Bedarf – Ist', c.bedarf_ist);
+    html += field('Bedarf – Wunsch', c.bedarf_wunsch);
+    html += field('Nächster Kontakt', c.naechster_kontakt ? fmtDate(c.naechster_kontakt) : null);
+    html += field('Zuletzt kontaktiert (von dir)', lastTs ? fmtTime(lastTs) : 'Noch kein eigener Kontaktpunkt');
+    html += field('Notizen', c.notes);
+
+    if(mentions.length>0){
+      const links = mentions.map(d=>`<a data-jump="${d}">${new Date(d+'T12:00:00').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'})}</a>`).join(' ');
+      html += `<div class="cd-field cd-mentions"><span class="cdl">📖 Im Tagebuch erwähnt</span>${links}</div>`;
+    }
+
+    html += `<div class="cc-sales-block"><span class="cdl">Verkaufshistorie</span>`;
+    html += cSales.length ? cSales.map(s=>`<div class="cc-notes">${s.status==='gewonnen'?'✅':'❌'} ${s.produkt} — ${fmtDate(s.datum)}</div>`).join('') : '<div class="cc-notes">Noch keine Verkaufshistorie.</div>';
+    if(canEdit) html += `<button id="cdAddSaleBtn" style="margin-top:6px;">+ Verkauf eintragen</button>`;
+    html += `</div>`;
+
+    html += `<div class="cc-actions" style="margin-top:14px;">
+      <button id="cdLogActionBtn">Aktion loggen</button>
+      ${canEdit ? `<button id="cdEditBtn">Bearbeiten</button><button id="cdDeleteBtn">Löschen</button>` : ''}
+    </div>`;
+
+    document.getElementById('contactDetailBody').innerHTML = html;
+    document.getElementById('contactDetailModal').style.display='flex';
+
+    document.querySelectorAll('#contactDetailBody [data-jump]').forEach(a=>{
+      a.addEventListener('click', ()=> jumpToJournalDay(a.dataset.jump));
+    });
+    document.getElementById('cdLogActionBtn').addEventListener('click', ()=> openContactActionModal(c));
+    const saleBtn = document.getElementById('cdAddSaleBtn');
+    if(saleBtn) saleBtn.addEventListener('click', ()=> addSaleForContact(c.id));
+    const editBtn = document.getElementById('cdEditBtn');
+    if(editBtn) editBtn.addEventListener('click', ()=>{ document.getElementById('contactDetailModal').style.display='none'; startEditContact(c); });
+    const delBtn = document.getElementById('cdDeleteBtn');
+    if(delBtn) delBtn.addEventListener('click', async ()=>{
+      if(!confirm('Kontakt wirklich löschen?')) return;
+      await sb.from('contacts').delete().eq('id', c.id);
+      document.getElementById('contactDetailModal').style.display='none';
+      await renderContactsPage();
+    });
+  }
+  document.getElementById('contactDetailClose').addEventListener('click', ()=>{
+    document.getElementById('contactDetailModal').style.display='none';
+  });
 
   async function addSaleForContact(contactId){
     const produkt = prompt('Welches Produkt?');
@@ -1847,7 +2000,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       status: gewonnen ? 'gewonnen' : 'verloren', created_by: profile.id
     });
     if(error){ alert('Fehler: '+error.message); return; }
-    await renderContactGrid();
+    await renderContactsPage();
   }
 
   async function startEditContact(c){
@@ -1862,6 +2015,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       if(loc) document.getElementById('contactLocationSearch').value = loc.name;
     }
     document.getElementById('contactStatusSelect').value = c.status;
+    document.getElementById('contactGeburtsdatumInput').value = c.geburtsdatum||'';
+    document.getElementById('contactTelefonInput').value = c.telefon||'';
+    document.getElementById('contactEmailInput').value = c.email||'';
+    document.getElementById('contactWohnortStrasseInput').value = c.wohnort_strasse||'';
+    document.getElementById('contactWohnortOrtInput').value = c.wohnort_ort||'';
     document.getElementById('contactBedarfIstInput').value = c.bedarf_ist||'';
     document.getElementById('contactBedarfWunschInput').value = c.bedarf_wunsch||'';
     document.getElementById('contactNextContactInput').value = c.naechster_kontakt||'';
@@ -1876,6 +2034,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const role = document.getElementById('contactRoleSelect').value;
     const location_id = contactLocationSelectedId || null;
     const status = document.getElementById('contactStatusSelect').value;
+    const geburtsdatum = document.getElementById('contactGeburtsdatumInput').value || null;
+    const telefon = document.getElementById('contactTelefonInput').value.trim();
+    const email = document.getElementById('contactEmailInput').value.trim();
+    const wohnort_strasse = document.getElementById('contactWohnortStrasseInput').value.trim();
+    const wohnort_ort = document.getElementById('contactWohnortOrtInput').value.trim();
     const bedarf_ist = document.getElementById('contactBedarfIstInput').value.trim();
     const bedarf_wunsch = document.getElementById('contactBedarfWunschInput').value.trim();
     const naechster_kontakt = document.getElementById('contactNextContactInput').value || null;
@@ -1883,29 +2046,32 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const statusEl = document.getElementById('contactAddStatus');
     if(!vorname && !nachname){ statusEl.textContent = 'Bitte mindestens Vor- oder Nachname eingeben.'; return; }
 
+    const payload = { vorname, nachname, role, location_id, status, geburtsdatum, telefon, email, wohnort_strasse, wohnort_ort, bedarf_ist, bedarf_wunsch, naechster_kontakt, notes };
+
     if(editingContactId){
-      const { error } = await sb.from('contacts').update({
-        vorname, nachname, role, location_id, status, bedarf_ist, bedarf_wunsch, naechster_kontakt, notes, updated_at:new Date().toISOString()
-      }).eq('id', editingContactId);
+      const { error } = await sb.from('contacts').update({ ...payload, updated_at:new Date().toISOString() }).eq('id', editingContactId);
       if(error){ statusEl.textContent = 'Fehler: '+error.message; return; }
       editingContactId = null;
       document.getElementById('contactAddBtn').textContent = '+ Kontakt anlegen';
     } else {
-      const { error } = await sb.from('contacts').insert({
-        org_id:profile.org_id, owner_id:profile.id, vorname, nachname, role, location_id, status, bedarf_ist, bedarf_wunsch, naechster_kontakt, notes
-      });
+      const { error } = await sb.from('contacts').insert({ org_id:profile.org_id, owner_id:profile.id, ...payload });
       if(error){ statusEl.textContent = 'Fehler: '+error.message; return; }
     }
     document.getElementById('contactVornameInput').value = '';
     document.getElementById('contactNachnameInput').value = '';
     document.getElementById('contactLocationSearch').value = '';
     contactLocationSelectedId = null;
+    document.getElementById('contactGeburtsdatumInput').value = '';
+    document.getElementById('contactTelefonInput').value = '';
+    document.getElementById('contactEmailInput').value = '';
+    document.getElementById('contactWohnortStrasseInput').value = '';
+    document.getElementById('contactWohnortOrtInput').value = '';
     document.getElementById('contactBedarfIstInput').value = '';
     document.getElementById('contactBedarfWunschInput').value = '';
     document.getElementById('contactNextContactInput').value = '';
     document.getElementById('contactNotesInput').value = '';
     statusEl.textContent = '';
-    await renderContactGrid();
+    await renderContactsPage();
   });
 
   const CONTACT_RELEVANT_ACTIONS = ['ansprache','bedarfsanalyse','abschluss','kundenausbau','empfehlung'];
@@ -1943,7 +2109,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     await checkAndAwardChains();
     document.getElementById('locActionModal').style.display='none';
     render();
-    await renderContactGrid();
+    await renderContactsPage();
   }
 
   function updateGuildLabels(){
