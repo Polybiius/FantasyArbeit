@@ -191,6 +191,11 @@
   .loc-sugg-item{padding:9px 12px;font-size:13px;cursor:pointer;color:var(--text);}
   .loc-sugg-item:hover{background:rgba(139,92,246,0.14);}
   .loc-sugg-new{color:var(--arcane-glow);font-weight:600;border-top:1px solid var(--border);}
+  .journal-mention-wrap{position:relative;}
+  .journal-mention-chips{display:flex;flex-wrap:wrap;gap:8px;}
+  .journal-mention-chip{display:flex;align-items:center;gap:6px;background:var(--panel-2);border:1px solid var(--border);border-radius:999px;padding:5px 8px 5px 12px;font-size:12.5px;color:var(--text);}
+  .journal-mention-chip button{background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;padding:0 2px;}
+  .journal-mention-chip button:hover{color:var(--danger);}
   #contactNotesInput{width:100%;resize:vertical;}
   .contact-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;}
   .contact-card{background:var(--panel-2);border:1px solid var(--border);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:6px;}
@@ -706,39 +711,50 @@
         <div class="journal-grid">
           <div class="journal-col">
             <div class="journal-savestate" id="jsave1"></div>
-            <textarea class="journal-ta" id="j1" placeholder="Welche Etappe habe ich heute gemeistert?
-Was war mein wichtigster Fortschritt oder Erfolg?"></textarea>
+            <div class="journal-mention-wrap">
+              <textarea class="journal-ta" id="j1" placeholder="Welche Etappe habe ich heute gemeistert?
+Was war mein wichtigster Fortschritt oder Erfolg? (@Name markiert einen Kontakt)"></textarea>
+              <div class="loc-suggestions" id="jSugg1"></div>
+            </div>
           </div>
           <div class="journal-col">
             <div class="journal-savestate" id="jsave2"></div>
-            <textarea class="journal-ta" id="j2" placeholder="Welcher Herausforderung bin ich begegnet?
+            <div class="journal-mention-wrap">
+              <textarea class="journal-ta" id="j2" placeholder="Welcher Herausforderung bin ich begegnet?
 Welcher Einwand, welche Situation oder welches Hindernis hat mich heute gefordert?"></textarea>
+              <div class="loc-suggestions" id="jSugg2"></div>
+            </div>
           </div>
           <div class="journal-col">
             <div class="journal-savestate" id="jsave3"></div>
-            <textarea class="journal-ta" id="j3" placeholder="Welche Entdeckung habe ich gemacht?
+            <div class="journal-mention-wrap">
+              <textarea class="journal-ta" id="j3" placeholder="Welche Entdeckung habe ich gemacht?
 Was habe ich heute über Kunden, den Markt oder mich selbst gelernt?"></textarea>
+              <div class="loc-suggestions" id="jSugg3"></div>
+            </div>
           </div>
           <div class="journal-col">
             <div class="journal-savestate" id="jsave4"></div>
-            <textarea class="journal-ta" id="j4" placeholder="Welche Spur nehme ich mit?
+            <div class="journal-mention-wrap">
+              <textarea class="journal-ta" id="j4" placeholder="Welche Spur nehme ich mit?
 Welche Erkenntnis oder Strategie möchte ich künftig wieder anwenden oder vermeiden?"></textarea>
+              <div class="loc-suggestions" id="jSugg4"></div>
+            </div>
           </div>
           <div class="journal-col">
             <div class="journal-savestate" id="jsave5"></div>
-            <textarea class="journal-ta" id="j5" placeholder="Wohin führt meine nächste Etappe?
+            <div class="journal-mention-wrap">
+              <textarea class="journal-ta" id="j5" placeholder="Wohin führt meine nächste Etappe?
 Was ist morgen der wichtigste konkrete Schritt?"></textarea>
+              <div class="loc-suggestions" id="jSugg5"></div>
+            </div>
           </div>
         </div>
 
         <div class="card" style="margin-top:18px;">
-          <h2>Kunde markieren <span class="tag">persönlich, keine CRM-Statistik</span></h2>
-          <div class="empty-page-hint" style="margin-bottom:8px;">Für die Geschichte am Jahresende, nicht für die Verkaufsauswertung — welcher Kontakt gehört gedanklich zu diesem Tag?</div>
-          <div class="friend-search-row">
-            <input type="text" id="journalContactInput" placeholder="Exakter Name des Kontakts">
-            <button class="cal-nav-btn" id="journalContactSearchBtn">Suchen</button>
-          </div>
-          <div id="journalContactResult"></div>
+          <h2>Markierte Kontakte heute <span class="tag">persönlich, keine CRM-Statistik</span></h2>
+          <div class="empty-page-hint" style="margin-bottom:8px;">Tippe @ gefolgt vom Namen in einem der Felder oben — für die Geschichte am Jahresende, nicht für die Verkaufsauswertung.</div>
+          <div id="journalMentionChips" class="journal-mention-chips"></div>
         </div>
 
         <div class="card" style="margin-top:18px;">
@@ -1282,55 +1298,93 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     });
     await renderCalendar();
     initPhotoCapture();
-    await initJournalContactTag(data);
+    initJournalMentions();
   }
 
-  // ---- Tagebuch-Kundenmarkierung (persönlich, keine CRM-Statistik) ----
-  async function initJournalContactTag(existingEntry){
-    document.getElementById('journalContactSearchBtn').addEventListener('click', ()=> searchJournalContact());
-    document.getElementById('journalContactInput').addEventListener('keydown', (e)=>{
-      if(e.key==='Enter') searchJournalContact();
+  // ---- Tagebuch-Kundenmarkierung (@mention, persönlich, keine CRM-Statistik) ----
+  let mentionSearchTimer = null;
+  let mentionActiveField = null; // welches jN-Feld gerade ein offenes Dropdown hat
+
+  function initJournalMentions(){
+    JOURNAL_FIELDS.forEach((f,i)=>{
+      const qIndex = i+1;
+      const ta = document.getElementById(f);
+      const box = document.getElementById('jSugg'+qIndex);
+      ta.addEventListener('input', ()=>{
+        const match = mentionQueryAtCaret(ta);
+        if(!match){ box.style.display='none'; box.innerHTML=''; return; }
+        mentionActiveField = qIndex;
+        clearTimeout(mentionSearchTimer);
+        mentionSearchTimer = setTimeout(()=> searchMentionSuggestions(match.query, ta, box), 250);
+      });
+      document.addEventListener('click', (e)=>{
+        if(!box.contains(e.target) && e.target!==ta) box.style.display='none';
+      });
     });
-    if(existingEntry && existingEntry.tagged_contact_id){
-      const { data: c } = await sb.from('contacts').select('name').eq('id', existingEntry.tagged_contact_id).maybeSingle();
-      if(c) renderJournalContactTagged(c.name, existingEntry.tagged_contact_id);
+    loadJournalMentionChips();
+  }
+
+  // Findet ein "@teilname" direkt vor dem Cursor (kein Leerzeichen dazwischen).
+  function mentionQueryAtCaret(ta){
+    const upToCaret = ta.value.slice(0, ta.selectionStart);
+    const m = upToCaret.match(/@([^\s@]{0,40})$/);
+    return m ? { query: m[1], start: upToCaret.length - m[0].length } : null;
+  }
+
+  async function searchMentionSuggestions(query, ta, box){
+    if(!query){ box.style.display='none'; box.innerHTML=''; return; }
+    const { data: matches } = await sb.from('contacts').select('id,name').ilike('name', `%${query}%`).limit(6);
+    if(!matches || matches.length===0){ box.style.display='none'; box.innerHTML=''; return; }
+    box.innerHTML = matches.map(m=>`<div class="loc-sugg-item" data-id="${m.id}" data-name="${m.name.replace(/"/g,'&quot;')}">📇 ${m.name}</div>`).join('');
+    box.style.display = 'block';
+    box.querySelectorAll('[data-id]').forEach(el=>{
+      el.addEventListener('click', ()=> confirmMention(ta, box, el.dataset.id, el.dataset.name));
+    });
+  }
+
+  async function confirmMention(ta, box, contactId, contactName){
+    const caretMatch = mentionQueryAtCaret(ta);
+    if(caretMatch){
+      const before = ta.value.slice(0, caretMatch.start);
+      const after = ta.value.slice(ta.selectionStart);
+      const insertion = `@${contactName} `;
+      ta.value = before + insertion + after;
+      const newCaret = (before + insertion).length;
+      ta.setSelectionRange(newCaret, newCaret);
+      ta.focus();
     }
+    box.style.display = 'none';
+    box.innerHTML = '';
+
+    const qIndex = JOURNAL_FIELDS.indexOf(ta.id) + 1;
+    scheduleJournalSave(qIndex);
+
+    const today = todayKey(new Date());
+    const row = { user_id:profile.id, org_id:profile.org_id, entry_date:today, updated_at:new Date().toISOString() };
+    JOURNAL_FIELDS.forEach((f,i)=>{ row['q'+(i+1)] = document.getElementById(f).value; });
+    await sb.from('journal_entries').upsert(row, { onConflict:'user_id,entry_date' });
+    await sb.from('journal_entry_mentions').upsert(
+      { user_id:profile.id, org_id:profile.org_id, entry_date:today, contact_id:contactId },
+      { onConflict:'user_id,entry_date,contact_id' }
+    );
+    loadJournalMentionChips();
   }
 
-  function renderJournalContactTagged(name, contactId){
-    document.getElementById('journalContactResult').innerHTML = `
-      <div class="guild-picker-row">
-        <span>📇 ${name}</span>
-        <button class="cal-nav-btn" id="journalContactRemoveBtn">Entfernen</button>
-      </div>`;
-    document.getElementById('journalContactRemoveBtn').addEventListener('click', async ()=>{
-      const today = todayKey(new Date());
-      await sb.from('journal_entries').update({tagged_contact_id:null}).eq('user_id', profile.id).eq('entry_date', today);
-      document.getElementById('journalContactResult').innerHTML = '';
-      document.getElementById('journalContactInput').value = '';
-    });
-  }
-
-  async function searchJournalContact(){
-    const resultEl = document.getElementById('journalContactResult');
-    const name = document.getElementById('journalContactInput').value.trim();
-    if(!name){ resultEl.innerHTML=''; return; }
-    resultEl.innerHTML = '<div class="empty-page-hint">Suche …</div>';
-    const { data: matches, error } = await sb.from('contacts').select('id,name').ilike('name', name);
-    if(error){ resultEl.innerHTML = `<div class="empty-page-hint">Fehler: ${error.message}</div>`; return; }
-    const match = (matches||[])[0];
-    if(!match){ resultEl.innerHTML = '<div class="empty-page-hint">Kein exakter Treffer.</div>'; return; }
-    resultEl.innerHTML = `
-      <div class="guild-picker-row">
-        <span>📇 ${match.name}</span>
-        <button class="cal-nav-btn" id="journalContactConfirmBtn">Verknüpfen</button>
-      </div>`;
-    document.getElementById('journalContactConfirmBtn').addEventListener('click', async ()=>{
-      const today = todayKey(new Date());
-      const row = { user_id:profile.id, org_id:profile.org_id, entry_date:today, tagged_contact_id:match.id, updated_at:new Date().toISOString() };
-      const { error: upErr } = await sb.from('journal_entries').upsert(row, { onConflict:'user_id,entry_date' });
-      if(upErr){ resultEl.innerHTML = `<div class="empty-page-hint">Fehler: ${upErr.message}</div>`; return; }
-      renderJournalContactTagged(match.name, match.id);
+  async function loadJournalMentionChips(){
+    const today = todayKey(new Date());
+    const chipsEl = document.getElementById('journalMentionChips');
+    const { data } = await sb.from('journal_entry_mentions').select('id,contact_id,contacts(name)').eq('user_id', profile.id).eq('entry_date', today);
+    if(!data || data.length===0){ chipsEl.innerHTML = '<div class="empty-page-hint">Noch keine Markierung heute.</div>'; return; }
+    chipsEl.innerHTML = data.map(m=>`
+      <div class="journal-mention-chip">
+        <span>📇 ${m.contacts ? m.contacts.name : '?'}</span>
+        <button data-remove="${m.id}">✕</button>
+      </div>`).join('');
+    chipsEl.querySelectorAll('[data-remove]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        await sb.from('journal_entry_mentions').delete().eq('id', btn.dataset.remove);
+        loadJournalMentionChips();
+      });
     });
   }
 
@@ -1859,11 +1913,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const { data: locs } = await sb.from('locations').select('id,name,type').eq('org_id', profile.org_id);
     const locMap = {}; (locs||[]).forEach(l=>locMap[l.id]={name:l.name, type:l.type});
 
-    const { data: journalMentions } = await sb.from('journal_entries').select('entry_date,tagged_contact_id').eq('user_id', profile.id).not('tagged_contact_id','is',null);
+    const { data: journalMentions } = await sb.from('journal_entry_mentions').select('entry_date,contact_id').eq('user_id', profile.id);
     const mentionMap = {};
     (journalMentions||[]).forEach(m=>{
-      if(!mentionMap[m.tagged_contact_id]) mentionMap[m.tagged_contact_id]=[];
-      mentionMap[m.tagged_contact_id].push(m.entry_date);
+      if(!mentionMap[m.contact_id]) mentionMap[m.contact_id]=[];
+      mentionMap[m.contact_id].push(m.entry_date);
     });
 
     const ids = contacts.map(c=>c.id);

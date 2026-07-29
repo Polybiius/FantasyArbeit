@@ -23,6 +23,7 @@ alle bis einschließlich Patch 15 im Supabase-Projekt eingespielt sind.
 | 13 | `patch13_kundendatenbank_ausbau.sql` | Vorname/Nachname getrennt (name wird generierte Spalte), `bedarf_ist`/`bedarf_wunsch`, `naechster_kontakt`, echte `sales`-Tabelle (Verkaufshistorie) |
 | 14 | `patch14_betrieb_anlegen.sql` | `locations.plz/strasse/stadt`, Anlegen von Locations für alle Team-Mitglieder freigegeben (nicht mehr nur Admin), Ortstyp "Niederlassung" |
 | 15 | `patch15_register_ausbau.sql` | `contacts.geburtsdatum/telefon/email/wohnort_*`, vollständige 7-teilige Berufsstatus-Liste |
+| 16 | `patch16_tagebuch_mentions.sql` | Tagebuch-Kundenmarkierung von einzelnem `tagged_contact_id`-Feld auf `journal_entry_mentions`-Tabelle umgestellt (mehrere @mentions pro Tag statt separater Such-Box); **droppt** `journal_entries.tagged_contact_id` nach Datenübernahme |
 
 ## Wichtiger Hinweis zu Patch 13
 
@@ -31,6 +32,14 @@ generierte Spalte aus `vorname`+`nachname`). Falls zum Zeitpunkt der
 Ausführung bereits echte Kontakt-Daten existierten, gingen die ursprünglichen
 Namen dabei verloren (mussten neu eingetragen werden). Rein informativ, falls
 das rückblickend Verwirrung stiftet.
+
+## Wichtiger Hinweis zu Patch 16
+
+Dieser Patch **löscht** `journal_entries.tagged_contact_id`, nachdem er ihren
+Inhalt zuvor in die neue Tabelle `journal_entry_mentions` kopiert hat (Schritt
+2 vor Schritt 3 im Patch, keine Datenverluste bei normaler Ausführung als
+Ganzes). Wenn der Patch aus irgendeinem Grund nur teilweise läuft, vor dem
+erneuten Ausführen prüfen, ob die Kopie bereits stattgefunden hat.
 
 ## Wenn ein neuer Patch nötig wird
 
