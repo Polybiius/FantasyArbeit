@@ -213,13 +213,28 @@
 
   .view-switch{display:flex;gap:8px;margin-bottom:16px;}
   .view-switch-btn.active{background:var(--arcane);color:#fff;border-color:var(--arcane);}
-  .dungeon-list-row{
-    display:flex;justify-content:space-between;align-items:center;cursor:pointer;
+
+  .contact-form-toggle{
+    width:100%;display:flex;justify-content:space-between;align-items:center;
     background:var(--panel-2);border:1px solid var(--border);border-radius:9px;
-    padding:12px 16px;margin-bottom:8px;font-size:13.5px;
+    padding:9px 14px;color:var(--muted);cursor:pointer;font-size:12.5px;
+    font-family:'JetBrains Mono',monospace;margin-bottom:14px;
   }
-  .dungeon-list-row:hover{border-color:var(--arcane);}
-  .dungeon-list-row .dlr-count{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--muted);}
+  .contact-form-toggle:hover{border-color:var(--arcane);color:var(--text);}
+  .contact-form-toggle.open #contactFormToggleIcon{transform:rotate(90deg);}
+  #contactFormToggleIcon{display:inline-block;transition:transform .15s;}
+
+  .dungeon-tile-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;}
+  .dungeon-tile{
+    position:relative;overflow:hidden;background:var(--panel-2);border:1px solid var(--border);border-radius:14px;
+    padding:22px 14px;text-align:center;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:8px;
+    transition:all .15s;
+  }
+  .dungeon-tile::before{content:'';position:absolute;inset:0;background:linear-gradient(135deg, rgba(139,92,246,0.10), transparent 65%);pointer-events:none;}
+  .dungeon-tile:hover{border-color:var(--arcane);transform:translateY(-3px);box-shadow:0 10px 22px rgba(0,0,0,0.32);}
+  .dungeon-tile .dt-icon{font-size:32px;position:relative;}
+  .dungeon-tile .dt-name{font-family:'Cinzel',serif;font-weight:700;font-size:13.5px;color:var(--text);position:relative;}
+  .dungeon-tile .dt-count{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--arcane-glow);position:relative;}
   .contact-table-title{font-family:'Cinzel',serif;font-size:15px;margin:12px 0;}
   .ctable{width:100%;border-collapse:collapse;font-size:12.5px;}
   .ctable th{text-align:left;color:var(--muted-2);font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;padding:8px 10px;border-bottom:1px solid var(--border);}
@@ -591,50 +606,57 @@
         <div class="card">
           <h2 id="contactsHeaderTitle">Register</h2>
 
-          <div class="contact-add-row">
-            <input type="text" id="contactVornameInput" placeholder="Vorname">
-            <input type="text" id="contactNachnameInput" placeholder="Nachname">
-            <select id="contactRoleSelect"></select>
-            <div class="loc-autocomplete">
-              <input type="text" id="contactLocationSearch" placeholder="Betrieb suchen …" autocomplete="off">
-              <div class="loc-suggestions" id="contactLocationSuggestions"></div>
+          <button type="button" class="contact-form-toggle" id="contactFormToggleBtn">
+            <span>+ Kontakt / Betrieb anlegen</span>
+            <span id="contactFormToggleIcon">▸</span>
+          </button>
+
+          <div id="contactFormBody" style="display:none;">
+            <div class="contact-add-row">
+              <input type="text" id="contactVornameInput" placeholder="Vorname">
+              <input type="text" id="contactNachnameInput" placeholder="Nachname">
+              <select id="contactRoleSelect"></select>
+              <div class="loc-autocomplete">
+                <input type="text" id="contactLocationSearch" placeholder="Betrieb suchen …" autocomplete="off">
+                <div class="loc-suggestions" id="contactLocationSuggestions"></div>
+              </div>
+              <select id="contactStatusSelect">
+                <option value="kalt">Kalt</option>
+                <option value="warm">Warm</option>
+                <option value="kunde">Kunde</option>
+                <option value="verloren">Verloren</option>
+              </select>
             </div>
-            <select id="contactStatusSelect">
-              <option value="kalt">Kalt</option>
-              <option value="warm">Warm</option>
-              <option value="kunde">Kunde</option>
-              <option value="verloren">Verloren</option>
-            </select>
+            <div class="contact-add-row" id="newBetriebForm" style="display:none;">
+              <input type="text" id="betriebNameInput" placeholder="Betrieb (Name)">
+              <select id="betriebArtSelect"></select>
+              <input type="text" id="betriebPlzInput" placeholder="Postleitzahl" style="max-width:120px;">
+              <input type="text" id="betriebStrasseInput" placeholder="Straße">
+              <input type="text" id="betriebStadtInput" placeholder="Stadt">
+              <button type="button" class="cal-nav-btn" id="betriebCreateBtn">Anlegen & auswählen</button>
+            </div>
+            <div class="empty-page-hint" id="betriebCreateStatus"></div>
+            <div class="contact-add-row">
+              <input type="date" id="contactGeburtsdatumInput" title="Geburtsdatum">
+              <input type="text" id="contactTelefonInput" placeholder="Telefon">
+              <input type="text" id="contactEmailInput" placeholder="E-Mail">
+            </div>
+            <div class="contact-add-row">
+              <input type="text" id="contactWohnortStrasseInput" placeholder="Wohnort – Straße/Hausnummer">
+              <input type="text" id="contactWohnortOrtInput" placeholder="Wohnort – Ort">
+            </div>
+            <div class="contact-add-row">
+              <textarea id="contactBedarfIstInput" placeholder="Bedarf – Ist-Zustand (was er bereits hat)" rows="2"></textarea>
+              <textarea id="contactBedarfWunschInput" placeholder="Bedarf – Wunsch (was er gerne möchte)" rows="2"></textarea>
+            </div>
+            <div class="contact-add-row">
+              <label class="cc-role" style="align-self:center;">Nächster Kontakt (Wiedervorlage):</label>
+              <input type="date" id="contactNextContactInput">
+            </div>
+            <textarea id="contactNotesInput" placeholder="Allgemeine Notizen (optional)" rows="2"></textarea>
+            <button class="cal-nav-btn" id="contactAddBtn" style="margin-top:8px;">+ Kontakt anlegen</button>
+            <div class="empty-page-hint" id="contactAddStatus"></div>
           </div>
-          <div class="contact-add-row" id="newBetriebForm" style="display:none;">
-            <input type="text" id="betriebNameInput" placeholder="Betrieb (Name)">
-            <select id="betriebArtSelect"></select>
-            <input type="text" id="betriebPlzInput" placeholder="Postleitzahl" style="max-width:120px;">
-            <input type="text" id="betriebStrasseInput" placeholder="Straße">
-            <input type="text" id="betriebStadtInput" placeholder="Stadt">
-            <button type="button" class="cal-nav-btn" id="betriebCreateBtn">Anlegen & auswählen</button>
-          </div>
-          <div class="empty-page-hint" id="betriebCreateStatus"></div>
-          <div class="contact-add-row">
-            <input type="date" id="contactGeburtsdatumInput" title="Geburtsdatum">
-            <input type="text" id="contactTelefonInput" placeholder="Telefon">
-            <input type="text" id="contactEmailInput" placeholder="E-Mail">
-          </div>
-          <div class="contact-add-row">
-            <input type="text" id="contactWohnortStrasseInput" placeholder="Wohnort – Straße/Hausnummer">
-            <input type="text" id="contactWohnortOrtInput" placeholder="Wohnort – Ort">
-          </div>
-          <div class="contact-add-row">
-            <textarea id="contactBedarfIstInput" placeholder="Bedarf – Ist-Zustand (was er bereits hat)" rows="2"></textarea>
-            <textarea id="contactBedarfWunschInput" placeholder="Bedarf – Wunsch (was er gerne möchte)" rows="2"></textarea>
-          </div>
-          <div class="contact-add-row">
-            <label class="cc-role" style="align-self:center;">Nächster Kontakt (Wiedervorlage):</label>
-            <input type="date" id="contactNextContactInput">
-          </div>
-          <textarea id="contactNotesInput" placeholder="Allgemeine Notizen (optional)" rows="2"></textarea>
-          <button class="cal-nav-btn" id="contactAddBtn" style="margin-top:8px;">+ Kontakt anlegen</button>
-          <div class="empty-page-hint" id="contactAddStatus"></div>
         </div>
 
         <div class="card" style="margin-top:18px;">
@@ -1735,7 +1757,18 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       Object.entries(types).map(([key,t])=>`<option value="${key}">${t.icon} ${t.label}</option>`).join('');
 
     initContactLocationAutocomplete();
+    initContactFormToggle();
     await renderContactsPage();
+  }
+
+  function initContactFormToggle(){
+    const btn = document.getElementById('contactFormToggleBtn');
+    const body = document.getElementById('contactFormBody');
+    btn.addEventListener('click', ()=>{
+      const isOpen = body.style.display !== 'none';
+      body.style.display = isOpen ? 'none' : 'block';
+      btn.classList.toggle('open', !isOpen);
+    });
   }
 
   let contactLocationSelectedId = null;
@@ -1823,8 +1856,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   async function loadContactsBundle(){
     const { data: contacts, error } = await sb.from('contacts').select('*').order('created_at', {ascending:false});
     if(error) return { error };
-    const { data: locs } = await sb.from('locations').select('id,name').eq('org_id', profile.org_id);
-    const locMap = {}; (locs||[]).forEach(l=>locMap[l.id]=l.name);
+    const { data: locs } = await sb.from('locations').select('id,name,type').eq('org_id', profile.org_id);
+    const locMap = {}; (locs||[]).forEach(l=>locMap[l.id]={name:l.name, type:l.type});
 
     const { data: journalMentions } = await sb.from('journal_entries').select('entry_date,tagged_contact_id').eq('user_id', profile.id).not('tagged_contact_id','is',null);
     const mentionMap = {};
@@ -1840,6 +1873,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       (sales||[]).forEach(s=>{ if(!salesMap[s.contact_id]) salesMap[s.contact_id]=[]; salesMap[s.contact_id].push(s); });
     }
     return { contacts, locMap, mentionMap, salesMap, roles: config.contactRoles||{} };
+  }
+
+  function locName(bundle, id){ return bundle.locMap[id] ? bundle.locMap[id].name : '?'; }
+  function locIcon(bundle, id){
+    const t = bundle.locMap[id] ? bundle.locMap[id].type : null;
+    return (config.locationTypes && t && config.locationTypes[t]) ? config.locationTypes[t].icon : '🗺';
   }
 
   async function renderContactsPage(){
@@ -1863,17 +1902,18 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     });
     const dungeonIds = Object.keys(grouped);
     if(dungeonIds.length===0){ listEl.innerHTML = '<div class="empty-page-hint">Noch keine Kontakte mit zugeordnetem Dungeon.</div>'; return; }
-    listEl.innerHTML = dungeonIds.map(id=>`
-      <div class="dungeon-list-row" data-dungeon="${id}">
-        <span>🗺 ${bundle.locMap[id]||'Unbekannt'}</span>
-        <span class="dlr-count">${grouped[id].length} Kontakt${grouped[id].length===1?'':'e'}</span>
-      </div>`).join('');
-    listEl.querySelectorAll('[data-dungeon]').forEach(row=>{
-      row.addEventListener('click', ()=>{
-        const id = row.dataset.dungeon;
-        document.getElementById('dungeonWithContactsList').parentElement.querySelector('#dungeonWithContactsList').style.display='none';
+    listEl.innerHTML = `<div class="dungeon-tile-grid">${dungeonIds.map(id=>`
+      <div class="dungeon-tile" data-dungeon="${id}">
+        <span class="dt-icon">${locIcon(bundle,id)}</span>
+        <span class="dt-name">${locName(bundle,id)}</span>
+        <span class="dt-count">${grouped[id].length} Kontakt${grouped[id].length===1?'':'e'}</span>
+      </div>`).join('')}</div>`;
+    listEl.querySelectorAll('[data-dungeon]').forEach(tile=>{
+      tile.addEventListener('click', ()=>{
+        const id = tile.dataset.dungeon;
+        document.getElementById('dungeonWithContactsList').style.display='none';
         document.getElementById('dungeonContactsTableWrap').style.display='block';
-        document.getElementById('dungeonContactsTitle').textContent = '🗺 ' + (bundle.locMap[id]||'Unbekannt');
+        document.getElementById('dungeonContactsTitle').textContent = locIcon(bundle,id) + ' ' + locName(bundle,id);
         renderContactsTableInto('dungeonContactsTable', grouped[id], bundle);
       });
     });
@@ -1906,7 +1946,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       <tr class="ctable-row" data-contact="${c.id}">
         <td>${c.name}</td>
         <td>${bundle.roles[c.role]||c.role||'—'}</td>
-        <td>${c.location_id ? (bundle.locMap[c.location_id]||'?') : '—'}</td>
+        <td>${c.location_id ? locName(bundle, c.location_id) : '—'}</td>
         <td><span class="cc-status ${c.status}">${c.status}</span></td>
         <td>${c.naechster_kontakt ? new Date(c.naechster_kontakt+'T12:00:00').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—'}</td>
       </tr>`).join('');
@@ -1942,7 +1982,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     let html = '';
     html += field('Berufsstatus', bundle.roles[c.role]||c.role);
-    html += field('Betrieb', c.location_id ? (bundle.locMap[c.location_id]||'?') : null);
+    html += field('Betrieb', c.location_id ? locName(bundle, c.location_id) : null);
     html += field('Geburtsdatum', fmtDate(c.geburtsdatum)!=='—' ? fmtDate(c.geburtsdatum) : null);
     html += field('Telefon', c.telefon);
     html += field('E-Mail', c.email);
@@ -2004,6 +2044,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   async function startEditContact(c){
+    document.getElementById('contactFormBody').style.display = 'block';
+    document.getElementById('contactFormToggleBtn').classList.add('open');
     editingContactId = c.id;
     document.getElementById('contactVornameInput').value = c.vorname||'';
     document.getElementById('contactNachnameInput').value = c.nachname||'';
