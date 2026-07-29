@@ -1,0 +1,41 @@
+# Patch-Verlauf (chronologisch, alle bereits erstellt)
+
+Alle Dateien liegen als Vorlage vor. Diese Liste dokumentiert, was jeder Patch
+bewirkt — nicht ob er auf einer bestimmten Datenbank schon gelaufen ist. Vor
+dem ersten Arbeiten mit Claude Code: mit dem Nutzer verifizieren, ob wirklich
+alle bis einschließlich Patch 15 im Supabase-Projekt eingespielt sind.
+
+| # | Datei | Kernstück |
+|---|---|---|
+| 1 | `schema.sql` | Grundschema: `organizations`, `profiles`, `rule_configs`, `action_log`, RLS-Basisfunktionen `current_org_id()`/`is_admin()` |
+| 1b | `patch.sql` | (früher Patch, Ergänzung zum Grundschema — profiles-Insert-Policy, `meta`-Spalte im Log) |
+| 2 | `patch2_journal.sql` | Tagebuch: `journal_entries`, 5 feste Fragen, strikt privat (keine Admin-Ausnahme) |
+| 3 | `patch3_inventar.sql` | `user_inventory`, erster Item-Katalog (Manatrank) im Regelwerk |
+| 4 | `patch4_fotos.sql` | Foto-Funktion im Tagebuch: privater Storage-Bucket, `journal_photos` (inkl. Platzhalter für spätere KI-Umwandlung) |
+| 5 | `patch5_ausruestung.sql` | `profiles.equipped_weapon/armor/accessory` — Grundlage für späteres Ausrüstungssystem |
+| 6 | `patch6_gilde.sql` | `guilds`, `guild_members`, `profiles.total_xp/level`-Cache (damit Level sichtbar ist ohne fremdes privates Log zu lesen) |
+| 7 | `patch7_freunde.sql` | `friends` — einfache, unidirektionale Liste (später durch Patch 8 zum Anfrage-System erweitert) |
+| 8 | `patch8_freundschaftsanfragen.sql` | `friends.status` ('pending'/'accepted'), RLS für Annehmen/Ablehnen |
+| 9 | `patch9_dungeons.sql` | `locations` ("Dungeons"), `action_log.location_id`, `locationTypes` im Regelwerk |
+| 10 | `patch10_kontakte.sql` | **Kundendatenbank-Fundament**: `contacts`, `action_log.contact_id`, `contactsVisibility`-Einstellung, `contactRoles` |
+| 11 | `patch11_account_pool.sql` | `locations.owner_id` (Pool-Mechanismus), Trigger: Kontakte wandern bei Neuzuweisung automatisch mit |
+| 12 | `patch12_ansprache_tagebuch.sql` | Ansprache vereinheitlicht (5 XP für alle statt gestaffelt), `journal_entries.tagged_contact_id`, Level-Kurve neu kalibriert (`levelBase` 5 → 4.7) |
+| 13 | `patch13_kundendatenbank_ausbau.sql` | Vorname/Nachname getrennt (name wird generierte Spalte), `bedarf_ist`/`bedarf_wunsch`, `naechster_kontakt`, echte `sales`-Tabelle (Verkaufshistorie) |
+| 14 | `patch14_betrieb_anlegen.sql` | `locations.plz/strasse/stadt`, Anlegen von Locations für alle Team-Mitglieder freigegeben (nicht mehr nur Admin), Ortstyp "Niederlassung" |
+| 15 | `patch15_register_ausbau.sql` | `contacts.geburtsdatum/telefon/email/wohnort_*`, vollständige 7-teilige Berufsstatus-Liste |
+
+## Wichtiger Hinweis zu Patch 13
+
+Dieser Patch **löscht** die alte `name`-Spalte bei Kontakten (ersetzt durch
+generierte Spalte aus `vorname`+`nachname`). Falls zum Zeitpunkt der
+Ausführung bereits echte Kontakt-Daten existierten, gingen die ursprünglichen
+Namen dabei verloren (mussten neu eingetragen werden). Rein informativ, falls
+das rückblickend Verwirrung stiftet.
+
+## Wenn ein neuer Patch nötig wird
+
+Muster beibehalten: neue Datei `patchN_kurzname.sql`, Kommentarkopf mit
+Nummer/Titel/Ausführungshinweis, `alter table ... add column if not exists`
+wo möglich (idempotent), destruktive Operationen (`drop column`, `delete`)
+immer explizit im Kommentar markieren und dem Nutzer gegenüber vor Ausführung
+benennen.
