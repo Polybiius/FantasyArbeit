@@ -27,6 +27,7 @@ alle bis einschließlich Patch 15 im Supabase-Projekt eingespielt sind.
 | 17 | `patch17_error_log.sql` | `error_log`-Tabelle für zentrale Fehlerprotokollierung (jeder fehlgeschlagene DB-Aufruf landet hier), Lesen nur für Admins, Index auf `(org_id, created_at)` |
 | 17b | `patch17b_indizes.sql` | Fehlende Indizes auf Fremdschlüssel-Spalten (`contacts`, `locations`, `sales`, `journal_entry_mentions`, `profiles`) — vorher gab es außer auf `action_log` keine |
 | 18 | `patch18_kanban.sql` | `contacts.kanban_stage` (Kanban-Spalte pro Kontakt, 8 feste Werte), neue Aktion `termin_nicht_wahrgenommen` (−2 XP, Konversions-Malus) im Regelwerk |
+| 19 | `patch19_kanban_opt_in.sql` | **Korrektur zu Patch 18**: `kanban_stage` war fälschlich `not null default 'neuer_lead'` — dadurch tauchte JEDER bestehende Kontakt automatisch als Lead im Kanban auf, nur weil er in der Datenbank existierte. Jetzt nullable ohne Default, alle bestehenden Kontakte auf `null` zurückgesetzt (= kein Kanban-Kontakt) |
 
 ## Wichtiger Hinweis zu Patch 13
 

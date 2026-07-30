@@ -40,14 +40,14 @@ nicht per Code-Änderung.
   SQL-Patch manuell im Supabase SQL-Editor ausgeführt. Das ändert sich jetzt mit
   Claude Code.
 
-## Datenbank — aktueller Stand (Annahme: Patch 1–18 sind alle eingespielt)
+## Datenbank — aktueller Stand (Annahme: Patch 1–19 sind alle eingespielt)
 
 **Wenn das nicht stimmt, sofort korrigieren, bevor irgendetwas gebaut wird** — sonst
 versucht Claude Code eventuell, Dinge doppelt anzulegen oder Migrationen in falscher
 Reihenfolge zu bauen.
 
 Alle SQL-Patches liegen im Ordner `sql/` (chronologisch benannt, `schema.sql` +
-`patch.sql` sind die ursprüngliche Basis, danach `patch2_...` bis `patch18_...`).
+`patch.sql` sind die ursprüngliche Basis, danach `patch2_...` bis `patch19_...`).
 Sie wurden bisher **einzeln, nacheinander, manuell** im Supabase SQL-Editor
 ausgeführt — nicht über eine Migrations-Toolchain. `PATCH_LOG.md` listet die
 genaue Reihenfolge und was jeder Patch bewirkt.
@@ -96,8 +96,12 @@ Funktionen benutzen statt eigene Fehlerbehandlung zu erfinden.**
   `bedarf_wunsch`), `status` (kalt/warm/kunde/verloren — reines Tracking,
   keine Rückwirkung auf XP), `naechster_kontakt` (Wiedervorlage-Datum),
   `owner_id` (folgt automatisch dem Location-Owner, siehe Trigger oben).
-  Seit Patch 18: `kanban_stage` (8 feste Werte, siehe Abschnitt "Kanban"
-  unten) — die Spalte, in der der Kontakt im Kanban-Board liegt.
+  Seit Patch 18/19: `kanban_stage` (nullable, 8 feste Werte, siehe Abschnitt
+  "Kanban" unten) — die Spalte, in der der Kontakt im Kanban-Board liegt.
+  **NULL = kein Kanban-Kontakt, taucht im Board gar nicht auf.** Bewusst
+  *nicht* automatisch für jeden Kontakt gesetzt, nur weil er in der
+  Datenbank existiert — Patch 18 hatte das fälschlicherweise per Default
+  gemacht, Patch 19 korrigiert das (siehe PATCH_LOG.md).
   Sichtbarkeit konfigurierbar über `contacts_shared_for_org()` (liest
   `rule_configs.contactsVisibility`).
 - `sales` — echte Verkaufshistorie (nicht nur ein Feld!): mehrere Produkte pro
@@ -196,6 +200,15 @@ aber weil zwei Spalten (Angebot versendet, Zweittermin) dieselbe Aktion
 gibt's zusätzlich `contacts.kanban_stage` als expliziten Spalten-Zeiger, der
 beim Ziehen direkt mitgesetzt wird. Ziehen ist die Bedienoberfläche, das Log
 bleibt die Wahrheitsquelle für XP/Quests/Statistik.
+
+**Wichtig (Lehre aus Patch 18/19-Bug):** in der Datenbank zu stehen bedeutet
+NICHT automatisch, im Kanban zu sein. `kanban_stage` ist nullable und wird nur
+über einen der bewusst dafür gebauten Wege gesetzt — "+ Neuer Lead" im Board,
+"Termin vereinbart" am Dungeon, oder manuell im Kontaktformular
+(`contactKanbanStageSelect`, Default "– Nicht im Kanban –"). Ein Kontakt mit
+`kanban_stage = null` taucht im Board schlicht nirgends auf. Beim Rendern
+(`renderKanbanBoard()`) werden Kontakte ohne gesetzte Stufe deshalb bewusst
+übersprungen, nicht in "Neuer Lead" einsortiert.
 
 **Spaltenübergänge und was sie auslösen** (Logik in `moveKanbanCard()`):
 - → Ersttermin vereinbart: Aktion `termin_vereinbart`. Auch erreichbar per

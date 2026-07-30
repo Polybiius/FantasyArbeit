@@ -644,6 +644,7 @@
                 <option value="verloren">Verloren</option>
               </select>
               <select id="contactKanbanStageSelect" title="Kanban-Stufe">
+                <option value="">– Nicht im Kanban –</option>
                 <option value="neuer_lead">Neuer Lead</option>
                 <option value="ersttermin_vereinbart">Ersttermin vereinbart</option>
                 <option value="nicht_erschienen">Nicht erschienen</option>
@@ -2281,7 +2282,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       if(loc) document.getElementById('contactLocationSearch').value = loc.name;
     }
     document.getElementById('contactStatusSelect').value = c.status;
-    document.getElementById('contactKanbanStageSelect').value = c.kanban_stage||'neuer_lead';
+    document.getElementById('contactKanbanStageSelect').value = c.kanban_stage||'';
     document.getElementById('contactGeburtsdatumInput').value = c.geburtsdatum||'';
     document.getElementById('contactTelefonInput').value = c.telefon||'';
     document.getElementById('contactEmailInput').value = c.email||'';
@@ -2301,7 +2302,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const role = document.getElementById('contactRoleSelect').value;
     const location_id = contactLocationSelectedId || null;
     const status = document.getElementById('contactStatusSelect').value;
-    const kanban_stage = document.getElementById('contactKanbanStageSelect').value;
+    const kanban_stage = document.getElementById('contactKanbanStageSelect').value || null;
     const geburtsdatum = document.getElementById('contactGeburtsdatumInput').value || null;
     const telefon = document.getElementById('contactTelefonInput').value.trim();
     const email = document.getElementById('contactEmailInput').value.trim();
@@ -2692,7 +2693,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     kanbanBundleCache = bundle;
     const grouped = {};
     KANBAN_STAGES.forEach(s=>grouped[s]=[]);
-    bundle.contacts.forEach(c=>{ (grouped[c.kanban_stage] || grouped.neuer_lead).push(c); });
+    // Nur Kontakte mit einer echten Kanban-Stufe zeigen — in der Datenbank zu
+    // stehen bedeutet nicht automatisch, Teil der Pipeline zu sein. Ein Kontakt
+    // landet hier nur über einen der bewusst dafür gebauten Wege.
+    bundle.contacts.forEach(c=>{ if(c.kanban_stage && grouped[c.kanban_stage]) grouped[c.kanban_stage].push(c); });
     KANBAN_STAGES.forEach(stage=>{
       const list = grouped[stage];
       document.getElementById('kanbanCount_'+stage).textContent = list.length;
