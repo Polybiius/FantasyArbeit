@@ -2225,7 +2225,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.querySelectorAll('#contactDetailBody [data-jump], #contactDetailJournal [data-jump]').forEach(a=>{
       a.addEventListener('click', ()=> jumpToJournalDay(a.dataset.jump));
     });
-    document.getElementById('cdLogActionBtn').addEventListener('click', ()=> openContactActionModal(c));
+    document.getElementById('cdLogActionBtn').addEventListener('click', ()=>{
+      document.getElementById('contactDetailModal').style.display='none';
+      openContactActionModal(c);
+    });
     const saleBtn = document.getElementById('cdAddSaleBtn');
     if(saleBtn) saleBtn.addEventListener('click', ()=> addSaleForContact(c.id));
     const editBtn = document.getElementById('cdEditBtn');
@@ -2376,6 +2379,19 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     log.push(data);
     await checkAndAwardRecurringQuests();
     await checkAndAwardChains();
+
+    // Kundenausbau bei einem Kontakt ohne Kanban-Zugehörigkeit holt ihn aktiv
+    // zurück in die Pipeline — zusätzlich "Termin vereinbart" loggen und bei
+    // Ersttermin einsortieren, statt ihn stumm in der Datenbank liegen zu lassen.
+    if(key==='kundenausbau' && !contact.kanban_stage){
+      const ok = await logKanbanAction(contact, 'termin_vereinbart');
+      if(ok){
+        const { error: stageErr } = await sb.from('contacts').update({ kanban_stage:'ersttermin_vereinbart' }).eq('id', contact.id);
+        if(stageErr) reportError('Kanban-Spalte aktualisieren', stageErr);
+        else contact.kanban_stage = 'ersttermin_vereinbart';
+      }
+    }
+
     document.getElementById('locActionModal').style.display='none';
     render();
     await renderContactsPage();
@@ -2915,6 +2931,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const fromHash = location.hash.replace('#','');
     showPage(fromHash || 'charakter', !fromHash);
   }
+
+  // Klick auf die abgedunkelte Fläche außerhalb eines Modal-Fensters schließt
+  // es, wie das X — gilt für alle .loc-modal-Fenster gleichermaßen.
+  document.querySelectorAll('.loc-modal').forEach(modal=>{
+    modal.addEventListener('click', (e)=>{
+      if(e.target===modal) modal.style.display='none';
+    });
+  });
 
   // ---- Start ----
   (async function init(){
