@@ -469,6 +469,7 @@
       <button class="nav-btn" data-page="kontakte" id="navKontakteBtn">📇 Register</button>
       <button class="nav-btn" data-page="gilde" id="navGildeBtn">🛡 Gilde</button>
       <button class="nav-btn" data-page="tagebuch">📖 Abenteuerlog</button>
+      <button class="nav-btn" data-page="fehlerprotokoll" id="navFehlerprotokollBtn" style="display:none;">🛠 Fehlerprotokoll</button>
     </nav>
 
     <div class="content">
@@ -767,6 +768,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         </div>
       </div>
 
+      <!-- SEITE: FEHLERPROTOKOLL (nur Admins) -->
+      <div class="page" id="page-fehlerprotokoll" style="display:none;">
+        <div class="card">
+          <h2>Fehlerprotokoll <span class="tag">nur für Admins sichtbar</span></h2>
+          <div class="empty-page-hint" style="margin-bottom:8px;">Jeder fehlgeschlagene Speicher-/Ladevorgang der letzten Zeit, egal von welchem Team-Mitglied — damit nichts unbemerkt verloren geht.</div>
+          <div id="errorLogList"></div>
+        </div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -808,6 +818,33 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   let phoneTally = 0;
   let lastKnownLevel = 1;
   const QUICKBAR_KEYS = ['telefon_5','termin_vereinbart','ansprache'];
+
+  // ---- Fehlerprotokoll (zentral) ----
+  // Jede fehlgeschlagene Datenbank-Operation läuft hier durch: sichtbare
+  // Meldung für den Nutzer (in statusEl, sonst als alert) + Eintrag in
+  // error_log, damit ein Admin es im "Fehlerprotokoll"-Reiter nachsehen kann,
+  // ohne dass der Nutzer sich erst melden muss.
+  function reportError(context, error, statusEl){
+    const message = (error && error.message) ? error.message : String(error);
+    console.error(context, error);
+    if(statusEl) statusEl.textContent = 'Fehler: ' + message;
+    else alert('Fehler: ' + message);
+    if(profile){
+      sb.from('error_log').insert({ org_id:profile.org_id, user_id:profile.id, context, message })
+        .then(({error:logErr})=>{ if(logErr) console.error('error_log insert failed', logErr); });
+    }
+  }
+
+  // Für Hintergrund-Vorgänge (Listen laden, automatische Quest-Boni usw.): kein
+  // alert()-Popup bei jedem Netzwerk-Hänger, aber trotzdem console.error +
+  // Eintrag im Fehlerprotokoll, damit nichts spurlos verschwindet.
+  function logSilentError(context, error){
+    console.error(context, error);
+    if(profile){
+      sb.from('error_log').insert({ org_id:profile.org_id, user_id:profile.id, context, message: (error && error.message)||String(error) })
+        .then(({error:logErr})=>{ if(logErr) console.error('error_log insert failed', logErr); });
+    }
+  }
 
   // ---- Zeit / Zeitzone (kommt aus der Organisation, Vorkehrung für Skalierung) ----
   function localPartsInTZ(d, tz){
@@ -975,7 +1012,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const { data: inserted, error } = await sb.from('profiles').insert({
       id: session.user.id, org_id: DEFAULT_ORG_ID, display_name:name, role:'member', character_class:selectedClass
     }).select().single();
-    if(error){ errEl.textContent = 'Fehler: '+error.message; return; }
+    if(error){ reportError('Charakter erstellen', error, errEl); return; }
     profile = inserted;
     document.getElementById('charCreateScreen').style.display='none';
     document.getElementById('loading').style.display='flex';
@@ -984,26 +1021,32 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   async function checkProfileExists(){
     const uid = session.user.id;
-    const { data } = await sb.from('profiles').select('*').eq('id', uid).maybeSingle();
+    const { data, error } = await sb.from('profiles').select('*').eq('id', uid).maybeSingle();
+    if(error){ reportError('Profil laden', error); throw error; }
     return data || null;
   }
   async function loadOrg(){
-    const { data } = await sb.from('organizations').select('*').eq('id', profile.org_id).maybeSingle();
+    const { data, error } = await sb.from('organizations').select('*').eq('id', profile.org_id).maybeSingle();
+    if(error){ reportError('Organisation laden', error); throw error; }
     org = data;
   }
   async function loadConfig(){
-    const { data } = await sb.from('rule_configs').select('*').eq('org_id', profile.org_id).maybeSingle();
+    const { data, error } = await sb.from('rule_configs').select('*').eq('org_id', profile.org_id).maybeSingle();
+    if(error){ reportError('Regelwerk laden', error); throw error; }
     config = data.config;
   }
   async function loadLog(){
-    const { data } = await sb.from('action_log').select('*').eq('user_id', profile.id).order('created_at',{ascending:true});
+    const { data, error } = await sb.from('action_log').select('*').eq('user_id', profile.id).order('created_at',{ascending:true});
+    if(error){ reportError('Aktions-Log laden', error); throw error; }
     log = data || [];
   }
 
   async function afterLogin(){
     document.getElementById('authScreen').style.display='none';
     document.getElementById('loading').style.display='flex';
-    const existing = await checkProfileExists();
+    let existing;
+    try{ existing = await checkProfileExists(); }
+    catch(e){ document.getElementById('loading').style.display='none'; return; }
     if(!existing){
       document.getElementById('loading').style.display='none';
       document.getElementById('charCreateScreen').style.display='block';
@@ -1015,9 +1058,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   async function enterApp(){
     applyClassTheme(profile.character_class);
-    await loadOrg();
-    await loadConfig();
-    await loadLog();
+    try{ await loadOrg(); await loadConfig(); await loadLog(); }
+    catch(e){ document.getElementById('loading').style.display='none'; return; }
     phoneTally = Number(localStorage.getItem('phoneTally_'+profile.id) || 0);
     lastKnownLevel = levelInfo(computeTotals().totalXp).level;
     document.getElementById('loading').style.display='none';
@@ -1025,6 +1067,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('nameInput').value = profile.display_name;
     document.getElementById('orgSubtitle').textContent = `Klasse: ${CLASS_LABELS[profile.character_class]||profile.character_class} · Organisation: ${org ? org.name : ''}`;
     document.getElementById('adminToggleBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
+    document.getElementById('navFehlerprotokollBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
     if(profile.role==='admin'){
       document.getElementById('classSwitcher').style.display='flex';
       updateClassSwitcherActive();
@@ -1043,7 +1086,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   document.getElementById('nameInput').addEventListener('change', async (e)=>{
     const name = e.target.value.trim() || 'Namenloser Held';
     profile.display_name = name;
-    await sb.from('profiles').update({display_name:name}).eq('id', profile.id);
+    const { error } = await sb.from('profiles').update({display_name:name}).eq('id', profile.id);
+    if(error) reportError('Namen speichern', error);
   });
 
   // ---- Admin: Regelwerk bearbeiten ----
@@ -1061,7 +1105,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     try{ parsed = JSON.parse(document.getElementById('configEditor').value); }
     catch(err){ alert('Ungültiges JSON: '+err.message); return; }
     const { error } = await sb.from('rule_configs').update({config:parsed, updated_at:new Date().toISOString()}).eq('org_id', profile.org_id);
-    if(error){ alert('Fehler beim Speichern: '+error.message); return; }
+    if(error){ reportError('Regelwerk speichern', error); return; }
     config = parsed;
     document.getElementById('adminPanel').style.display='none';
     buildActionGrid();
@@ -1111,9 +1155,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   async function grantItem(itemKey, qty){
     if(!itemKey || !qty) return;
-    const { data: existing } = await sb.from('user_inventory').select('*').eq('user_id', profile.id).eq('item_key', itemKey).maybeSingle();
+    const { data: existing, error: readErr } = await sb.from('user_inventory').select('*').eq('user_id', profile.id).eq('item_key', itemKey).maybeSingle();
+    if(readErr){ reportError('Item-Bestand lesen', readErr); return; }
     const newQty = (existing ? existing.quantity : 0) + qty;
-    await sb.from('user_inventory').upsert({ user_id:profile.id, org_id:profile.org_id, item_key:itemKey, quantity:newQty, updated_at:new Date().toISOString() }, { onConflict:'user_id,item_key' });
+    const { error } = await sb.from('user_inventory').upsert({ user_id:profile.id, org_id:profile.org_id, item_key:itemKey, quantity:newQty, updated_at:new Date().toISOString() }, { onConflict:'user_id,item_key' });
+    if(error){ reportError('Item vergeben', error); return; }
     await loadInventory();
     renderInventory();
   }
@@ -1125,7 +1171,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       const allMet = q.conditions.every(c=>countInPeriod(c.actions,q.period)>=c.count);
       if(allMet && !recurringQuestBonusEarned(q,key)){
         const row = { user_id:profile.id, org_id:profile.org_id, action_key:'quest_bonus', label:'Quest erfüllt: '+q.name, xp:q.bonus, energy:0, meta:{questId:q.id, periodKey:key} };
-        const { data } = await sb.from('action_log').insert(row).select().single();
+        const { data, error } = await sb.from('action_log').insert(row).select().single();
+        if(error){ logSilentError('Quest-Bonus verbuchen', error); continue; }
         if(data) log.push(data);
         if(q.itemReward) await grantItem(q.itemReward.key, q.itemReward.qty||1);
       }
@@ -1141,7 +1188,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         const prevDone = i===0 || log.some(e=>e.action_key==='chain_bonus' && e.meta && e.meta.chainId===chain.id && e.meta.stageId===chain.stages[i-1].id);
         if(prevDone && evalChainRule(stage.rule, ctxGroups)){
           const row = { user_id:profile.id, org_id:profile.org_id, action_key:'chain_bonus', label:'Kette erfüllt: '+chain.name+' — '+stage.name, xp:stage.bonus, energy:0, meta:{chainId:chain.id, stageId:stage.id} };
-          const { data } = await sb.from('action_log').insert(row).select().single();
+          const { data, error } = await sb.from('action_log').insert(row).select().single();
+          if(error){ logSilentError('Ketten-Bonus verbuchen', error); continue; }
           if(data) log.push(data);
           if(stage.itemReward) await grantItem(stage.itemReward.key, stage.itemReward.qty||1);
         }
@@ -1161,7 +1209,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     }
     const row = { user_id:profile.id, org_id:profile.org_id, action_key:key, label:a.label, xp:a.xp, energy:a.energy, skill:a.skill||null, skill2:a.skill2||null, context: context ? context.trim() : null };
     const { data, error } = await sb.from('action_log').insert(row).select().single();
-    if(error){ alert('Fehler beim Speichern: '+error.message); return; }
+    if(error){ reportError('Aktion speichern', error); return; }
     log.push(data);
     await checkAndAwardRecurringQuests();
     await checkAndAwardChains();
@@ -1181,7 +1229,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       localStorage.setItem('phoneTally_'+profile.id, 0);
       const row = { user_id:profile.id, org_id:profile.org_id, action_key:'telefon_5', label:a.label, xp:a.xp, energy:a.energy, skill:a.skill||null };
       const { data, error } = await sb.from('action_log').insert(row).select().single();
-      if(!error){ log.push(data); await checkAndAwardRecurringQuests(); await checkAndAwardChains(); }
+      if(error){ reportError('Aktion speichern', error); }
+      else{ log.push(data); await checkAndAwardRecurringQuests(); await checkAndAwardChains(); }
     }
     render();
   });
@@ -1274,7 +1323,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   async function initJournal(){
     const today = todayKey(new Date());
-    const { data } = await sb.from('journal_entries').select('*').eq('user_id', profile.id).eq('entry_date', today).maybeSingle();
+    const { data, error } = await sb.from('journal_entries').select('*').eq('user_id', profile.id).eq('entry_date', today).maybeSingle();
+    if(error) logSilentError('Tagebuch laden', error);
     JOURNAL_FIELDS.forEach((f,i)=>{
       document.getElementById(f).value = data ? (data['q'+(i+1)] || '') : '';
     });
@@ -1328,7 +1378,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   async function searchMentionSuggestions(query, ta, box){
     if(!query){ box.style.display='none'; box.innerHTML=''; return; }
-    const { data: matches } = await sb.from('contacts').select('id,name').ilike('name', `%${query}%`).limit(6);
+    const { data: matches, error } = await sb.from('contacts').select('id,name').ilike('name', `%${query}%`).limit(6);
+    if(error) logSilentError('Kontaktvorschläge suchen', error);
     if(!matches || matches.length===0){ box.style.display='none'; box.innerHTML=''; return; }
     box.innerHTML = matches.map(m=>`<div class="loc-sugg-item" data-id="${m.id}" data-name="${m.name.replace(/"/g,'&quot;')}">📇 ${m.name}</div>`).join('');
     box.style.display = 'block';
@@ -1357,11 +1408,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const today = todayKey(new Date());
     const row = { user_id:profile.id, org_id:profile.org_id, entry_date:today, updated_at:new Date().toISOString() };
     JOURNAL_FIELDS.forEach((f,i)=>{ row['q'+(i+1)] = document.getElementById(f).value; });
-    await sb.from('journal_entries').upsert(row, { onConflict:'user_id,entry_date' });
-    await sb.from('journal_entry_mentions').upsert(
+    const { error: entryErr } = await sb.from('journal_entries').upsert(row, { onConflict:'user_id,entry_date' });
+    if(entryErr) logSilentError('Tagebucheintrag speichern (@mention)', entryErr);
+    const { error: mentionErr } = await sb.from('journal_entry_mentions').upsert(
       { user_id:profile.id, org_id:profile.org_id, entry_date:today, contact_id:contactId },
       { onConflict:'user_id,entry_date,contact_id' }
     );
+    if(mentionErr) logSilentError('Markierung speichern', mentionErr);
   }
 
   // ---- Schnappschuss des Tages ----
@@ -1386,11 +1439,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const today = todayKey(new Date());
     const path = `${profile.id}/${today}.jpg`;
     const { error: upErr } = await sb.storage.from(PHOTO_BUCKET).upload(path, file, { upsert:true, contentType: file.type||'image/jpeg' });
-    if(upErr){ preview.innerHTML = `<div class="photo-hint">Fehler: ${upErr.message}</div>`; return; }
+    if(upErr){ preview.innerHTML = `<div class="photo-hint">Fehler: ${upErr.message}</div>`; logSilentError('Foto hochladen', upErr); return; }
     const { error: dbErr } = await sb.from('journal_photos').upsert({
       user_id:profile.id, org_id:profile.org_id, entry_date:today, storage_path:path
     }, { onConflict:'user_id,entry_date' });
-    if(dbErr){ preview.innerHTML = `<div class="photo-hint">Fehler: ${dbErr.message}</div>`; return; }
+    if(dbErr){ preview.innerHTML = `<div class="photo-hint">Fehler: ${dbErr.message}</div>`; logSilentError('Foto-Datensatz speichern', dbErr); return; }
     calPhotoDates.add(today);
     refreshDotForDate(today);
     await loadTodayPhoto();
@@ -1398,10 +1451,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   async function loadTodayPhoto(){
     const today = todayKey(new Date());
-    const { data } = await sb.from('journal_photos').select('*').eq('user_id', profile.id).eq('entry_date', today).maybeSingle();
+    const { data, error } = await sb.from('journal_photos').select('*').eq('user_id', profile.id).eq('entry_date', today).maybeSingle();
+    if(error) logSilentError('Foto-Datensatz laden', error);
     const preview = document.getElementById('photoPreview');
     if(!data){ preview.innerHTML = '<div class="photo-hint">Noch kein Foto für heute.</div>'; return; }
-    const { data: signed } = await sb.storage.from(PHOTO_BUCKET).createSignedUrl(data.storage_path, 3600);
+    const { data: signed, error: signErr } = await sb.storage.from(PHOTO_BUCKET).createSignedUrl(data.storage_path, 3600);
+    if(signErr) logSilentError('Foto-URL erzeugen', signErr);
     preview.innerHTML = signed ? `<img class="photo-thumb" src="${signed.signedUrl}">` : '<div class="photo-hint">Foto konnte nicht geladen werden.</div>';
   }
 
@@ -1413,13 +1468,17 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       const row = { user_id: profile.id, org_id: profile.org_id, entry_date: today, updated_at: new Date().toISOString() };
       JOURNAL_FIELDS.forEach((f,i)=>{ row['q'+(i+1)] = document.getElementById(f).value; });
       const { error } = await sb.from('journal_entries').upsert(row, { onConflict: 'user_id,entry_date' });
-      if(!error){
-        indicator.textContent = 'gespeichert';
+      if(error){
+        reportError('Tagebuch speichern', error, indicator);
         indicator.classList.add('show');
-        setTimeout(()=>indicator.classList.remove('show'), 1500);
-        calEntryDates.add(today);
-        refreshDotForDate(today);
+        setTimeout(()=>indicator.classList.remove('show'), 4000);
+        return;
       }
+      indicator.textContent = 'gespeichert';
+      indicator.classList.add('show');
+      setTimeout(()=>indicator.classList.remove('show'), 1500);
+      calEntryDates.add(today);
+      refreshDotForDate(today);
     }, 700);
   }
 
@@ -1439,9 +1498,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     const from = `${calViewYear}-${pad2(calViewMonth+1)}-01`;
     const to = `${calViewYear}-${pad2(calViewMonth+1)}-${pad2(daysInMonth(calViewYear,calViewMonth))}`;
-    const { data } = await sb.from('journal_entries').select('entry_date').eq('user_id', profile.id).gte('entry_date', from).lte('entry_date', to);
+    const { data, error } = await sb.from('journal_entries').select('entry_date').eq('user_id', profile.id).gte('entry_date', from).lte('entry_date', to);
+    if(error) logSilentError('Tagebuch-Tage laden', error);
     calEntryDates = new Set((data||[]).map(r=>r.entry_date));
-    const { data: photoData } = await sb.from('journal_photos').select('entry_date').eq('user_id', profile.id).gte('entry_date', from).lte('entry_date', to);
+    const { data: photoData, error: photoErr } = await sb.from('journal_photos').select('entry_date').eq('user_id', profile.id).gte('entry_date', from).lte('entry_date', to);
+    if(photoErr) logSilentError('Foto-Tage laden', photoErr);
     calPhotoDates = new Set((photoData||[]).map(r=>r.entry_date));
 
     const grid = document.getElementById('calGrid');
@@ -1488,11 +1549,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   async function showDayPreview(dateStr){
     const preview = document.getElementById('calPreview');
-    const { data } = await sb.from('journal_entries').select('*').eq('user_id', profile.id).eq('entry_date', dateStr).maybeSingle();
-    const { data: photoRow } = await sb.from('journal_photos').select('*').eq('user_id', profile.id).eq('entry_date', dateStr).maybeSingle();
+    const { data, error } = await sb.from('journal_entries').select('*').eq('user_id', profile.id).eq('entry_date', dateStr).maybeSingle();
+    if(error) logSilentError('Tageseintrag laden', error);
+    const { data: photoRow, error: photoErr } = await sb.from('journal_photos').select('*').eq('user_id', profile.id).eq('entry_date', dateStr).maybeSingle();
+    if(photoErr) logSilentError('Foto des Tages laden', photoErr);
     let photoHtml = '';
     if(photoRow){
-      const { data: signed } = await sb.storage.from(PHOTO_BUCKET).createSignedUrl(photoRow.storage_path, 3600);
+      const { data: signed, error: signErr } = await sb.storage.from(PHOTO_BUCKET).createSignedUrl(photoRow.storage_path, 3600);
+      if(signErr) logSilentError('Foto-URL erzeugen', signErr);
       if(signed) photoHtml = `<img class="photo-thumb" src="${signed.signedUrl}" style="margin-bottom:12px;">`;
     }
     const niceDate = new Date(dateStr+'T12:00:00').toLocaleDateString('de-DE',{weekday:'long', day:'2-digit', month:'2-digit', year:'numeric'});
@@ -1515,7 +1579,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     renderInventory();
   }
   async function loadInventory(){
-    const { data } = await sb.from('user_inventory').select('*').eq('user_id', profile.id).gt('quantity', 0);
+    const { data, error } = await sb.from('user_inventory').select('*').eq('user_id', profile.id).gt('quantity', 0);
+    if(error) logSilentError('Inventar laden', error);
     inventory = data || [];
   }
 
@@ -1564,7 +1629,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const currentlyEquipped = profile[slotField] === itemKey;
     const newValue = currentlyEquipped ? null : itemKey;
     const { error } = await sb.from('profiles').update({ [slotField]: newValue }).eq('id', profile.id);
-    if(error){ alert('Fehler: '+error.message); return; }
+    if(error){ reportError('Ausrüstung ändern', error); return; }
     profile[slotField] = newValue;
     renderInventory();
     renderCharacterEquipment();
@@ -1580,13 +1645,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       const usedToday = energyUsedToday();
       if(usedToday>0){
         const row = { user_id:profile.id, org_id:profile.org_id, action_key:'item_use', label:'Benutzt: '+def.label, xp:0, energy:-usedToday, meta:{itemKey} };
-        const { data } = await sb.from('action_log').insert(row).select().single();
+        const { data, error } = await sb.from('action_log').insert(row).select().single();
+        if(error){ reportError('Item-Effekt verbuchen', error); return; }
         if(data) log.push(data);
       }
     }
 
     const newQty = invRow.quantity-1;
-    await sb.from('user_inventory').update({ quantity:newQty, updated_at:new Date().toISOString() }).eq('user_id', profile.id).eq('item_key', itemKey);
+    const { error: qtyErr } = await sb.from('user_inventory').update({ quantity:newQty, updated_at:new Date().toISOString() }).eq('user_id', profile.id).eq('item_key', itemKey);
+    if(qtyErr){ reportError('Item-Bestand aktualisieren', qtyErr); return; }
     await loadInventory();
     renderInventory();
     render();
@@ -1602,7 +1669,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       const newClass = btn.dataset.class;
       if(newClass===profile.character_class) return;
       const { error } = await sb.from('profiles').update({character_class:newClass}).eq('id', profile.id);
-      if(error){ alert('Klasse konnte nicht geändert werden: '+error.message); return; }
+      if(error){ reportError('Klasse wechseln', error); return; }
       profile.character_class = newClass;
       applyClassTheme(newClass);
       updateClassSwitcherActive();
@@ -1647,11 +1714,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   async function renderFriendRequests(){
-    const { data: incoming } = await sb.from('friends').select('owner_id').eq('friend_id', profile.id).eq('status','pending');
+    const { data: incoming, error } = await sb.from('friends').select('owner_id').eq('friend_id', profile.id).eq('status','pending');
+    if(error) logSilentError('Freundschaftsanfragen laden', error);
     const listEl = document.getElementById('friendRequestsList');
     const ids = (incoming||[]).map(r=>r.owner_id);
     if(ids.length===0){ listEl.innerHTML=''; return; }
-    const { data: requesters } = await sb.from('profiles').select('id,display_name,character_class').in('id', ids);
+    const { data: requesters, error: reqErr } = await sb.from('profiles').select('id,display_name,character_class').in('id', ids);
+    if(reqErr) logSilentError('Anfragende Profile laden', reqErr);
     listEl.innerHTML = (requesters||[]).map(r=>`
       <div class="friend-req-row">
         <span>${CLASS_ICONS[r.character_class]||'❔'} <strong>${r.display_name}</strong> möchte dich hinzufügen</span>
@@ -1662,25 +1731,29 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       </div>`).join('');
     listEl.querySelectorAll('[data-accept]').forEach(btn=>{
       btn.addEventListener('click', async ()=>{
-        await sb.from('friends').update({status:'accepted'}).eq('owner_id', btn.dataset.accept).eq('friend_id', profile.id);
+        const { error } = await sb.from('friends').update({status:'accepted'}).eq('owner_id', btn.dataset.accept).eq('friend_id', profile.id);
+        if(error){ reportError('Freundschaftsanfrage annehmen', error); return; }
         await renderFriendRequests();
         await renderFriendGrid();
       });
     });
     listEl.querySelectorAll('[data-decline]').forEach(btn=>{
       btn.addEventListener('click', async ()=>{
-        await sb.from('friends').delete().eq('owner_id', btn.dataset.decline).eq('friend_id', profile.id);
+        const { error } = await sb.from('friends').delete().eq('owner_id', btn.dataset.decline).eq('friend_id', profile.id);
+        if(error){ reportError('Freundschaftsanfrage ablehnen', error); return; }
         await renderFriendRequests();
       });
     });
   }
 
   async function renderFriendGrid(){
-    const { data: rows } = await sb.from('friends').select('owner_id,friend_id').or(`owner_id.eq.${profile.id},friend_id.eq.${profile.id}`).eq('status','accepted');
+    const { data: rows, error } = await sb.from('friends').select('owner_id,friend_id').or(`owner_id.eq.${profile.id},friend_id.eq.${profile.id}`).eq('status','accepted');
+    if(error) logSilentError('Freundesliste laden', error);
     const ids = [...new Set((rows||[]).map(r => r.owner_id===profile.id ? r.friend_id : r.owner_id))];
     const grid = document.getElementById('friendGrid');
     if(ids.length===0){ grid.innerHTML = '<div class="empty-page-hint">Noch keine Freunde.</div>'; return; }
-    const { data: friendProfiles } = await sb.from('profiles').select('id,display_name,character_class,level').in('id', ids);
+    const { data: friendProfiles, error: profErr } = await sb.from('profiles').select('id,display_name,character_class,level').in('id', ids);
+    if(profErr) logSilentError('Freundes-Profile laden', profErr);
     grid.innerHTML = (friendProfiles||[]).map(m=>`
       <div class="guild-tile">
         <span class="gt-icon">${CLASS_ICONS[m.character_class]||'❔'}</span>
@@ -1697,8 +1770,9 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(!confirm('Diese Freundschaft wirklich entfernen?')) return;
     // Die Freundschaft kann in beide Richtungen gespeichert sein
     // (je nachdem wer die Anfrage gestellt hat) — beide Fälle abdecken.
-    await sb.from('friends').delete()
+    const { error } = await sb.from('friends').delete()
       .or(`and(owner_id.eq.${profile.id},friend_id.eq.${otherId}),and(owner_id.eq.${otherId},friend_id.eq.${profile.id})`);
+    if(error){ reportError('Freundschaft entfernen', error); return; }
     await renderFriendGrid();
   }
 
@@ -1718,15 +1792,17 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       .eq('org_id', profile.org_id)
       .ilike('display_name', name); // exakte Übereinstimmung, Groß-/Kleinschreibung egal
 
-    if(error){ resultEl.innerHTML = `<div class="empty-page-hint">Fehler: ${error.message}</div>`; return; }
+    if(error){ reportError('Nach Freund suchen', error, resultEl); return; }
     const match = (matches||[]).find(m=>m.id!==profile.id);
 
     if(!match){
       resultEl.innerHTML = '<div class="empty-page-hint">Kein exakter Treffer.</div>';
       return;
     }
-    const { data: existingA } = await sb.from('friends').select('status').eq('owner_id', profile.id).eq('friend_id', match.id).maybeSingle();
-    const { data: existingB } = await sb.from('friends').select('status').eq('owner_id', match.id).eq('friend_id', profile.id).maybeSingle();
+    const { data: existingA, error: exAErr } = await sb.from('friends').select('status').eq('owner_id', profile.id).eq('friend_id', match.id).maybeSingle();
+    if(exAErr) logSilentError('Bestehende Freundschaft prüfen', exAErr);
+    const { data: existingB, error: exBErr } = await sb.from('friends').select('status').eq('owner_id', match.id).eq('friend_id', profile.id).maybeSingle();
+    if(exBErr) logSilentError('Bestehende Freundschaft prüfen', exBErr);
     if(existingA || existingB){
       const status = (existingA||existingB).status;
       resultEl.innerHTML = `<div class="empty-page-hint">${status==='accepted' ? 'Ist bereits dein Freund.' : 'Anfrage bereits gestellt, wartet auf Bestätigung.'}</div>`;
@@ -1739,7 +1815,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       </div>`;
     document.getElementById('friendConfirmAddBtn').addEventListener('click', async ()=>{
       const { error: insErr } = await sb.from('friends').insert({ owner_id:profile.id, friend_id:match.id, org_id:profile.org_id, status:'pending' });
-      if(insErr){ resultEl.innerHTML = `<div class="empty-page-hint">Fehler: ${insErr.message}</div>`; return; }
+      if(insErr){ reportError('Freundschaftsanfrage senden', insErr, resultEl); return; }
       document.getElementById('friendSearchInput').value = '';
       resultEl.innerHTML = '<div class="empty-page-hint">Anfrage gesendet, wartet auf Bestätigung.</div>';
       await renderFriendGrid();
@@ -1762,7 +1838,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     statsSyncTimer = setTimeout(async ()=>{
       profile.total_xp = totalXp;
       profile.level = level;
-      await sb.from('profiles').update({ total_xp:totalXp, level:level }).eq('id', profile.id);
+      const { error } = await sb.from('profiles').update({ total_xp:totalXp, level:level }).eq('id', profile.id);
+      if(error) logSilentError('Level-Cache synchronisieren', error);
     }, 800);
   }
 
@@ -1824,7 +1901,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   async function searchLocationSuggestions(q){
     const box = document.getElementById('contactLocationSuggestions');
-    const { data: matches } = await sb.from('locations').select('id,name').eq('org_id', profile.org_id).ilike('name', `%${q}%`).limit(8);
+    const { data: matches, error } = await sb.from('locations').select('id,name').eq('org_id', profile.org_id).ilike('name', `%${q}%`).limit(8);
+    if(error) logSilentError('Betriebsvorschläge suchen', error);
     const safeQ = q.replace(/"/g,'&quot;');
     let html = (matches||[]).map(m=>`<div class="loc-sugg-item" data-id="${m.id}" data-name="${m.name.replace(/"/g,'&quot;')}">${m.name}</div>`).join('');
     html += `<div class="loc-sugg-item loc-sugg-new" data-newbetrieb="${safeQ}">+ „${q}" als neuen Betrieb anlegen</div>`;
@@ -1865,7 +1943,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         org_id:profile.org_id, name, type, lat:parseFloat(lat), lng:parseFloat(lon),
         address:fullAddress, plz, strasse, stadt, created_by:profile.id, owner_id:profile.id
       }).select().single();
-      if(error){ statusEl.textContent = 'Fehler: '+error.message; return; }
+      if(error){ reportError('Betrieb anlegen', error, statusEl); return; }
 
       statusEl.textContent = `"${name}" wurde angelegt und erscheint auch auf der Dungeons-Karte.`;
       contactLocationSelectedId = inserted.id;
@@ -1886,10 +1964,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   async function loadContactsBundle(){
     const { data: contacts, error } = await sb.from('contacts').select('*').order('created_at', {ascending:false});
     if(error) return { error };
-    const { data: locs } = await sb.from('locations').select('id,name,type').eq('org_id', profile.org_id);
+    const { data: locs, error: locErr } = await sb.from('locations').select('id,name,type').eq('org_id', profile.org_id);
+    if(locErr) logSilentError('Betriebe für Kontaktliste laden', locErr);
     const locMap = {}; (locs||[]).forEach(l=>locMap[l.id]={name:l.name, type:l.type});
 
-    const { data: journalMentions } = await sb.from('journal_entry_mentions').select('entry_date,contact_id').eq('user_id', profile.id);
+    const { data: journalMentions, error: mentionErr } = await sb.from('journal_entry_mentions').select('entry_date,contact_id').eq('user_id', profile.id);
+    if(mentionErr) logSilentError('Tagebuch-Markierungen laden', mentionErr);
     const mentionMap = {};
     (journalMentions||[]).forEach(m=>{
       if(!mentionMap[m.contact_id]) mentionMap[m.contact_id]=[];
@@ -1899,7 +1979,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const ids = contacts.map(c=>c.id);
     let salesMap = {};
     if(ids.length>0){
-      const { data: sales } = await sb.from('sales').select('*').in('contact_id', ids).order('datum', {ascending:false});
+      const { data: sales, error: salesErr } = await sb.from('sales').select('*').in('contact_id', ids).order('datum', {ascending:false});
+      if(salesErr) logSilentError('Verkaufshistorie laden', salesErr);
       (sales||[]).forEach(s=>{ if(!salesMap[s.contact_id]) salesMap[s.contact_id]=[]; salesMap[s.contact_id].push(s); });
     }
     return { contacts, locMap, mentionMap, salesMap, roles: config.contactRoles||{} };
@@ -1915,6 +1996,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const bundle = await loadContactsBundle();
     if(bundle.error){
       document.getElementById('dungeonWithContactsList').innerHTML = `<div class="empty-page-hint">Fehler: ${bundle.error.message}</div>`;
+      logSilentError('Kontaktliste laden', bundle.error);
       return;
     }
     contactsBundleCache = bundle;
@@ -2058,7 +2140,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const delBtn = document.getElementById('cdDeleteBtn');
     if(delBtn) delBtn.addEventListener('click', async ()=>{
       if(!confirm('Kontakt wirklich löschen?')) return;
-      await sb.from('contacts').delete().eq('id', c.id);
+      const { error } = await sb.from('contacts').delete().eq('id', c.id);
+      if(error){ reportError('Kontakt löschen', error); return; }
       document.getElementById('contactDetailModal').style.display='none';
       await renderContactsPage();
     });
@@ -2087,7 +2170,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       contact_id: contactId, org_id: profile.org_id, produkt: produkt.trim(),
       status: gewonnen ? 'gewonnen' : 'verloren', created_by: profile.id
     });
-    if(error){ alert('Fehler: '+error.message); return; }
+    if(error){ reportError('Verkauf eintragen', error); return; }
     await renderContactsPage();
   }
 
@@ -2101,7 +2184,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     contactLocationSelectedId = c.location_id||null;
     document.getElementById('contactLocationSearch').value = '';
     if(c.location_id){
-      const { data: loc } = await sb.from('locations').select('name').eq('id', c.location_id).maybeSingle();
+      const { data: loc, error } = await sb.from('locations').select('name').eq('id', c.location_id).maybeSingle();
+      if(error) logSilentError('Betrieb für Bearbeitung laden', error);
       if(loc) document.getElementById('contactLocationSearch').value = loc.name;
     }
     document.getElementById('contactStatusSelect').value = c.status;
@@ -2140,12 +2224,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     if(editingContactId){
       const { error } = await sb.from('contacts').update({ ...payload, updated_at:new Date().toISOString() }).eq('id', editingContactId);
-      if(error){ statusEl.textContent = 'Fehler: '+error.message; return; }
+      if(error){ reportError('Kontakt speichern', error, statusEl); return; }
       editingContactId = null;
       document.getElementById('contactAddBtn').textContent = '+ Kontakt anlegen';
     } else {
       const { error } = await sb.from('contacts').insert({ org_id:profile.org_id, owner_id:profile.id, ...payload });
-      if(error){ statusEl.textContent = 'Fehler: '+error.message; return; }
+      if(error){ reportError('Kontakt anlegen', error, statusEl); return; }
     }
     document.getElementById('contactVornameInput').value = '';
     document.getElementById('contactNachnameInput').value = '';
@@ -2193,7 +2277,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       context: contact.name, location_id: contact.location_id||null, contact_id: contact.id
     };
     const { data, error } = await sb.from('action_log').insert(row).select().single();
-    if(error){ alert('Fehler beim Speichern: '+error.message); return; }
+    if(error){ reportError('Aktion für Kontakt speichern', error); return; }
     log.push(data);
     await checkAndAwardRecurringQuests();
     await checkAndAwardChains();
@@ -2215,7 +2299,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   async function loadGuildState(){
-    const { data: membership } = await sb.from('guild_members').select('*').eq('member_id', profile.id).maybeSingle();
+    const { data: membership, error } = await sb.from('guild_members').select('*').eq('member_id', profile.id).maybeSingle();
+    if(error) logSilentError('Gildenmitgliedschaft laden', error);
     if(!membership){
       currentGuild = null;
       document.getElementById('guildNoGuildView').style.display='block';
@@ -2226,21 +2311,25 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     }
     document.getElementById('guildNoGuildView').style.display='none';
     document.getElementById('guildMemberView').style.display='block';
-    const { data: guild } = await sb.from('guilds').select('*').eq('id', membership.guild_id).maybeSingle();
+    const { data: guild, error: guildErr } = await sb.from('guilds').select('*').eq('id', membership.guild_id).maybeSingle();
+    if(guildErr) logSilentError('Gilde laden', guildErr);
     currentGuild = guild;
     document.getElementById('guildAddBtn').style.display = (guild && guild.founder_id===profile.id) ? 'inline-block' : 'none';
     if(guild) await renderGuildMembers(guild.id);
   }
 
   async function renderJoinableGuilds(){
-    const { data: guilds } = await sb.from('guilds').select('*').eq('org_id', profile.org_id);
+    const { data: guilds, error } = await sb.from('guilds').select('*').eq('org_id', profile.org_id);
+    if(error) logSilentError('Beitretbare Gilden laden', error);
     const listEl = document.getElementById('guildJoinList');
     if(!guilds || guilds.length===0){ listEl.innerHTML = '<div class="empty-page-hint">Noch keine Gilden vorhanden.</div>'; return; }
-    const { data: allMembers } = await sb.from('guild_members').select('guild_id').eq('org_id', profile.org_id);
+    const { data: allMembers, error: memErr } = await sb.from('guild_members').select('guild_id').eq('org_id', profile.org_id);
+    if(memErr) logSilentError('Gildenmitglieder zählen', memErr);
     const counts = {};
     (allMembers||[]).forEach(m=> counts[m.guild_id]=(counts[m.guild_id]||0)+1);
     const founderIds = [...new Set(guilds.map(g=>g.founder_id))];
-    const { data: founders } = await sb.from('profiles').select('id,display_name').in('id', founderIds);
+    const { data: founders, error: founderErr } = await sb.from('profiles').select('id,display_name').in('id', founderIds);
+    if(founderErr) logSilentError('Gildengründer laden', founderErr);
     const founderMap = {}; (founders||[]).forEach(f=>founderMap[f.id]=f.display_name);
     listEl.innerHTML = guilds.map(g=>`
       <div class="guild-join-row">
@@ -2254,7 +2343,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   async function joinGuild(guildId){
     const { error } = await sb.from('guild_members').insert({ member_id:profile.id, guild_id:guildId, org_id:profile.org_id });
-    if(error){ alert('Fehler: '+error.message); return; }
+    if(error){ reportError('Gilde beitreten', error); return; }
     await loadGuildState();
   }
 
@@ -2262,26 +2351,28 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const name = document.getElementById('guildNameInput').value.trim();
     if(!name) return;
     const { data: guild, error } = await sb.from('guilds').insert({ org_id:profile.org_id, name, founder_id:profile.id }).select().single();
-    if(error){ alert('Fehler: '+error.message); return; }
+    if(error){ reportError('Gilde gründen', error); return; }
     const { error: memErr } = await sb.from('guild_members').insert({ member_id:profile.id, guild_id:guild.id, org_id:profile.org_id });
-    if(memErr){ alert('Fehler: '+memErr.message); return; }
+    if(memErr){ reportError('Als Gildenmitglied eintragen', memErr); return; }
     await loadGuildState();
   });
 
   document.getElementById('guildLeaveBtn').addEventListener('click', async ()=>{
     if(!confirm('Gilde wirklich verlassen?')) return;
     const { error } = await sb.from('guild_members').delete().eq('member_id', profile.id);
-    if(error){ alert('Fehler: '+error.message); return; }
+    if(error){ reportError('Gilde verlassen', error); return; }
     document.getElementById('guildPickerCard').style.display='none';
     await loadGuildState();
   });
 
   async function renderGuildMembers(guildId){
-    const { data: members } = await sb.from('guild_members').select('member_id').eq('guild_id', guildId);
+    const { data: members, error } = await sb.from('guild_members').select('member_id').eq('guild_id', guildId);
+    if(error) logSilentError('Gildenmitglieder laden', error);
     const ids = (members||[]).map(m=>m.member_id);
     const grid = document.getElementById('guildGrid');
     if(ids.length===0){ grid.innerHTML=''; return; }
-    const { data: memberProfiles } = await sb.from('profiles').select('id,display_name,character_class,level').in('id', ids);
+    const { data: memberProfiles, error: profErr } = await sb.from('profiles').select('id,display_name,character_class,level').in('id', ids);
+    if(profErr) logSilentError('Gildenmitglieder-Profile laden', profErr);
     grid.innerHTML = (memberProfiles||[]).map(m=>{
       const icon = CLASS_ICONS[m.character_class] || '❔';
       const isFounder = currentGuild && currentGuild.founder_id===m.id;
@@ -2299,8 +2390,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   async function renderGuildPicker(){
     const card = document.getElementById('guildPickerCard');
     card.style.display='block';
-    const { data: orgMembers } = await sb.from('profiles').select('id,display_name,character_class').eq('org_id', profile.org_id);
-    const { data: existing } = await sb.from('guild_members').select('member_id').eq('guild_id', currentGuild.id);
+    const { data: orgMembers, error } = await sb.from('profiles').select('id,display_name,character_class').eq('org_id', profile.org_id);
+    if(error) logSilentError('Kollegen laden', error);
+    const { data: existing, error: existErr } = await sb.from('guild_members').select('member_id').eq('guild_id', currentGuild.id);
+    if(existErr) logSilentError('Bestehende Gildenmitglieder laden', existErr);
     const existingIds = new Set((existing||[]).map(e=>e.member_id));
     const candidates = (orgMembers||[]).filter(m=>!existingIds.has(m.id));
     const listEl = document.getElementById('guildPickerList');
@@ -2313,7 +2406,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     listEl.querySelectorAll('[data-add]').forEach(btn=>{
       btn.addEventListener('click', async ()=>{
         const { error } = await sb.from('guild_members').insert({ member_id:btn.dataset.add, guild_id:currentGuild.id, org_id:profile.org_id });
-        if(error){ alert('Fehler: '+error.message); return; }
+        if(error){ reportError('Mitglied zur Gilde hinzufügen', error); return; }
         card.style.display='none';
         await renderGuildMembers(currentGuild.id);
       });
@@ -2351,8 +2444,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   async function renderAccountPool(){
     const listEl = document.getElementById('accountPoolList');
-    const { data: locs } = await sb.from('locations').select('id,name,owner_id').eq('org_id', profile.org_id).order('name');
-    const { data: members } = await sb.from('profiles').select('id,display_name').eq('org_id', profile.org_id);
+    const { data: locs, error } = await sb.from('locations').select('id,name,owner_id').eq('org_id', profile.org_id).order('name');
+    if(error) logSilentError('Account-Pool laden', error);
+    const { data: members, error: memErr } = await sb.from('profiles').select('id,display_name').eq('org_id', profile.org_id);
+    if(memErr) logSilentError('Team-Mitglieder laden', memErr);
     if(!locs || locs.length===0){ listEl.innerHTML = '<div class="empty-page-hint">Noch keine Accounts angelegt.</div>'; return; }
     const memberOptions = (members||[]).map(m=>`<option value="${m.id}">${m.display_name}</option>`).join('');
     listEl.innerHTML = locs.map(l=>`
@@ -2369,13 +2464,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       sel.addEventListener('change', async ()=>{
         const newOwner = sel.value || null;
         const { error } = await sb.from('locations').update({owner_id:newOwner}).eq('id', sel.dataset.assign);
-        if(error){ alert('Fehler: '+error.message); return; }
+        if(error){ reportError('Account-Zuweisung ändern', error); return; }
       });
     });
   }
 
   async function loadAndRenderLocations(){
-    const { data: locations } = await sb.from('locations').select('*').eq('org_id', profile.org_id);
+    const { data: locations, error } = await sb.from('locations').select('*').eq('org_id', profile.org_id);
+    if(error) logSilentError('Dungeons/Karte laden', error);
     dungeonMarkers.forEach(m=>dungeonMap.removeLayer(m));
     dungeonMarkers = [];
     const types = config.locationTypes || {};
@@ -2410,7 +2506,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         org_id:profile.org_id, name, type, lat:parseFloat(lat), lng:parseFloat(lon),
         address, created_by:profile.id
       });
-      if(error){ statusEl.textContent = 'Fehler: '+error.message; return; }
+      if(error){ reportError('Dungeon anlegen', error, statusEl); return; }
       document.getElementById('locNameInput').value = '';
       document.getElementById('locAddressInput').value = '';
       statusEl.textContent = `"${name}" wurde hinzugefügt.`;
@@ -2451,7 +2547,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       context: loc.name, location_id: loc.id
     };
     const { data, error } = await sb.from('action_log').insert(row).select().single();
-    if(error){ alert('Fehler beim Speichern: '+error.message); return; }
+    if(error){ reportError('Aktion am Dungeon speichern', error); return; }
     log.push(data);
     await checkAndAwardRecurringQuests();
     await checkAndAwardChains();
@@ -2459,16 +2555,39 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     render();
   }
 
+  // ---- Fehlerprotokoll-Seite (nur Admins) ----
+  async function renderErrorLog(){
+    const listEl = document.getElementById('errorLogList');
+    if(profile.role!=='admin') return;
+    listEl.innerHTML = '<div class="empty-page-hint">Lädt …</div>';
+    const { data, error } = await sb.from('error_log')
+      .select('*, profiles(display_name)')
+      .order('created_at', {ascending:false})
+      .limit(200);
+    if(error){ listEl.innerHTML = `<div class="empty-page-hint">Fehler beim Laden des Fehlerprotokolls: ${error.message}</div>`; return; }
+    if(!data || data.length===0){ listEl.innerHTML = '<div class="empty-page-hint">Keine Fehler protokolliert.</div>'; return; }
+    listEl.innerHTML = data.map(e=>`
+      <div class="log-entry">
+        <span class="lname"><span style="color:var(--danger)">${e.context}</span> — ${e.message}</span>
+        <span class="lright">
+          <span class="ltime">${fmtTime(e.created_at)}</span>
+          <span class="ltime">${e.profiles ? e.profiles.display_name : '?'}</span>
+        </span>
+      </div>`).join('');
+  }
+
   // ---- Seitennavigation ----
-  const VALID_PAGES = ['charakter','handlungen','inventar','gilde','dungeons','kontakte','tagebuch'];
+  const VALID_PAGES = ['charakter','handlungen','inventar','gilde','dungeons','kontakte','tagebuch','fehlerprotokoll'];
 
   function showPage(pageName, updateHash){
     if(!VALID_PAGES.includes(pageName)) pageName = 'charakter';
+    if(pageName==='fehlerprotokoll' && profile.role!=='admin') pageName = 'charakter';
     document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active', b.dataset.page===pageName));
     document.querySelectorAll('.page').forEach(p=>p.style.display='none');
     document.getElementById('page-'+pageName).style.display='block';
     if(updateHash!==false) location.hash = pageName;
     if(pageName==='dungeons'){ ensureDungeonMap(); if(dungeonMap) setTimeout(()=>dungeonMap.invalidateSize(),150); }
+    if(pageName==='fehlerprotokoll') renderErrorLog();
   }
 
   document.querySelectorAll('.nav-btn').forEach(btn=>{

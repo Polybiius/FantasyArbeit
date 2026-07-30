@@ -40,17 +40,29 @@ nicht per Code-Änderung.
   SQL-Patch manuell im Supabase SQL-Editor ausgeführt. Das ändert sich jetzt mit
   Claude Code.
 
-## Datenbank — aktueller Stand (Annahme: Patch 1–15 sind alle eingespielt)
+## Datenbank — aktueller Stand (Annahme: Patch 1–17b sind alle eingespielt)
 
 **Wenn das nicht stimmt, sofort korrigieren, bevor irgendetwas gebaut wird** — sonst
 versucht Claude Code eventuell, Dinge doppelt anzulegen oder Migrationen in falscher
 Reihenfolge zu bauen.
 
 Alle SQL-Patches liegen im Ordner `sql/` (chronologisch benannt, `schema.sql` +
-`patch.sql` sind die ursprüngliche Basis, danach `patch2_...` bis `patch15_...`).
+`patch.sql` sind die ursprüngliche Basis, danach `patch2_...` bis `patch17b_...`).
 Sie wurden bisher **einzeln, nacheinander, manuell** im Supabase SQL-Editor
 ausgeführt — nicht über eine Migrations-Toolchain. `PATCH_LOG.md` listet die
 genaue Reihenfolge und was jeder Patch bewirkt.
+
+Seit Patch 17/17b gibt es außerdem: eine zentrale `error_log`-Tabelle (jeder
+fehlgeschlagene Datenbank-Aufruf im Frontend wird dort protokolliert, sichtbar
+nur für Admins im neuen Reiter "Fehlerprotokoll"), sowie Indizes auf den
+bisher unindizierten Fremdschlüssel-Spalten von `contacts`, `locations`,
+`sales` und `profiles` (Postgres indiziert Fremdschlüssel nicht automatisch).
+Im Frontend-Code gibt es dafür zwei zentrale Helferfunktionen ganz oben im
+Skript: `reportError(context, error, statusEl)` für Fehler, die der Nutzer
+direkt sehen soll (Formular-Speichern etc.), und `logSilentError(context,
+error)` für Hintergrund-Ladevorgänge, wo ein alert()-Popup nur stören würde.
+**Neuer Code, der mit der Datenbank spricht, sollte konsequent eine der beiden
+Funktionen benutzen statt eigene Fehlerbehandlung zu erfinden.**
 
 ### Kern-Tabellen
 
@@ -93,14 +105,24 @@ genaue Reihenfolge und was jeder Patch bewirkt.
   Schritt.
 - `journal_entries` — Tagebuch, **fünf feste Fragen** pro Tag (siehe unten),
   strikt privat (auch Admins sehen fremde Einträge NICHT — bewusst die einzige
-  Tabelle ohne Admin-Ausnahme). Hat `tagged_contact_id` (optionale, rein
-  persönliche Verknüpfung zu einem Kontakt — für die spätere Jahres-Geschichte,
-  **keine CRM-Statistik**).
+  Tabelle ohne Admin-Ausnahme).
+- `journal_entry_mentions` — @mention-Markierungen aus dem Tagebuch (seit Patch
+  16, ersetzt das frühere einzelne `tagged_contact_id`-Feld): beliebig viele
+  Kontakt-Markierungen pro Tagebuchtag, rein persönlich, **keine
+  CRM-Statistik**, genauso privat wie `journal_entries` selbst. Angezeigt wird
+  das nicht im Tagebuch, sondern im Kontakt-Detail als eigener Reiter
+  "Tagebucheintrag" (Liste der Tage, an denen der Kontakt erwähnt wurde) —
+  bewusst **nicht löschbar**, ein Tagebucheintrag bleibt stehen wie geschrieben.
 - `journal_photos` — ein Foto pro Tag, privater Storage-Bucket. Hat schon jetzt
   `transformed_path`/`transform_status`, aktuell ungenutzt — Platzhalter für
   eine spätere KI-Bildumwandlung (siehe "Bewusst aufgeschobene Ideen" unten).
 - `user_inventory`, `guilds`, `guild_members`, `friends` — siehe `PATCH_LOG.md`
   für Details, Funktionsweise ist selbsterklärend über die Namen.
+- `error_log` — zentrales Fehlerprotokoll (seit Patch 17). Jeder fehlgeschlagene
+  Datenbank-Aufruf im Frontend landet hier (`org_id`, `user_id`, `context`,
+  `message`, `created_at`). Insert darf jeder für die eigene Organisation,
+  Lesen nur Admins — sichtbar im neuen Reiter "Fehlerprotokoll". Bewusst kein
+  Update/Delete: ein Protokoll wird nicht nachträglich verändert.
 
 ### Sicherheitsmodell (RLS), zum Verständnis
 
