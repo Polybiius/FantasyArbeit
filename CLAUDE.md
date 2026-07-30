@@ -193,6 +193,17 @@ Gewonnen / Verloren → Dauerbrenner. **Bewusst fest im Code**, nicht
 konfigurierbar (Rule of Three — erst wenn eine zweite Organisation ansteht,
 lohnt sich die Abstraktion; vorher würden wir nur raten).
 
+**Optik als Wegkarte statt Büro-Spalten** (bewusste Design-Entscheidung, weil
+seitliches Scrollen zum "Questpfad"-Namen passt, wenn es sich wie eine Route
+anfühlt statt wie ein CRM-Board): Wegpunkte mit Icon-Marker pro Stufe, im
+Zickzack versetzt (`nth-child(4n+1)`/`nth-child(4n+3)` in der CSS), verbunden
+durch Pfeile (`.kanban-path-arrow`). Responsive über eine einzige Media
+Query bei 760px: Desktop bleibt die waagerechte, scrollbare Route; auf dem
+Handy dreht sich dieselbe Route senkrecht (Spalten stapeln sich, Zickzack
+wird zu links/rechts-Versatz, Pfeile drehen sich 90°) — man scrollt dann
+nach unten statt seitlich zu wischen. Drag & Drop, `moveKanbanCard()` usw.
+sind davon komplett unberührt, das ist reine CSS/HTML-Optik.
+
 Jede Karte ist ein Kontakt. Die Spalte selbst wird zwar aus dem Aktions-Log
 abgeleitet (Philosophie: "Kanban wird nicht gepflegt, sondern abgeleitet"),
 aber weil zwei Spalten (Angebot versendet, Zweittermin) dieselbe Aktion

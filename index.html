@@ -236,11 +236,19 @@
   .dungeon-tile .dt-icon{font-size:32px;position:relative;}
   .dungeon-tile .dt-name{font-family:'Cinzel',serif;font-weight:700;font-size:13.5px;color:var(--text);position:relative;}
   .dungeon-tile .dt-count{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--arcane-glow);position:relative;}
-  .kanban-board{display:flex;gap:12px;overflow-x:auto;padding-bottom:8px;}
-  .kanban-col{flex:0 0 220px;background:var(--panel-2);border:1px solid var(--border);border-radius:12px;padding:10px;display:flex;flex-direction:column;min-height:120px;}
+  /* Questpfad: eine Wegkarte statt Büro-Spalten — Wegpunkte im Zickzack,
+     verbunden durch Pfeile. Desktop: waagerechte Route, wechselnd hoch/tief
+     versetzt. Handy: dieselbe Route senkrecht gedreht, wechselnd links/rechts
+     versetzt — man scrollt nach unten statt seitlich zu wischen. */
+  .kanban-board{display:flex;align-items:center;gap:4px;overflow-x:auto;overflow-y:visible;padding:46px 14px 40px;}
+  .kanban-col{flex:0 0 188px;background:var(--panel-2);border:1px solid var(--border);border-radius:16px;padding:14px 10px 10px;display:flex;flex-direction:column;min-height:120px;position:relative;transition:transform .2s, border-color .15s;}
+  .kanban-col:nth-child(4n+1){transform:translateY(-24px);}
+  .kanban-col:nth-child(4n+3){transform:translateY(24px);}
   .kanban-col.drag-over{border-color:var(--arcane);background:rgba(139,92,246,0.10);}
-  .kanban-col-header{font-family:'Cinzel',serif;font-weight:700;font-size:12.5px;color:var(--text);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;}
+  .kanban-waypoint-icon{position:absolute;top:-18px;left:50%;transform:translateX(-50%);width:34px;height:34px;border-radius:50%;background:var(--panel);border:1px solid var(--arcane);display:flex;align-items:center;justify-content:center;font-size:16px;box-shadow:0 0 10px rgba(139,92,246,0.35);}
+  .kanban-col-header{font-family:'Cinzel',serif;font-weight:700;font-size:12px;color:var(--text);margin:10px 0 8px;display:flex;justify-content:space-between;align-items:center;gap:4px;}
   .kanban-count{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--arcane-glow);background:var(--panel);border-radius:999px;padding:1px 8px;}
+  .kanban-path-arrow{flex:0 0 auto;color:var(--muted-2);font-size:15px;align-self:center;}
   .kanban-cards{display:flex;flex-direction:column;gap:8px;min-height:40px;}
   .kanban-card{background:var(--panel);border:1px solid var(--border);border-radius:9px;padding:8px 10px;font-size:12px;cursor:grab;transition:border-color .15s;}
   .kanban-card:hover{border-color:var(--arcane);}
@@ -249,6 +257,14 @@
   .kanban-card .kc-meta{display:block;color:var(--muted-2);font-size:10.5px;font-family:'JetBrains Mono',monospace;margin-top:2px;}
   .kanban-newlead-form{display:flex;flex-direction:column;gap:6px;margin-bottom:10px;}
   .kanban-newlead-form input{background:var(--panel);border:1px solid var(--border);border-radius:7px;padding:7px 9px;color:var(--text);font-size:12.5px;}
+
+  @media (max-width: 760px){
+    .kanban-board{flex-direction:column;align-items:stretch;overflow-x:visible;padding:20px 8px;}
+    .kanban-col{flex:1 1 auto;width:100%;}
+    .kanban-col:nth-child(4n+1){transform:translateX(-14px);}
+    .kanban-col:nth-child(4n+3){transform:translateX(14px);}
+    .kanban-path-arrow{align-self:center;transform:rotate(90deg);}
+  }
   .contact-table-title{font-family:'Cinzel',serif;font-size:15px;margin:12px 0;}
   .ctable{width:100%;border-collapse:collapse;font-size:12.5px;}
   .ctable th{text-align:left;color:var(--muted-2);font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;padding:8px 10px;border-bottom:1px solid var(--border);}
@@ -715,6 +731,7 @@
           <div class="empty-page-hint" style="margin-bottom:8px;">Karten ziehen, um den Verkaufsprozess weiterzuschieben — Aktionen und XP werden dabei automatisch mitgeloggt.</div>
           <div class="kanban-board" id="kanbanBoard">
             <div class="kanban-col" data-stage="neuer_lead">
+              <div class="kanban-waypoint-icon">🚩</div>
               <div class="kanban-col-header">Neuer Lead <span class="kanban-count" id="kanbanCount_neuer_lead">0</span></div>
               <button class="cal-nav-btn" id="kanbanNewLeadBtn" style="width:100%;margin-bottom:8px;">+ Neuer Lead</button>
               <div class="kanban-newlead-form" id="kanbanNewLeadForm" style="display:none;">
@@ -725,31 +742,45 @@
               </div>
               <div class="kanban-cards" id="kanbanCards_neuer_lead"></div>
             </div>
+            <div class="kanban-path-arrow">➜</div>
             <div class="kanban-col" data-stage="ersttermin_vereinbart">
+              <div class="kanban-waypoint-icon">📜</div>
               <div class="kanban-col-header">Ersttermin vereinbart <span class="kanban-count" id="kanbanCount_ersttermin_vereinbart">0</span></div>
               <div class="kanban-cards" id="kanbanCards_ersttermin_vereinbart"></div>
             </div>
+            <div class="kanban-path-arrow">➜</div>
             <div class="kanban-col" data-stage="nicht_erschienen">
+              <div class="kanban-waypoint-icon">🌫</div>
               <div class="kanban-col-header">Nicht erschienen <span class="kanban-count" id="kanbanCount_nicht_erschienen">0</span></div>
               <div class="kanban-cards" id="kanbanCards_nicht_erschienen"></div>
             </div>
+            <div class="kanban-path-arrow">➜</div>
             <div class="kanban-col" data-stage="angebot_versendet">
+              <div class="kanban-waypoint-icon">✉️</div>
               <div class="kanban-col-header">Angebot versendet <span class="kanban-count" id="kanbanCount_angebot_versendet">0</span></div>
               <div class="kanban-cards" id="kanbanCards_angebot_versendet"></div>
             </div>
+            <div class="kanban-path-arrow">➜</div>
             <div class="kanban-col" data-stage="zweittermin">
+              <div class="kanban-waypoint-icon">🤝</div>
               <div class="kanban-col-header">Zweittermin <span class="kanban-count" id="kanbanCount_zweittermin">0</span></div>
               <div class="kanban-cards" id="kanbanCards_zweittermin"></div>
             </div>
+            <div class="kanban-path-arrow">➜</div>
             <div class="kanban-col" data-stage="gewonnen">
+              <div class="kanban-waypoint-icon">🏆</div>
               <div class="kanban-col-header">Gewonnen <span class="kanban-count" id="kanbanCount_gewonnen">0</span></div>
               <div class="kanban-cards" id="kanbanCards_gewonnen"></div>
             </div>
+            <div class="kanban-path-arrow">➜</div>
             <div class="kanban-col" data-stage="verloren">
+              <div class="kanban-waypoint-icon">❌</div>
               <div class="kanban-col-header">Verloren <span class="kanban-count" id="kanbanCount_verloren">0</span></div>
               <div class="kanban-cards" id="kanbanCards_verloren"></div>
             </div>
+            <div class="kanban-path-arrow">➜</div>
             <div class="kanban-col" data-stage="dauerbrenner">
+              <div class="kanban-waypoint-icon">🔥</div>
               <div class="kanban-col-header">Dauerbrenner <span class="kanban-count" id="kanbanCount_dauerbrenner">0</span></div>
               <div class="kanban-cards" id="kanbanCards_dauerbrenner"></div>
             </div>
