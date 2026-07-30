@@ -40,14 +40,14 @@ nicht per Code-Änderung.
   SQL-Patch manuell im Supabase SQL-Editor ausgeführt. Das ändert sich jetzt mit
   Claude Code.
 
-## Datenbank — aktueller Stand (Annahme: Patch 1–19 sind alle eingespielt)
+## Datenbank — aktueller Stand (Annahme: Patch 1–20 sind alle eingespielt)
 
 **Wenn das nicht stimmt, sofort korrigieren, bevor irgendetwas gebaut wird** — sonst
 versucht Claude Code eventuell, Dinge doppelt anzulegen oder Migrationen in falscher
 Reihenfolge zu bauen.
 
 Alle SQL-Patches liegen im Ordner `sql/` (chronologisch benannt, `schema.sql` +
-`patch.sql` sind die ursprüngliche Basis, danach `patch2_...` bis `patch19_...`).
+`patch.sql` sind die ursprüngliche Basis, danach `patch2_...` bis `patch20_...`).
 Sie wurden bisher **einzeln, nacheinander, manuell** im Supabase SQL-Editor
 ausgeführt — nicht über eine Migrations-Toolchain. `PATCH_LOG.md` listet die
 genaue Reihenfolge und was jeder Patch bewirkt.

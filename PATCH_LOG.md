@@ -28,6 +28,7 @@ alle bis einschließlich Patch 15 im Supabase-Projekt eingespielt sind.
 | 17b | `patch17b_indizes.sql` | Fehlende Indizes auf Fremdschlüssel-Spalten (`contacts`, `locations`, `sales`, `journal_entry_mentions`, `profiles`) — vorher gab es außer auf `action_log` keine |
 | 18 | `patch18_kanban.sql` | `contacts.kanban_stage` (Kanban-Spalte pro Kontakt, 8 feste Werte), neue Aktion `termin_nicht_wahrgenommen` (−2 XP, Konversions-Malus) im Regelwerk |
 | 19 | `patch19_kanban_opt_in.sql` | **Korrektur zu Patch 18**: `kanban_stage` war fälschlich `not null default 'neuer_lead'` — dadurch tauchte JEDER bestehende Kontakt automatisch als Lead im Kanban auf, nur weil er in der Datenbank existierte. Jetzt nullable ohne Default, alle bestehenden Kontakte auf `null` zurückgesetzt (= kein Kanban-Kontakt) |
+| 20 | `patch20_manareserve_20.sql` | `energyMax` (Manareserve/Tagesenergie) von 15 auf 20 angehoben — reine Regelwerk-Konfiguration, kein Code betroffen |
 
 ## Wichtiger Hinweis zu Patch 13
 
