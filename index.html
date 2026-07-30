@@ -192,10 +192,6 @@
   .loc-sugg-item:hover{background:rgba(139,92,246,0.14);}
   .loc-sugg-new{color:var(--arcane-glow);font-weight:600;border-top:1px solid var(--border);}
   .journal-mention-wrap{position:relative;}
-  .journal-mention-chips{display:flex;flex-wrap:wrap;gap:8px;}
-  .journal-mention-chip{display:flex;align-items:center;gap:6px;background:var(--panel-2);border:1px solid var(--border);border-radius:999px;padding:5px 8px 5px 12px;font-size:12.5px;color:var(--text);}
-  .journal-mention-chip button{background:none;border:none;color:var(--muted);cursor:pointer;font-size:14px;line-height:1;padding:0 2px;}
-  .journal-mention-chip button:hover{color:var(--danger);}
   #contactNotesInput{width:100%;resize:vertical;}
   .contact-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;}
   .contact-card{background:var(--panel-2);border:1px solid var(--border);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:6px;}
@@ -249,7 +245,8 @@
   .cd-field{margin-bottom:10px;font-size:13px;}
   .cd-field .cdl{color:var(--muted-2);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:2px;}
   .cd-field .cdv{color:var(--text);white-space:pre-wrap;}
-  .cd-mentions a{color:var(--arcane-glow);cursor:pointer;text-decoration:underline;margin-right:8px;font-family:'JetBrains Mono',monospace;font-size:11.5px;}
+  .cd-mentions{display:flex;flex-wrap:wrap;gap:8px;}
+  .cd-mentions a{display:inline-block;}
   .empty-page-hint{color:var(--muted-2);font-size:12.5px;font-family:'JetBrains Mono',monospace;text-align:center;padding:30px 0;}
 
   .inv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;}
@@ -752,12 +749,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         </div>
 
         <div class="card" style="margin-top:18px;">
-          <h2>Markierte Kontakte heute <span class="tag">persönlich, keine CRM-Statistik</span></h2>
-          <div class="empty-page-hint" style="margin-bottom:8px;">Tippe @ gefolgt vom Namen in einem der Felder oben — für die Geschichte am Jahresende, nicht für die Verkaufsauswertung.</div>
-          <div id="journalMentionChips" class="journal-mention-chips"></div>
-        </div>
-
-        <div class="card" style="margin-top:18px;">
           <h2>Schnappschuss des Tages <span class="tag">optional</span></h2>
           <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none;">
           <button class="cal-nav-btn" id="photoBtn">📷 Foto aufnehmen</button>
@@ -796,7 +787,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       <span id="contactDetailTitle">Kontakt</span>
       <button id="contactDetailClose">✕</button>
     </div>
+    <div class="view-switch">
+      <button class="cal-nav-btn view-switch-btn active" id="cdTabOverviewBtn">Übersicht</button>
+      <button class="cal-nav-btn view-switch-btn" id="cdTabJournalBtn">Tagebucheintrag</button>
+    </div>
     <div id="contactDetailBody"></div>
+    <div id="contactDetailJournal" style="display:none;"></div>
   </div>
 </div>
 
@@ -1321,7 +1317,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         if(!box.contains(e.target) && e.target!==ta) box.style.display='none';
       });
     });
-    loadJournalMentionChips();
   }
 
   // Findet ein "@teilname" direkt vor dem Cursor (kein Leerzeichen dazwischen).
@@ -1347,7 +1342,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(caretMatch){
       const before = ta.value.slice(0, caretMatch.start);
       const after = ta.value.slice(ta.selectionStart);
-      const insertion = `@${contactName} `;
+      const insertion = `@${contactName.replace(/\s+/g,'')} `;
       ta.value = before + insertion + after;
       const newCaret = (before + insertion).length;
       ta.setSelectionRange(newCaret, newCaret);
@@ -1367,25 +1362,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       { user_id:profile.id, org_id:profile.org_id, entry_date:today, contact_id:contactId },
       { onConflict:'user_id,entry_date,contact_id' }
     );
-    loadJournalMentionChips();
-  }
-
-  async function loadJournalMentionChips(){
-    const today = todayKey(new Date());
-    const chipsEl = document.getElementById('journalMentionChips');
-    const { data } = await sb.from('journal_entry_mentions').select('id,contact_id,contacts(name)').eq('user_id', profile.id).eq('entry_date', today);
-    if(!data || data.length===0){ chipsEl.innerHTML = '<div class="empty-page-hint">Noch keine Markierung heute.</div>'; return; }
-    chipsEl.innerHTML = data.map(m=>`
-      <div class="journal-mention-chip">
-        <span>📇 ${m.contacts ? m.contacts.name : '?'}</span>
-        <button data-remove="${m.id}">✕</button>
-      </div>`).join('');
-    chipsEl.querySelectorAll('[data-remove]').forEach(btn=>{
-      btn.addEventListener('click', async ()=>{
-        await sb.from('journal_entry_mentions').delete().eq('id', btn.dataset.remove);
-        loadJournalMentionChips();
-      });
-    });
   }
 
   // ---- Schnappschuss des Tages ----
@@ -2047,11 +2023,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     html += field('Zuletzt kontaktiert (von dir)', lastTs ? fmtTime(lastTs) : 'Noch kein eigener Kontaktpunkt');
     html += field('Notizen', c.notes);
 
-    if(mentions.length>0){
-      const links = mentions.map(d=>`<a data-jump="${d}">${new Date(d+'T12:00:00').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'})}</a>`).join(' ');
-      html += `<div class="cd-field cd-mentions"><span class="cdl">📖 Im Tagebuch erwähnt</span>${links}</div>`;
-    }
-
     html += `<div class="cc-sales-block"><span class="cdl">Verkaufshistorie</span>`;
     html += cSales.length ? cSales.map(s=>`<div class="cc-notes">${s.status==='gewonnen'?'✅':'❌'} ${s.produkt} — ${fmtDate(s.datum)}</div>`).join('') : '<div class="cc-notes">Noch keine Verkaufshistorie.</div>';
     if(canEdit) html += `<button id="cdAddSaleBtn" style="margin-top:6px;">+ Verkauf eintragen</button>`;
@@ -2063,9 +2034,20 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     </div>`;
 
     document.getElementById('contactDetailBody').innerHTML = html;
+
+    const journalHtml = mentions.length>0
+      ? `<div class="cd-mentions">${mentions.map(d=>`<a class="cal-nav-btn" data-jump="${d}">📖 ${new Date(d+'T12:00:00').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'})}</a>`).join('')}</div>`
+      : `<div class="empty-page-hint">Noch kein Tagebucheintrag mit diesem Kontakt.</div>`;
+    document.getElementById('contactDetailJournal').innerHTML = journalHtml;
+
+    document.getElementById('cdTabOverviewBtn').classList.add('active');
+    document.getElementById('cdTabJournalBtn').classList.remove('active');
+    document.getElementById('contactDetailBody').style.display='block';
+    document.getElementById('contactDetailJournal').style.display='none';
+
     document.getElementById('contactDetailModal').style.display='flex';
 
-    document.querySelectorAll('#contactDetailBody [data-jump]').forEach(a=>{
+    document.querySelectorAll('#contactDetailBody [data-jump], #contactDetailJournal [data-jump]').forEach(a=>{
       a.addEventListener('click', ()=> jumpToJournalDay(a.dataset.jump));
     });
     document.getElementById('cdLogActionBtn').addEventListener('click', ()=> openContactActionModal(c));
@@ -2083,6 +2065,18 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
   document.getElementById('contactDetailClose').addEventListener('click', ()=>{
     document.getElementById('contactDetailModal').style.display='none';
+  });
+  document.getElementById('cdTabOverviewBtn').addEventListener('click', ()=>{
+    document.getElementById('cdTabOverviewBtn').classList.add('active');
+    document.getElementById('cdTabJournalBtn').classList.remove('active');
+    document.getElementById('contactDetailBody').style.display='block';
+    document.getElementById('contactDetailJournal').style.display='none';
+  });
+  document.getElementById('cdTabJournalBtn').addEventListener('click', ()=>{
+    document.getElementById('cdTabJournalBtn').classList.add('active');
+    document.getElementById('cdTabOverviewBtn').classList.remove('active');
+    document.getElementById('contactDetailJournal').style.display='block';
+    document.getElementById('contactDetailBody').style.display='none';
   });
 
   async function addSaleForContact(contactId){
