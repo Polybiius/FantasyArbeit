@@ -40,14 +40,14 @@ nicht per Code-Änderung.
   SQL-Patch manuell im Supabase SQL-Editor ausgeführt. Das ändert sich jetzt mit
   Claude Code.
 
-## Datenbank — aktueller Stand (Annahme: Patch 1–17b sind alle eingespielt)
+## Datenbank — aktueller Stand (Annahme: Patch 1–18 sind alle eingespielt)
 
 **Wenn das nicht stimmt, sofort korrigieren, bevor irgendetwas gebaut wird** — sonst
 versucht Claude Code eventuell, Dinge doppelt anzulegen oder Migrationen in falscher
 Reihenfolge zu bauen.
 
 Alle SQL-Patches liegen im Ordner `sql/` (chronologisch benannt, `schema.sql` +
-`patch.sql` sind die ursprüngliche Basis, danach `patch2_...` bis `patch17b_...`).
+`patch.sql` sind die ursprüngliche Basis, danach `patch2_...` bis `patch18_...`).
 Sie wurden bisher **einzeln, nacheinander, manuell** im Supabase SQL-Editor
 ausgeführt — nicht über eine Migrations-Toolchain. `PATCH_LOG.md` listet die
 genaue Reihenfolge und was jeder Patch bewirkt.
@@ -96,6 +96,8 @@ Funktionen benutzen statt eigene Fehlerbehandlung zu erfinden.**
   `bedarf_wunsch`), `status` (kalt/warm/kunde/verloren — reines Tracking,
   keine Rückwirkung auf XP), `naechster_kontakt` (Wiedervorlage-Datum),
   `owner_id` (folgt automatisch dem Location-Owner, siehe Trigger oben).
+  Seit Patch 18: `kanban_stage` (8 feste Werte, siehe Abschnitt "Kanban"
+  unten) — die Spalte, in der der Kontakt im Kanban-Board liegt.
   Sichtbarkeit konfigurierbar über `contacts_shared_for_org()` (liest
   `rule_configs.contactsVisibility`).
 - `sales` — echte Verkaufshistorie (nicht nur ein Feld!): mehrere Produkte pro
@@ -177,16 +179,57 @@ Klassenabhängige Begriffe für dieselbe Funktion:
 | Gilde | Orden | Legion | Bund |
 | Mitglied hinzufügen | Arkanisten hinzufügen | Legionäre hinzufügen | Bundesbrüder hinzufügen |
 | Kundendatenbank | Arkanes Register | Kriegsarchiv | Jägerchronik |
+| Kanban | Questpfad | Gildenbrett | Feldzug |
+
+## Kanban (Questpfad / Gildenbrett / Feldzug), seit Patch 18
+
+Acht feste Spalten (Reihenfolge in `KANBAN_STAGES` in `index.html`): Neuer Lead
+→ Ersttermin vereinbart → Nicht erschienen / Angebot versendet → Zweittermin →
+Gewonnen / Verloren → Dauerbrenner. **Bewusst fest im Code**, nicht
+konfigurierbar (Rule of Three — erst wenn eine zweite Organisation ansteht,
+lohnt sich die Abstraktion; vorher würden wir nur raten).
+
+Jede Karte ist ein Kontakt. Die Spalte selbst wird zwar aus dem Aktions-Log
+abgeleitet (Philosophie: "Kanban wird nicht gepflegt, sondern abgeleitet"),
+aber weil zwei Spalten (Angebot versendet, Zweittermin) dieselbe Aktion
+(`pitch`) loggen, reicht das Log allein nicht zur Unterscheidung — deshalb
+gibt's zusätzlich `contacts.kanban_stage` als expliziten Spalten-Zeiger, der
+beim Ziehen direkt mitgesetzt wird. Ziehen ist die Bedienoberfläche, das Log
+bleibt die Wahrheitsquelle für XP/Quests/Statistik.
+
+**Spaltenübergänge und was sie auslösen** (Logik in `moveKanbanCard()`):
+- → Ersttermin vereinbart: Aktion `termin_vereinbart`. Auch erreichbar per
+  Klick auf "Termin vereinbart" an einem Dungeon (fragt dann nach
+  Vorname/Nachname und legt den Kontakt live an, statt anonym zu loggen).
+- → Nicht erschienen: **nur von Ersttermin vereinbart aus**, sonst Abbruch.
+  Loggt `termin_nicht_wahrgenommen` (−2 XP, der lange geplante
+  Konversions-Malus).
+- → Angebot versendet / Zweittermin: Aktion `pitch`, danach optionales Popup
+  "Bedarfsanalyse geführt?" (Kann übersprungen werden).
+- → Gewonnen: Aktion `abschluss`, danach Produkt-Abfrage → Eintrag in `sales`
+  (gewonnen), `contacts.status` → 'kunde'.
+- → Verloren: **keine XP-Aktion** ("Verloren ist verloren"), nur
+  Produkt-Abfrage → Eintrag in `sales` (verloren), `contacts.status` →
+  'verloren'.
+- Von Gewonnen/Verloren zurück zu Ersttermin/Angebot versendet/Zweittermin:
+  zählt als Kundenausbau, loggt `kundenausbau` statt der sonst üblichen
+  Aktion für diese Spalte.
+- → Dauerbrenner: kein Zwang — Popup mit vier optionalen Aktionen
+  (Bedarfsanalyse, Angebot/Pitch, Termin wahrgenommen, Empfehlung erhalten)
+  oder einfach schließen. Gedacht für Kontakte, bei denen es aus privaten
+  Gründen beim Kunden gerade nicht weitergeht, aber vermutlich wieder wird.
+- → Neuer Lead: keine automatische Aktion (nur über "+ Neuer Lead" im Board
+  erreichbar, nicht per Zurückziehen gedacht).
+
+Alle diese Aktionen respektieren das normale Energie-Budget des Tages (wie
+jede andere geloggte Aktion auch) — reicht die Energie nicht, wird die
+Karte nicht verschoben, sondern nur eine Meldung gezeigt.
+
+Die Kanban-Stufe eines Kontakts lässt sich auch direkt im Kontaktformular
+setzen (`contactKanbanStageSelect`) — das ist eine reine Korrekturmöglichkeit
+ohne Aktions-Logging, nicht der normale Weg (der bleibt das Ziehen im Board).
 
 ## Bewusst aufgeschobene Ideen (NICHT vergessen, aber NICHT von selbst bauen)
-
-- **Kanban-Board für den Verkaufsprozess.** Aktuell nur konzeptionell
-  besprochen (Ansprache → Termin vereinbart → Termin wahrgenommen →
-  Bedarfsanalyse → Angebot/Pitch → optional 2. Termin → Abschluss/Verloren).
-  Soll aus geloggten Aktionen **automatisch abgeleitet** werden, nicht manuell
-  gepflegt (Philosophie: "Kanban wird nicht gepflegt, sondern abgeleitet").
-  Kanban-Stufen sollen selbst wieder konfigurierbar sein (andere Vertriebswege
-  = andere Stufenfolgen).
 - **Produktkatalog** (wie `items`, aber für `sales.produkt`) — aktuell Freitext.
 - **Jahresend-Dramatisierung**: alle Tagebucheinträge (+ ggf. Fotos) eines
   Nutzers werden am Jahresende per LLM zu einer zusammenhängenden

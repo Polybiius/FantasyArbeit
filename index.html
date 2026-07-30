@@ -236,6 +236,19 @@
   .dungeon-tile .dt-icon{font-size:32px;position:relative;}
   .dungeon-tile .dt-name{font-family:'Cinzel',serif;font-weight:700;font-size:13.5px;color:var(--text);position:relative;}
   .dungeon-tile .dt-count{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--arcane-glow);position:relative;}
+  .kanban-board{display:flex;gap:12px;overflow-x:auto;padding-bottom:8px;}
+  .kanban-col{flex:0 0 220px;background:var(--panel-2);border:1px solid var(--border);border-radius:12px;padding:10px;display:flex;flex-direction:column;min-height:120px;}
+  .kanban-col.drag-over{border-color:var(--arcane);background:rgba(139,92,246,0.10);}
+  .kanban-col-header{font-family:'Cinzel',serif;font-weight:700;font-size:12.5px;color:var(--text);margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;}
+  .kanban-count{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--arcane-glow);background:var(--panel);border-radius:999px;padding:1px 8px;}
+  .kanban-cards{display:flex;flex-direction:column;gap:8px;min-height:40px;}
+  .kanban-card{background:var(--panel);border:1px solid var(--border);border-radius:9px;padding:8px 10px;font-size:12px;cursor:grab;transition:border-color .15s;}
+  .kanban-card:hover{border-color:var(--arcane);}
+  .kanban-card.dragging{opacity:0.4;}
+  .kanban-card .kc-name{display:block;color:var(--text);font-weight:600;}
+  .kanban-card .kc-meta{display:block;color:var(--muted-2);font-size:10.5px;font-family:'JetBrains Mono',monospace;margin-top:2px;}
+  .kanban-newlead-form{display:flex;flex-direction:column;gap:6px;margin-bottom:10px;}
+  .kanban-newlead-form input{background:var(--panel);border:1px solid var(--border);border-radius:7px;padding:7px 9px;color:var(--text);font-size:12.5px;}
   .contact-table-title{font-family:'Cinzel',serif;font-size:15px;margin:12px 0;}
   .ctable{width:100%;border-collapse:collapse;font-size:12.5px;}
   .ctable th{text-align:left;color:var(--muted-2);font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;padding:8px 10px;border-bottom:1px solid var(--border);}
@@ -469,6 +482,7 @@
       <button class="nav-btn" data-page="kontakte" id="navKontakteBtn">📇 Register</button>
       <button class="nav-btn" data-page="gilde" id="navGildeBtn">🛡 Gilde</button>
       <button class="nav-btn" data-page="tagebuch">📖 Abenteuerlog</button>
+      <button class="nav-btn" data-page="kanban" id="navKanbanBtn">🗂 Kanban</button>
       <button class="nav-btn" data-page="fehlerprotokoll" id="navFehlerprotokollBtn" style="display:none;">🛠 Fehlerprotokoll</button>
     </nav>
 
@@ -629,6 +643,16 @@
                 <option value="kunde">Kunde</option>
                 <option value="verloren">Verloren</option>
               </select>
+              <select id="contactKanbanStageSelect" title="Kanban-Stufe">
+                <option value="neuer_lead">Neuer Lead</option>
+                <option value="ersttermin_vereinbart">Ersttermin vereinbart</option>
+                <option value="nicht_erschienen">Nicht erschienen</option>
+                <option value="angebot_versendet">Angebot versendet</option>
+                <option value="zweittermin">Zweittermin</option>
+                <option value="gewonnen">Gewonnen</option>
+                <option value="verloren">Verloren</option>
+                <option value="dauerbrenner">Dauerbrenner</option>
+              </select>
             </div>
             <div class="contact-add-row" id="newBetriebForm" style="display:none;">
               <input type="text" id="betriebNameInput" placeholder="Betrieb (Name)">
@@ -679,6 +703,55 @@
 
           <div id="kontakteAllView" style="display:none;">
             <div id="allContactsTable"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SEITE: KANBAN (Questpfad / Gildenbrett / Feldzug) -->
+      <div class="page" id="page-kanban" style="display:none;">
+        <div class="card">
+          <h2 id="kanbanHeaderTitle">Kanban</h2>
+          <div class="empty-page-hint" style="margin-bottom:8px;">Karten ziehen, um den Verkaufsprozess weiterzuschieben — Aktionen und XP werden dabei automatisch mitgeloggt.</div>
+          <div class="kanban-board" id="kanbanBoard">
+            <div class="kanban-col" data-stage="neuer_lead">
+              <div class="kanban-col-header">Neuer Lead <span class="kanban-count" id="kanbanCount_neuer_lead">0</span></div>
+              <button class="cal-nav-btn" id="kanbanNewLeadBtn" style="width:100%;margin-bottom:8px;">+ Neuer Lead</button>
+              <div class="kanban-newlead-form" id="kanbanNewLeadForm" style="display:none;">
+                <input type="text" id="kanbanNewLeadVorname" placeholder="Vorname">
+                <input type="text" id="kanbanNewLeadNachname" placeholder="Nachname">
+                <button class="cal-nav-btn" id="kanbanNewLeadSaveBtn">Anlegen</button>
+                <div class="empty-page-hint" id="kanbanNewLeadStatus"></div>
+              </div>
+              <div class="kanban-cards" id="kanbanCards_neuer_lead"></div>
+            </div>
+            <div class="kanban-col" data-stage="ersttermin_vereinbart">
+              <div class="kanban-col-header">Ersttermin vereinbart <span class="kanban-count" id="kanbanCount_ersttermin_vereinbart">0</span></div>
+              <div class="kanban-cards" id="kanbanCards_ersttermin_vereinbart"></div>
+            </div>
+            <div class="kanban-col" data-stage="nicht_erschienen">
+              <div class="kanban-col-header">Nicht erschienen <span class="kanban-count" id="kanbanCount_nicht_erschienen">0</span></div>
+              <div class="kanban-cards" id="kanbanCards_nicht_erschienen"></div>
+            </div>
+            <div class="kanban-col" data-stage="angebot_versendet">
+              <div class="kanban-col-header">Angebot versendet <span class="kanban-count" id="kanbanCount_angebot_versendet">0</span></div>
+              <div class="kanban-cards" id="kanbanCards_angebot_versendet"></div>
+            </div>
+            <div class="kanban-col" data-stage="zweittermin">
+              <div class="kanban-col-header">Zweittermin <span class="kanban-count" id="kanbanCount_zweittermin">0</span></div>
+              <div class="kanban-cards" id="kanbanCards_zweittermin"></div>
+            </div>
+            <div class="kanban-col" data-stage="gewonnen">
+              <div class="kanban-col-header">Gewonnen <span class="kanban-count" id="kanbanCount_gewonnen">0</span></div>
+              <div class="kanban-cards" id="kanbanCards_gewonnen"></div>
+            </div>
+            <div class="kanban-col" data-stage="verloren">
+              <div class="kanban-col-header">Verloren <span class="kanban-count" id="kanbanCount_verloren">0</span></div>
+              <div class="kanban-cards" id="kanbanCards_verloren"></div>
+            </div>
+            <div class="kanban-col" data-stage="dauerbrenner">
+              <div class="kanban-col-header">Dauerbrenner <span class="kanban-count" id="kanbanCount_dauerbrenner">0</span></div>
+              <div class="kanban-cards" id="kanbanCards_dauerbrenner"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -778,6 +851,16 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       </div>
 
     </div>
+  </div>
+</div>
+
+<div class="loc-modal" id="kanbanExtraActionModal" style="display:none;">
+  <div class="loc-modal-inner">
+    <div class="loc-modal-header">
+      <span id="kanbanExtraActionTitle">Zusätzlich loggen?</span>
+      <button id="kanbanExtraActionClose">✕</button>
+    </div>
+    <div class="action-btns" id="kanbanExtraActionGrid"></div>
   </div>
 </div>
 
@@ -1080,6 +1163,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     initGuild();
     initFriends();
     initContacts();
+    updateKanbanLabels();
     restoreLastPage();
   }
 
@@ -1136,6 +1220,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   // ---- Aktionsraster dynamisch aus dem Regelwerk (Admin kann Aktionen ändern/hinzufügen) ----
+  function fmtXp(xp){ return xp>=0 ? `+${xp}` : `${xp}`; }
+
   function buildActionGrid(){
     const grid = document.getElementById('actionGrid');
     const entries = Object.entries(config.actions).filter(([key])=>!QUICKBAR_KEYS.includes(key));
@@ -1143,7 +1229,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     grid.innerHTML = entries.map(([key,a])=>{
       const bossClass = key==='boss' ? ' boss' : '';
       const bossIcon = key==='boss' ? '🐲 ' : '';
-      return `<button class="abtn${bossClass}" data-action="${key}">${bossIcon}${a.label}<span class="xp">+${a.xp} XP · ${a.energy} Energie</span></button>`;
+      return `<button class="abtn${bossClass}" data-action="${key}">${bossIcon}${a.label}<span class="xp">${fmtXp(a.xp)} XP · ${a.energy} Energie</span></button>`;
     }).join('');
   }
   document.getElementById('actionGrid').addEventListener('click', (e)=>{
@@ -1829,6 +1915,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     krieger:  { navLabel:'Legion', addBtn:'Legionäre hinzufügen' },
     schuetze: { navLabel:'Bund', addBtn:'Bundesbrüder hinzufügen' },
   };
+  const CLASS_KANBAN_LABELS = { hexer:'Questpfad', krieger:'Gildenbrett', schuetze:'Feldzug' };
+  function updateKanbanLabels(){
+    const label = CLASS_KANBAN_LABELS[profile.character_class] || CLASS_KANBAN_LABELS.hexer;
+    document.getElementById('navKanbanBtn').textContent = '🗂 ' + label;
+    document.getElementById('kanbanHeaderTitle').textContent = label;
+  }
   let currentGuild = null;
   let statsSyncTimer = null;
 
@@ -2189,6 +2281,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       if(loc) document.getElementById('contactLocationSearch').value = loc.name;
     }
     document.getElementById('contactStatusSelect').value = c.status;
+    document.getElementById('contactKanbanStageSelect').value = c.kanban_stage||'neuer_lead';
     document.getElementById('contactGeburtsdatumInput').value = c.geburtsdatum||'';
     document.getElementById('contactTelefonInput').value = c.telefon||'';
     document.getElementById('contactEmailInput').value = c.email||'';
@@ -2208,6 +2301,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const role = document.getElementById('contactRoleSelect').value;
     const location_id = contactLocationSelectedId || null;
     const status = document.getElementById('contactStatusSelect').value;
+    const kanban_stage = document.getElementById('contactKanbanStageSelect').value;
     const geburtsdatum = document.getElementById('contactGeburtsdatumInput').value || null;
     const telefon = document.getElementById('contactTelefonInput').value.trim();
     const email = document.getElementById('contactEmailInput').value.trim();
@@ -2220,7 +2314,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const statusEl = document.getElementById('contactAddStatus');
     if(!vorname && !nachname){ statusEl.textContent = 'Bitte mindestens Vor- oder Nachname eingeben.'; return; }
 
-    const payload = { vorname, nachname, role, location_id, status, geburtsdatum, telefon, email, wohnort_strasse, wohnort_ort, bedarf_ist, bedarf_wunsch, naechster_kontakt, notes };
+    const payload = { vorname, nachname, role, location_id, status, kanban_stage, geburtsdatum, telefon, email, wohnort_strasse, wohnort_ort, bedarf_ist, bedarf_wunsch, naechster_kontakt, notes };
 
     if(editingContactId){
       const { error } = await sb.from('contacts').update({ ...payload, updated_at:new Date().toISOString() }).eq('id', editingContactId);
@@ -2258,7 +2352,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     grid.innerHTML = entries.map(([key,a])=>{
       const bossClass = key==='boss' ? ' boss' : '';
       const bossIcon = key==='boss' ? '🐲 ' : '';
-      return `<button class="abtn${bossClass}" data-contactaction="${key}">${bossIcon}${a.label}<span class="xp">+${a.xp} XP · ${a.energy} Energie</span></button>`;
+      return `<button class="abtn${bossClass}" data-contactaction="${key}">${bossIcon}${a.label}<span class="xp">${fmtXp(a.xp)} XP · ${a.energy} Energie</span></button>`;
     }).join('');
     grid.querySelectorAll('[data-contactaction]').forEach(btn=>{
       btn.addEventListener('click', ()=> logActionForContact(btn.dataset.contactaction, contact));
@@ -2525,7 +2619,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     grid.innerHTML = entries.map(([key,a])=>{
       const bossClass = key==='boss' ? ' boss' : '';
       const bossIcon = key==='boss' ? '🐲 ' : '';
-      return `<button class="abtn${bossClass}" data-locaction="${key}">${bossIcon}${a.label}<span class="xp">+${a.xp} XP · ${a.energy} Energie</span></button>`;
+      return `<button class="abtn${bossClass}" data-locaction="${key}">${bossIcon}${a.label}<span class="xp">${fmtXp(a.xp)} XP · ${a.energy} Energie</span></button>`;
     }).join('');
     grid.querySelectorAll('[data-locaction]').forEach(btn=>{
       btn.addEventListener('click', ()=> logActionAtLocation(btn.dataset.locaction, loc));
@@ -2539,6 +2633,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   async function logActionAtLocation(key, loc){
     const a = config.actions[key];
     if(!a) return;
+    if(key==='termin_vereinbart'){
+      document.getElementById('locActionModal').style.display='none';
+      await createLeadAndLogTerminVereinbart(loc);
+      return;
+    }
     const remaining = config.energyMax - energyUsedToday();
     if(a.energy > remaining) return;
     const row = {
@@ -2554,6 +2653,214 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('locActionModal').style.display='none';
     render();
   }
+
+  // Neuen Lead direkt am Dungeon anlegen: "Termin vereinbart" fragt nach
+  // Vorname/Nachname statt anonym ohne Kontakt-Verknüpfung zu loggen — der
+  // Kontakt landet automatisch in der Kanban-Spalte "Ersttermin vereinbart".
+  async function createLeadAndLogTerminVereinbart(loc){
+    const vorname = prompt('Vorname des Kontakts?');
+    if(vorname===null) return;
+    const nachname = prompt('Nachname des Kontakts?');
+    if(nachname===null) return;
+    if(!vorname.trim() && !nachname.trim()) return;
+    const { data: contact, error: cErr } = await sb.from('contacts').insert({
+      org_id:profile.org_id, owner_id:profile.id, vorname:vorname.trim(), nachname:nachname.trim(),
+      location_id: loc.id, kanban_stage:'ersttermin_vereinbart'
+    }).select().single();
+    if(cErr){ reportError('Kontakt anlegen', cErr); return; }
+    await logKanbanAction(contact, 'termin_vereinbart');
+    await renderContactsPage();
+  }
+
+  // ---- Kanban (Questpfad / Gildenbrett / Feldzug) ----
+  // Philosophie: die Spalte einer Karte wird aus dem Aktions-Log abgeleitet
+  // (letzte passende Aktion), Ziehen ist nur die Bedienoberfläche dafür und
+  // trägt im Hintergrund automatisch die passende Aktion ein. contacts.kanban_stage
+  // hält zusätzlich fest, WO die Karte liegt — nötig, weil "Angebot versendet"
+  // und "Zweittermin" dieselbe Aktion (pitch) loggen und sich sonst nicht mehr
+  // unterscheiden ließen.
+  const KANBAN_STAGES = ['neuer_lead','ersttermin_vereinbart','nicht_erschienen','angebot_versendet','zweittermin','gewonnen','verloren','dauerbrenner'];
+  let kanbanBundleCache = null;
+
+  async function renderKanbanBoard(){
+    const bundle = await loadContactsBundle();
+    if(bundle.error){
+      logSilentError('Kanban laden', bundle.error);
+      KANBAN_STAGES.forEach(s=>{ document.getElementById('kanbanCards_'+s).innerHTML = '<div class="empty-page-hint">Fehler beim Laden.</div>'; });
+      return;
+    }
+    kanbanBundleCache = bundle;
+    const grouped = {};
+    KANBAN_STAGES.forEach(s=>grouped[s]=[]);
+    bundle.contacts.forEach(c=>{ (grouped[c.kanban_stage] || grouped.neuer_lead).push(c); });
+    KANBAN_STAGES.forEach(stage=>{
+      const list = grouped[stage];
+      document.getElementById('kanbanCount_'+stage).textContent = list.length;
+      document.getElementById('kanbanCards_'+stage).innerHTML = list.map(c=>`
+        <div class="kanban-card" draggable="true" data-contact="${c.id}" data-stage="${stage}">
+          <span class="kc-name">${c.name}</span>
+          ${c.location_id ? `<span class="kc-meta">${locName(bundle,c.location_id)}</span>` : ''}
+        </div>`).join('');
+    });
+    wireKanbanDragAndDrop();
+  }
+
+  function wireKanbanDragAndDrop(){
+    document.querySelectorAll('#kanbanBoard .kanban-card').forEach(card=>{
+      card.addEventListener('dragstart', ()=>{
+        card.classList.add('dragging');
+        card.dataset.dragging = '1';
+      });
+      card.addEventListener('dragend', ()=>{ card.classList.remove('dragging'); delete card.dataset.dragging; });
+      card.addEventListener('click', ()=>{
+        const c = kanbanBundleCache.contacts.find(x=>x.id===card.dataset.contact);
+        if(c) openContactDetail(c, kanbanBundleCache);
+      });
+    });
+    document.querySelectorAll('#kanbanBoard .kanban-col').forEach(col=>{
+      col.addEventListener('dragover', (e)=>{ e.preventDefault(); col.classList.add('drag-over'); });
+      col.addEventListener('dragleave', ()=> col.classList.remove('drag-over'));
+      col.addEventListener('drop', async (e)=>{
+        e.preventDefault();
+        col.classList.remove('drag-over');
+        const dragged = document.querySelector('#kanbanBoard .kanban-card[data-dragging="1"]');
+        if(!dragged) return;
+        const contactId = dragged.dataset.contact;
+        const fromStage = dragged.dataset.stage;
+        const toStage = col.dataset.stage;
+        if(fromStage===toStage) return;
+        await moveKanbanCard(contactId, fromStage, toStage);
+      });
+    });
+  }
+
+  async function logKanbanAction(contact, actionKey){
+    const a = config.actions[actionKey];
+    if(!a) return false;
+    const remaining = config.energyMax - energyUsedToday();
+    if(a.energy > remaining){ alert(`Nicht genug Energie heute für "${a.label}".`); return false; }
+    const row = {
+      user_id:profile.id, org_id:profile.org_id, action_key:actionKey, label:a.label,
+      xp:a.xp, energy:a.energy, skill:a.skill||null, skill2:a.skill2||null,
+      context: contact.name, location_id: contact.location_id||null, contact_id: contact.id
+    };
+    const { data, error } = await sb.from('action_log').insert(row).select().single();
+    if(error){ reportError(`Kanban-Aktion speichern (${a.label})`, error); return false; }
+    log.push(data);
+    await checkAndAwardRecurringQuests();
+    await checkAndAwardChains();
+    render();
+    return true;
+  }
+
+  async function recordSaleForKanban(contact, status){
+    const produkt = prompt('Welches Produkt?');
+    if(!produkt || !produkt.trim()) return;
+    const { error } = await sb.from('sales').insert({
+      contact_id: contact.id, org_id: profile.org_id, produkt: produkt.trim(),
+      status, created_by: profile.id
+    });
+    if(error) reportError('Verkauf eintragen', error);
+  }
+
+  // Kleines Popup mit optionalen Zusatz-Aktionen (Bedarfsanalyse bei
+  // Angebot/Zweittermin, vier Optionen bei Dauerbrenner) — Klick auf "✕"
+  // oder daneben klicken loggt bewusst nichts.
+  function offerExtraAction(contact, options){
+    return new Promise(resolve=>{
+      document.getElementById('kanbanExtraActionTitle').textContent = 'Zusätzlich loggen für ' + contact.name + '?';
+      const grid = document.getElementById('kanbanExtraActionGrid');
+      grid.innerHTML = options.map(o=>{
+        const a = config.actions[o.key];
+        return `<button class="abtn" data-extra="${o.key}">${o.label}${a?`<span class="xp">${fmtXp(a.xp)} XP · ${a.energy} Energie</span>`:''}</button>`;
+      }).join('');
+      const modal = document.getElementById('kanbanExtraActionModal');
+      modal.style.display = 'flex';
+      const closeBtn = document.getElementById('kanbanExtraActionClose');
+      function finish(){ modal.style.display='none'; closeBtn.onclick=null; resolve(); }
+      grid.querySelectorAll('[data-extra]').forEach(btn=>{
+        btn.addEventListener('click', async ()=>{ await logKanbanAction(contact, btn.dataset.extra); finish(); });
+      });
+      closeBtn.onclick = finish;
+    });
+  }
+
+  async function moveKanbanCard(contactId, fromStage, toStage){
+    const contact = kanbanBundleCache ? kanbanBundleCache.contacts.find(c=>c.id===contactId) : null;
+    if(!contact) return;
+
+    if(toStage==='nicht_erschienen' && fromStage!=='ersttermin_vereinbart'){
+      alert('"Nicht erschienen" ist nur vom Ersttermin aus erreichbar.');
+      return;
+    }
+
+    const fromTerminal = (fromStage==='gewonnen' || fromStage==='verloren');
+    const toActive = (toStage==='ersttermin_vereinbart' || toStage==='angebot_versendet' || toStage==='zweittermin');
+
+    let ok = true;
+    if(toStage==='nicht_erschienen'){
+      ok = await logKanbanAction(contact, 'termin_nicht_wahrgenommen');
+    } else if(fromTerminal && toActive){
+      ok = await logKanbanAction(contact, 'kundenausbau');
+    } else if(toStage==='ersttermin_vereinbart'){
+      ok = await logKanbanAction(contact, 'termin_vereinbart');
+    } else if(toStage==='angebot_versendet' || toStage==='zweittermin'){
+      ok = await logKanbanAction(contact, 'pitch');
+    } else if(toStage==='gewonnen'){
+      ok = await logKanbanAction(contact, 'abschluss');
+    }
+    // neuer_lead, dauerbrenner, verloren: keine automatische Aktion
+
+    if(!ok) return;
+
+    const { error: stageErr } = await sb.from('contacts').update({ kanban_stage: toStage }).eq('id', contactId);
+    if(stageErr){ reportError('Kanban-Spalte aktualisieren', stageErr); return; }
+    contact.kanban_stage = toStage;
+
+    if(toStage==='gewonnen'){
+      await recordSaleForKanban(contact, 'gewonnen');
+      const { error } = await sb.from('contacts').update({status:'kunde'}).eq('id', contact.id);
+      if(error) logSilentError('Kontaktstatus aktualisieren', error);
+    } else if(toStage==='verloren'){
+      await recordSaleForKanban(contact, 'verloren');
+      const { error } = await sb.from('contacts').update({status:'verloren'}).eq('id', contact.id);
+      if(error) logSilentError('Kontaktstatus aktualisieren', error);
+    }
+
+    if(toStage==='angebot_versendet' || toStage==='zweittermin'){
+      await offerExtraAction(contact, [{key:'bedarfsanalyse', label:'Bedarfsanalyse geführt'}]);
+    }
+    if(toStage==='dauerbrenner'){
+      await offerExtraAction(contact, [
+        {key:'bedarfsanalyse', label:'Bedarfsanalyse geführt'},
+        {key:'pitch', label:'Angebot/Pitch abgegeben'},
+        {key:'termin_wahrgenommen', label:'Termin wahrgenommen'},
+        {key:'empfehlung', label:'Empfehlung erhalten'},
+      ]);
+    }
+
+    await renderKanbanBoard();
+  }
+
+  document.getElementById('kanbanNewLeadBtn').addEventListener('click', ()=>{
+    const form = document.getElementById('kanbanNewLeadForm');
+    form.style.display = form.style.display==='none' ? 'flex' : 'none';
+  });
+  document.getElementById('kanbanNewLeadSaveBtn').addEventListener('click', async ()=>{
+    const vorname = document.getElementById('kanbanNewLeadVorname').value.trim();
+    const nachname = document.getElementById('kanbanNewLeadNachname').value.trim();
+    const statusEl = document.getElementById('kanbanNewLeadStatus');
+    if(!vorname && !nachname){ statusEl.textContent = 'Bitte mindestens Vor- oder Nachname eingeben.'; return; }
+    const { error } = await sb.from('contacts').insert({
+      org_id:profile.org_id, owner_id:profile.id, vorname, nachname, kanban_stage:'neuer_lead'
+    });
+    if(error){ reportError('Neuen Lead anlegen', error, statusEl); return; }
+    document.getElementById('kanbanNewLeadVorname').value = '';
+    document.getElementById('kanbanNewLeadNachname').value = '';
+    statusEl.textContent = '';
+    document.getElementById('kanbanNewLeadForm').style.display = 'none';
+    await renderKanbanBoard();
+  });
 
   // ---- Fehlerprotokoll-Seite (nur Admins) ----
   async function renderErrorLog(){
@@ -2577,7 +2884,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   // ---- Seitennavigation ----
-  const VALID_PAGES = ['charakter','handlungen','inventar','gilde','dungeons','kontakte','tagebuch','fehlerprotokoll'];
+  const VALID_PAGES = ['charakter','handlungen','inventar','gilde','dungeons','kontakte','tagebuch','kanban','fehlerprotokoll'];
 
   function showPage(pageName, updateHash){
     if(!VALID_PAGES.includes(pageName)) pageName = 'charakter';
@@ -2588,6 +2895,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(updateHash!==false) location.hash = pageName;
     if(pageName==='dungeons'){ ensureDungeonMap(); if(dungeonMap) setTimeout(()=>dungeonMap.invalidateSize(),150); }
     if(pageName==='fehlerprotokoll') renderErrorLog();
+    if(pageName==='kanban') renderKanbanBoard();
   }
 
   document.querySelectorAll('.nav-btn').forEach(btn=>{

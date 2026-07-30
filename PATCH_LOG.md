@@ -26,6 +26,7 @@ alle bis einschließlich Patch 15 im Supabase-Projekt eingespielt sind.
 | 16 | `patch16_tagebuch_mentions.sql` | Tagebuch-Kundenmarkierung von einzelnem `tagged_contact_id`-Feld auf `journal_entry_mentions`-Tabelle umgestellt (mehrere @mentions pro Tag statt separater Such-Box); **droppt** `journal_entries.tagged_contact_id` nach Datenübernahme |
 | 17 | `patch17_error_log.sql` | `error_log`-Tabelle für zentrale Fehlerprotokollierung (jeder fehlgeschlagene DB-Aufruf landet hier), Lesen nur für Admins, Index auf `(org_id, created_at)` |
 | 17b | `patch17b_indizes.sql` | Fehlende Indizes auf Fremdschlüssel-Spalten (`contacts`, `locations`, `sales`, `journal_entry_mentions`, `profiles`) — vorher gab es außer auf `action_log` keine |
+| 18 | `patch18_kanban.sql` | `contacts.kanban_stage` (Kanban-Spalte pro Kontakt, 8 feste Werte), neue Aktion `termin_nicht_wahrgenommen` (−2 XP, Konversions-Malus) im Regelwerk |
 
 ## Wichtiger Hinweis zu Patch 13
 
