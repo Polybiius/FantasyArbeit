@@ -1219,6 +1219,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     buildActionGrid();
     render();
     initJournal();
+    await grantDailyManatrank();
     initInventory();
     renderCharacterEquipment();
     initGuild();
@@ -1309,6 +1310,48 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(error){ reportError('Item vergeben', error); return; }
     await loadInventory();
     renderInventory();
+  }
+
+  // Zwei Kalendertag-Schlüssel ('YYYY-MM-DD') auf ganze Tage Differenz
+  // umrechnen — über UTC-Mittag statt lokaler Zeit, damit Zeitzone/Sommerzeit
+  // die Differenz nicht verfälschen (gleiches Prinzip wie in weekKey()).
+  function daysBetweenKeys(fromKey, toKey){
+    const [fy,fm,fd] = fromKey.split('-').map(Number);
+    const [ty,tm,td] = toKey.split('-').map(Number);
+    const from = Date.UTC(fy, fm-1, fd);
+    const to = Date.UTC(ty, tm-1, td);
+    return Math.round((to-from)/86400000);
+  }
+
+  // Täglicher Gratis-Manatrank: hängt am Kalendertag, nicht am Login-Moment —
+  // genau wie Energie-Reset und Tagebuch. Stapelt sich (kein Deckel), und
+  // holt beim nächsten Öffnen auch mehrere ausgelassene Tage auf einmal nach
+  // (z.B. 3 Tage nicht in der App gewesen -> 3 nachgeholte Tränke). Läuft für
+  // Handy und Desktop identisch, da beide dieselbe enterApp()-Initialisierung
+  // durchlaufen. Eigener Log-Marker (action_key 'manatrank_taeglich') statt
+  // user_inventory.updated_at, weil Letzteres auch beim Trinken selbst
+  // verändert wird und sich sonst mit der Gutschrift überschneiden würde.
+  async function grantDailyManatrank(){
+    const today = todayKey(new Date());
+    const priorGrants = log.filter(e=>e.action_key==='manatrank_taeglich');
+    if(priorGrants.some(e=>todayKey(e.created_at)===today)) return; // heute schon gutgeschrieben
+
+    const lastGrant = priorGrants.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))[0];
+    const missedDays = lastGrant ? daysBetweenKeys(todayKey(lastGrant.created_at), today) : 1;
+    if(missedDays<=0) return;
+
+    const { data: existing, error: readErr } = await sb.from('user_inventory').select('*').eq('user_id', profile.id).eq('item_key','mana_trank').maybeSingle();
+    if(readErr){ logSilentError('Manatrank-Bestand lesen', readErr); return; }
+    const newQty = (existing ? existing.quantity : 0) + missedDays;
+    const { error: upsertErr } = await sb.from('user_inventory').upsert({ user_id:profile.id, org_id:profile.org_id, item_key:'mana_trank', quantity:newQty, updated_at:new Date().toISOString() }, { onConflict:'user_id,item_key' });
+    if(upsertErr){ logSilentError('Manatrank gutschreiben', upsertErr); return; }
+
+    const { data, error: logErr } = await sb.from('action_log').insert({
+      user_id:profile.id, org_id:profile.org_id, action_key:'manatrank_taeglich',
+      label:'Täglicher Manatrank', xp:0, energy:0, meta:{qty:missedDays}
+    }).select().single();
+    if(logErr){ logSilentError('Manatrank-Gutschrift protokollieren', logErr); return; }
+    if(data) log.push(data);
   }
 
   async function checkAndAwardRecurringQuests(){

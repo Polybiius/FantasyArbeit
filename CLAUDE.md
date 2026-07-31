@@ -126,6 +126,31 @@ Funktionen benutzen statt eigene Fehlerbehandlung zu erfinden.**
   eine spätere KI-Bildumwandlung (siehe "Bewusst aufgeschobene Ideen" unten).
 - `user_inventory`, `guilds`, `guild_members`, `friends` — siehe `PATCH_LOG.md`
   für Details, Funktionsweise ist selbsterklärend über die Namen.
+  **Item-Effekt-System** (seit Patch 3, bis zu dieser Session ungenutzt):
+  Items leben in `rule_configs.config.items` (Katalog, aktuell nur
+  `mana_trank`), `user_inventory` hält nur `item_key`+`quantity` pro Nutzer.
+  `useItem()` in `index.html` liest `def.effect` und wertet ihn aus —
+  `full_energy_refill` loggt einen `action_log`-Eintrag mit `energy:
+  -energyUsedToday()` (xp 0, kein Skill), was die Tagesenergie exakt auf
+  Maximum zurücksetzt, ohne einen separaten "aktuelle Energie"-Zustand zu
+  pflegen (bleibt komplett aus dem Log abgeleitet, wie der Rest des
+  Energie-Systems). Neue Item-Effekte brauchen nur einen neuen `effect`-Wert
+  im Katalog + einen neuen `if`-Zweig in `useItem()`, keine Schema-Änderung.
+  **Täglicher Gratis-Manatrank** (seit dieser Session, `grantDailyManatrank()`
+  in `index.html`, aufgerufen in `enterApp()` — läuft für Handy und Desktop
+  identisch, da beide dieselbe Initialisierung durchlaufen): jeden
+  Kalendertag kommt ein Manatrank zum `user_inventory`-Bestand dazu, **stapelt
+  sich** (kein Deckel, kein Wegnehmen von Ungenutztem). Hängt bewusst am
+  Kalendertag, nicht am Login-Moment — genau wie Energie-Reset und Tagebuch
+  (ein erster Versuch hing an `user_inventory.updated_at` bzw. am
+  Login-Zeitpunkt und wurde vom Nutzer zu Recht zurückgewiesen). Dafür ein
+  eigener Log-Marker (`action_key: 'manatrank_taeglich'`, xp 0, energy 0,
+  `meta.qty`) statt `updated_at` — Letzteres wird beim Trinken selbst auch
+  verändert und wäre als "letzte Gutschrift"-Marker mehrdeutig gewesen. Beim
+  nächsten Öffnen werden auch mehrere ausgelassene Tage auf einmal nachgeholt
+  (`daysBetweenKeys()` zwischen dem letzten Marker-Tag und heute) — nicht nur
+  ein einzelner Tages-Ausgleich. `useItem()`/`full_energy_refill` (Trinken,
+  füllt die Tagesenergie komplett auf) ist davon unabhängig und unverändert.
 - `error_log` — zentrales Fehlerprotokoll (seit Patch 17). Jeder fehlgeschlagene
   Datenbank-Aufruf im Frontend landet hier (`org_id`, `user_id`, `context`,
   `message`, `created_at`). Insert darf jeder für die eigene Organisation,
@@ -273,6 +298,12 @@ setzen (`contactKanbanStageSelect`) — das ist eine reine Korrekturmöglichkeit
 ohne Aktions-Logging, nicht der normale Weg (der bleibt das Ziehen im Board).
 
 ## Bewusst aufgeschobene Ideen (NICHT vergessen, aber NICHT von selbst bauen)
+- **Manatrank-Vergabe an Quests knüpfen** (statt/zusätzlich zum täglichen
+  Gratis-Trank aus `grantDailyManatrank()`, siehe oben bei `user_inventory`):
+  vom Nutzer am 2026-07-31 als "wird sich noch ändern" angekündigt, noch ohne
+  Details. Vor dem Umbauen erst klären, wie genau (ersetzt der tägliche
+  Gratis-Trank die Quest-Vergabe, oder kommt beides zusammen — `grantItem()`
+  für Quest-Belohnungen existiert bereits und ist unabhängig nutzbar).
 - **Gilden-basierte Sichtbarkeit** (statt des heutigen organisationsweiten
   `contactsVisibility`-Schalters): war am 2026-07-30 als aktive, dringliche
   Baustelle besprochen (Grundidee, zwei Beispiel-Szenarien B2B/B2C, zwei
