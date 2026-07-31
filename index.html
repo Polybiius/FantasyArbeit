@@ -250,12 +250,12 @@
   .kanban-count{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--arcane-glow);background:var(--panel);border-radius:999px;padding:1px 8px;}
   .kanban-path-arrow{flex:0 0 auto;color:var(--muted-2);font-size:15px;align-self:center;}
   .kanban-cards{display:flex;flex-direction:column;gap:8px;min-height:40px;}
-  .kanban-card{position:relative;background:var(--panel);border:1px solid var(--border);border-radius:9px;padding:8px 28px 8px 10px;font-size:12px;cursor:grab;transition:border-color .15s;}
+  .kanban-card{position:relative;background:var(--panel);border:1px solid var(--border);border-radius:9px;padding:8px 10px;font-size:12px;cursor:grab;transition:border-color .15s;}
   .kanban-card:hover{border-color:var(--arcane);}
   .kanban-card.dragging{opacity:0.4;}
   .kanban-card .kc-name{display:block;color:var(--text);font-weight:600;}
   .kanban-card .kc-meta{display:block;color:var(--muted-2);font-size:10.5px;font-family:'JetBrains Mono',monospace;margin-top:2px;}
-  .kc-move-btn{position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:6px;border:1px solid var(--border);background:var(--panel-2);color:var(--muted-2);font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;}
+  .kc-move-btn{display:none;position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:6px;border:1px solid var(--border);background:var(--panel-2);color:var(--muted-2);font-size:12px;line-height:1;align-items:center;justify-content:center;cursor:pointer;}
   .kc-move-btn:hover, .kc-move-btn:active{border-color:var(--arcane);color:var(--text);}
   .kanban-newlead-form{display:flex;flex-direction:column;gap:6px;margin-bottom:10px;}
   .kanban-newlead-form input{background:var(--panel);border:1px solid var(--border);border-radius:7px;padding:7px 9px;color:var(--text);font-size:12.5px;}
@@ -266,6 +266,8 @@
     .kanban-col:nth-child(4n+1){transform:translateX(-14px);}
     .kanban-col:nth-child(4n+3){transform:translateX(14px);}
     .kanban-path-arrow{align-self:center;transform:rotate(90deg);}
+    .kanban-card{padding-right:28px;}
+    .kc-move-btn{display:flex;}
   }
   .contact-table-title{font-family:'Cinzel',serif;font-size:15px;margin:12px 0;}
   .ctable{width:100%;border-collapse:collapse;font-size:12.5px;}
@@ -730,7 +732,7 @@
       <div class="page" id="page-kanban" style="display:none;">
         <div class="card">
           <h2 id="kanbanHeaderTitle">Kanban</h2>
-          <div class="empty-page-hint" style="margin-bottom:8px;">Karten ziehen (oder das ↕-Symbol an der Karte antippen), um den Verkaufsprozess weiterzuschieben — Aktionen und XP werden dabei automatisch mitgeloggt.</div>
+          <div class="empty-page-hint" style="margin-bottom:8px;">Karten ziehen, um den Verkaufsprozess weiterzuschieben (auf kleinen Bildschirmen per Antippen des ↕-Symbols an der Karte) — Aktionen und XP werden dabei automatisch mitgeloggt.</div>
           <div class="kanban-board" id="kanbanBoard">
             <div class="kanban-col" data-stage="neuer_lead">
               <div class="kanban-waypoint-icon">🚩</div>
