@@ -389,3 +389,11 @@ Supabase-Tabelle `rule_configs`.
 - SQL-Patches wurden bisher immer als eigene, nummerierte, kommentierte
   Dateien geliefert (nicht in bestehende Migrationen eingemischt) — dieses
   Muster beibehalten, bis eine echte Migrations-Toolchain eingeführt wird.
+- **Blankoscheck für git commit/push** (seit 2026-07-31): der Nutzer will
+  vor normalem Committen und Pushen **nicht mehr gefragt werden** — einfach
+  machen, nach jeder abgeschlossenen Änderung. Gilt nicht für wirklich
+  destruktive Git-Operationen (force-push, reset --hard, Branches löschen)
+  — dafür weiterhin fragen. (Hinweis: Push scheitert aus der Claude-Code-
+  Sandbox heraus technisch an einem fehlenden `ksshaskpass` — das ist kein
+  Erlaubnis-Thema, sondern ein Terminal-Problem; der Nutzer pusht dann
+  selbst einmal lokal.)
