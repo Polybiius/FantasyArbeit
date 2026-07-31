@@ -1226,9 +1226,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(error){ reportError('Aktions-Log laden', error); throw error; }
     log = data || [];
   }
+  // Bewusst NICHT Teil des kritischen Anmelde-Pfads (siehe enterApp): schlägt
+  // das Laden fehl (z.B. weil der zugehörige SQL-Patch noch nicht lief),
+  // soll das nur die Produktfunktionen betreffen (leerer Katalog), nicht die
+  // komplette Anmeldung für alle blockieren.
   async function loadProducts(){
     const { data, error } = await sb.from('products').select('*').eq('org_id', profile.org_id).order('category').order('subcategory').order('name');
-    if(error){ reportError('Produktkatalog laden', error); throw error; }
+    if(error){ logSilentError('Produktkatalog laden', error); products = []; return; }
     products = data || [];
   }
   function activeProducts(){ return products.filter(p=>p.active); }
@@ -1251,8 +1255,9 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   async function enterApp(){
     applyClassTheme(profile.character_class);
-    try{ await loadOrg(); await loadConfig(); await loadLog(); await loadProducts(); }
+    try{ await loadOrg(); await loadConfig(); await loadLog(); }
     catch(e){ document.getElementById('loading').style.display='none'; return; }
+    await loadProducts();
     phoneTally = Number(localStorage.getItem('phoneTally_'+profile.id) || 0);
     lastKnownLevel = levelInfo(computeTotals().totalXp).level;
     document.getElementById('loading').style.display='none';
