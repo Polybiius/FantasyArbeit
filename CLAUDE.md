@@ -36,10 +36,22 @@ nicht per Code-Änderung.
   GitHub-Pages-Plan; unbedenklich, weil der Supabase-Key im Code ein bewusst
   öffentlicher "publishable key" ist, abgesichert durch RLS, nicht durch
   Geheimhaltung).
+- **Codequalität**: ESLint (seit 2026-07-31, `eslint.config.js` +
+  `eslint-plugin-html`, prüft direkt den `<script>`-Block in `index.html`,
+  keine Datei-Aufteilung nötig). Node.js liegt dafür portabel unter
+  `~/.local/share/nodejs-portable` (kein Systemeingriff, kein `sudo`
+  gebraucht), PATH-Eintrag dafür in `~/.bashrc`. `npm run lint` zum manuellen
+  Prüfen, VS-Code-Erweiterung "ESLint" zeigt Warnungen live beim Tippen an.
+  Absichtlich schlanker Regelsatz bisher (nur `no-unused-vars`/`no-undef`) —
+  erst bei echtem Bedarf erweitern, nicht vorab.
 - **Bisheriger Workflow**: Der Nutzer hat NICHT lokal mit Git gearbeitet, sondern
   jede neue `index.html`-Version über den GitHub-Web-Upload hochgeladen, und jeden
   SQL-Patch manuell im Supabase SQL-Editor ausgeführt. Das ändert sich jetzt mit
-  Claude Code.
+  Claude Code: Commits/Pushes laufen seit 2026-07-31 automatisch durch Claude
+  Code (ein GitHub Personal Access Token liegt im `credential.helper store` des
+  Nutzers, dadurch kein `ksshaskpass`-Problem mehr). **SQL-Patches laufen
+  weiterhin manuell** über den Supabase SQL-Editor beim Nutzer — dafür hat
+  Claude Code keinen Zugriff/Zugangsdaten.
 
 ## Datenbank — aktueller Stand (Annahme: Patch 1–23 sind alle eingespielt)
 
@@ -48,7 +60,7 @@ versucht Claude Code eventuell, Dinge doppelt anzulegen oder Migrationen in fals
 Reihenfolge zu bauen.
 
 Alle SQL-Patches liegen im Ordner `sql/` (chronologisch benannt, `schema.sql` +
-`patch.sql` sind die ursprüngliche Basis, danach `patch2_...` bis `patch20_...`).
+`patch.sql` sind die ursprüngliche Basis, danach `patch2_...` bis `patch23_...`).
 Sie wurden bisher **einzeln, nacheinander, manuell** im Supabase SQL-Editor
 ausgeführt — nicht über eine Migrations-Toolchain. `PATCH_LOG.md` listet die
 genaue Reihenfolge und was jeder Patch bewirkt.
@@ -502,7 +514,9 @@ Supabase-Tabelle `rule_configs`.
   vor normalem Committen und Pushen **nicht mehr gefragt werden** — einfach
   machen, nach jeder abgeschlossenen Änderung. Gilt nicht für wirklich
   destruktive Git-Operationen (force-push, reset --hard, Branches löschen)
-  — dafür weiterhin fragen. (Hinweis: Push scheitert aus der Claude-Code-
-  Sandbox heraus technisch an einem fehlenden `ksshaskpass` — das ist kein
-  Erlaubnis-Thema, sondern ein Terminal-Problem; der Nutzer pusht dann
-  selbst einmal lokal.)
+  — dafür weiterhin fragen. **Push funktioniert seit 2026-07-31 direkt aus
+  Claude Code heraus** (GitHub Personal Access Token im
+  `credential.helper store` des Nutzers hinterlegt, siehe Tech-Stack oben)
+  — kein manueller Zwischenschritt beim Nutzer mehr nötig, anders als noch
+  am Anfang dieser Session (damals scheiterte es an fehlendem
+  `ksshaskpass` in der Sandbox).
