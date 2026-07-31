@@ -1,0 +1,25 @@
+{
+  "name": "fantasyarbeit",
+  "version": "1.0.0",
+  "description": "RPG Charakter leveln durch das echte Arbeitsleben",
+  "type": "module",
+  "scripts": {
+    "lint": "eslint ."
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Polybiius/FantasyArbeit.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "UNLICENSED",
+  "bugs": {
+    "url": "https://github.com/Polybiius/FantasyArbeit/issues"
+  },
+  "homepage": "https://github.com/Polybiius/FantasyArbeit#readme",
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.8.0",
+    "eslint-plugin-html": "^8.1.4"
+  }
+}
