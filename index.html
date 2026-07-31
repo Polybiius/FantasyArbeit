@@ -250,11 +250,13 @@
   .kanban-count{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--arcane-glow);background:var(--panel);border-radius:999px;padding:1px 8px;}
   .kanban-path-arrow{flex:0 0 auto;color:var(--muted-2);font-size:15px;align-self:center;}
   .kanban-cards{display:flex;flex-direction:column;gap:8px;min-height:40px;}
-  .kanban-card{background:var(--panel);border:1px solid var(--border);border-radius:9px;padding:8px 10px;font-size:12px;cursor:grab;transition:border-color .15s;}
+  .kanban-card{position:relative;background:var(--panel);border:1px solid var(--border);border-radius:9px;padding:8px 28px 8px 10px;font-size:12px;cursor:grab;transition:border-color .15s;}
   .kanban-card:hover{border-color:var(--arcane);}
   .kanban-card.dragging{opacity:0.4;}
   .kanban-card .kc-name{display:block;color:var(--text);font-weight:600;}
   .kanban-card .kc-meta{display:block;color:var(--muted-2);font-size:10.5px;font-family:'JetBrains Mono',monospace;margin-top:2px;}
+  .kc-move-btn{position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:6px;border:1px solid var(--border);background:var(--panel-2);color:var(--muted-2);font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;cursor:pointer;}
+  .kc-move-btn:hover, .kc-move-btn:active{border-color:var(--arcane);color:var(--text);}
   .kanban-newlead-form{display:flex;flex-direction:column;gap:6px;margin-bottom:10px;}
   .kanban-newlead-form input{background:var(--panel);border:1px solid var(--border);border-radius:7px;padding:7px 9px;color:var(--text);font-size:12.5px;}
 
@@ -728,7 +730,7 @@
       <div class="page" id="page-kanban" style="display:none;">
         <div class="card">
           <h2 id="kanbanHeaderTitle">Kanban</h2>
-          <div class="empty-page-hint" style="margin-bottom:8px;">Karten ziehen, um den Verkaufsprozess weiterzuschieben — Aktionen und XP werden dabei automatisch mitgeloggt.</div>
+          <div class="empty-page-hint" style="margin-bottom:8px;">Karten ziehen (oder das ↕-Symbol an der Karte antippen), um den Verkaufsprozess weiterzuschieben — Aktionen und XP werden dabei automatisch mitgeloggt.</div>
           <div class="kanban-board" id="kanbanBoard">
             <div class="kanban-col" data-stage="neuer_lead">
               <div class="kanban-waypoint-icon">🚩</div>
@@ -883,6 +885,33 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       </div>
 
     </div>
+  </div>
+</div>
+
+<div class="loc-modal" id="kanbanMoveModal" style="display:none;">
+  <div class="loc-modal-inner">
+    <div class="loc-modal-header">
+      <span id="kanbanMoveTitle">Verschieben</span>
+      <button id="kanbanMoveClose">✕</button>
+    </div>
+    <div class="action-btns" id="kanbanMoveGrid"></div>
+  </div>
+</div>
+
+<div class="loc-modal" id="saleEntryModal" style="display:none;">
+  <div class="loc-modal-inner">
+    <div class="loc-modal-header">
+      <span>Verkauf eintragen für <span id="saleEntryContactName"></span></span>
+      <button id="saleEntryClose">✕</button>
+    </div>
+    <div class="kanban-newlead-form">
+      <input type="text" id="saleEntryProdukt" placeholder="Produkt">
+      <input type="number" id="saleEntryMenge" placeholder="Menge" min="1" value="1">
+      <button class="cal-nav-btn" id="saleEntryAddBtn">+ Produkt hinzufügen</button>
+      <div class="empty-page-hint" id="saleEntryStatus"></div>
+      <div class="empty-page-hint" id="saleEntryList"></div>
+    </div>
+    <button class="cal-nav-btn" id="saleEntryDoneBtn" style="width:100%;margin-top:8px;">Fertig</button>
   </div>
 </div>
 
@@ -2423,6 +2452,17 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       }
     }
 
+    // Abschluss über diesen Dialog (z.B. auf dem Handy, wo Ziehen im Kanban
+    // nicht geht) muss dieselbe Wirkung haben wie das Ziehen der Karte auf
+    // "Gewonnen": Kanban-Spalte setzen, Produkt(e)+Menge abfragen, Status
+    // auf "Kunde" setzen. Das fehlte hier bisher komplett.
+    if(key==='abschluss'){
+      const { error: stageErr } = await sb.from('contacts').update({ kanban_stage:'gewonnen' }).eq('id', contact.id);
+      if(stageErr) reportError('Kanban-Spalte aktualisieren', stageErr);
+      else contact.kanban_stage = 'gewonnen';
+      await recordWinOrLoss(contact, 'gewonnen');
+    }
+
     document.getElementById('locActionModal').style.display='none';
     render();
     await renderContactsPage();
@@ -2728,6 +2768,16 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // und "Zweittermin" dieselbe Aktion (pitch) loggen und sich sonst nicht mehr
   // unterscheiden ließen.
   const KANBAN_STAGES = ['neuer_lead','ersttermin_vereinbart','nicht_erschienen','angebot_versendet','zweittermin','gewonnen','verloren','dauerbrenner'];
+  const KANBAN_STAGE_META = {
+    neuer_lead: {icon:'🚩', label:'Neuer Lead'},
+    ersttermin_vereinbart: {icon:'📜', label:'Ersttermin vereinbart'},
+    nicht_erschienen: {icon:'🌫', label:'Nicht erschienen'},
+    angebot_versendet: {icon:'✉️', label:'Angebot versendet'},
+    zweittermin: {icon:'🤝', label:'Zweittermin'},
+    gewonnen: {icon:'🏆', label:'Gewonnen'},
+    verloren: {icon:'❌', label:'Verloren'},
+    dauerbrenner: {icon:'🔥', label:'Dauerbrenner'},
+  };
   let kanbanBundleCache = null;
 
   async function renderKanbanBoard(){
@@ -2749,6 +2799,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       document.getElementById('kanbanCount_'+stage).textContent = list.length;
       document.getElementById('kanbanCards_'+stage).innerHTML = list.map(c=>`
         <div class="kanban-card" draggable="true" data-contact="${c.id}" data-stage="${stage}">
+          <button type="button" class="kc-move-btn" title="Verschieben">↕</button>
           <span class="kc-name">${c.name}</span>
           ${c.location_id ? `<span class="kc-meta">${locName(bundle,c.location_id)}</span>` : ''}
         </div>`).join('');
@@ -2767,6 +2818,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         const c = kanbanBundleCache.contacts.find(x=>x.id===card.dataset.contact);
         if(c) openContactDetail(c, kanbanBundleCache);
       });
+      const moveBtn = card.querySelector('.kc-move-btn');
+      moveBtn.addEventListener('click', (e)=>{
+        e.stopPropagation();
+        const c = kanbanBundleCache.contacts.find(x=>x.id===card.dataset.contact);
+        if(c) openKanbanMoveMenu(c, card.dataset.stage);
+      });
     });
     document.querySelectorAll('#kanbanBoard .kanban-col').forEach(col=>{
       col.addEventListener('dragover', (e)=>{ e.preventDefault(); col.classList.add('drag-over'); });
@@ -2783,6 +2840,27 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         await moveKanbanCard(contactId, fromStage, toStage);
       });
     });
+  }
+
+  // Antippen des ↕-Symbols an einer Karte — Ersatz fürs Ziehen auf Touch-
+  // Geräten, wo die native HTML5-Drag&Drop-API nicht zuverlässig feuert.
+  // Nutzt dieselbe moveKanbanCard()-Logik (inkl. deren Validierung, z.B.
+  // "Nicht erschienen" nur vom Ersttermin aus) wie das Ziehen am Desktop.
+  function openKanbanMoveMenu(contact, fromStage){
+    document.getElementById('kanbanMoveTitle').textContent = 'Verschieben: ' + contact.name;
+    const grid = document.getElementById('kanbanMoveGrid');
+    grid.innerHTML = KANBAN_STAGES.filter(s=>s!==fromStage).map(s=>
+      `<button class="abtn" data-movestage="${s}">${KANBAN_STAGE_META[s].icon} ${KANBAN_STAGE_META[s].label}</button>`
+    ).join('');
+    const modal = document.getElementById('kanbanMoveModal');
+    modal.style.display = 'flex';
+    grid.querySelectorAll('[data-movestage]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        modal.style.display = 'none';
+        await moveKanbanCard(contact.id, fromStage, btn.dataset.movestage);
+      });
+    });
+    document.getElementById('kanbanMoveClose').onclick = ()=>{ modal.style.display = 'none'; };
   }
 
   async function logKanbanAction(contact, actionKey){
@@ -2805,13 +2883,66 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   async function recordSaleForKanban(contact, status){
-    const produkt = prompt('Welches Produkt?');
+    if(status==='gewonnen'){ await recordWonSalesLoop(contact); return; }
+    const produkt = prompt('Welches Produkt/Angebot war das?');
     if(!produkt || !produkt.trim()) return;
     const { error } = await sb.from('sales').insert({
       contact_id: contact.id, org_id: profile.org_id, produkt: produkt.trim(),
       status, created_by: profile.id
     });
     if(error) reportError('Verkauf eintragen', error);
+  }
+
+  // Bei Gewonnen: Produkt + Menge abfragen, danach direkt weiter mit dem
+  // nächsten Produkt (statt nur einem einzelnen Freitext-Prompt) — ein
+  // Abschluss kann mehrere Produkte umfassen.
+  function recordWonSalesLoop(contact){
+    return new Promise(resolve=>{
+      const produktEl = document.getElementById('saleEntryProdukt');
+      const mengeEl = document.getElementById('saleEntryMenge');
+      const statusEl = document.getElementById('saleEntryStatus');
+      const listEl = document.getElementById('saleEntryList');
+      const modal = document.getElementById('saleEntryModal');
+      const addBtn = document.getElementById('saleEntryAddBtn');
+      const doneBtn = document.getElementById('saleEntryDoneBtn');
+      const closeBtn = document.getElementById('saleEntryClose');
+      document.getElementById('saleEntryContactName').textContent = contact.name;
+      produktEl.value = ''; mengeEl.value = '1'; statusEl.textContent = ''; listEl.textContent = '';
+      const added = [];
+      modal.style.display = 'flex';
+
+      async function addProduct(){
+        const produkt = produktEl.value.trim();
+        const menge = parseInt(mengeEl.value, 10) || 1;
+        if(!produkt){ statusEl.textContent = 'Bitte Produkt eingeben.'; return; }
+        const { error } = await sb.from('sales').insert({
+          contact_id: contact.id, org_id: profile.org_id, produkt, menge,
+          status: 'gewonnen', created_by: profile.id
+        });
+        if(error){ reportError('Verkauf eintragen', error, statusEl); return; }
+        added.push(`${produkt} × ${menge}`);
+        listEl.innerHTML = added.map(x=>'✓ '+x).join('<br>');
+        produktEl.value = ''; mengeEl.value = '1'; statusEl.textContent = ''; produktEl.focus();
+      }
+      function finish(){
+        modal.style.display = 'none';
+        addBtn.onclick = null; doneBtn.onclick = null; closeBtn.onclick = null;
+        resolve();
+      }
+      addBtn.onclick = addProduct;
+      doneBtn.onclick = finish;
+      closeBtn.onclick = finish;
+    });
+  }
+
+  // Verkauf eintragen + Kontaktstatus setzen — gemeinsame Logik für "Gewonnen"
+  // und "Verloren", egal ob über das Ziehen im Kanban (moveKanbanCard) oder
+  // über den Abschluss-Button im Kontakt-Aktionsdialog (logActionForContact)
+  // ausgelöst.
+  async function recordWinOrLoss(contact, status){
+    await recordSaleForKanban(contact, status);
+    const { error } = await sb.from('contacts').update({status: status==='gewonnen' ? 'kunde' : 'verloren'}).eq('id', contact.id);
+    if(error) logSilentError('Kontaktstatus aktualisieren', error);
   }
 
   // Kleines Popup mit optionalen Zusatz-Aktionen (Bedarfsanalyse bei
@@ -2869,13 +3000,9 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     contact.kanban_stage = toStage;
 
     if(toStage==='gewonnen'){
-      await recordSaleForKanban(contact, 'gewonnen');
-      const { error } = await sb.from('contacts').update({status:'kunde'}).eq('id', contact.id);
-      if(error) logSilentError('Kontaktstatus aktualisieren', error);
+      await recordWinOrLoss(contact, 'gewonnen');
     } else if(toStage==='verloren'){
-      await recordSaleForKanban(contact, 'verloren');
-      const { error } = await sb.from('contacts').update({status:'verloren'}).eq('id', contact.id);
-      if(error) logSilentError('Kontaktstatus aktualisieren', error);
+      await recordWinOrLoss(contact, 'verloren');
     }
 
     if(toStage==='angebot_versendet' || toStage==='zweittermin'){

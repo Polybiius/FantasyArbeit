@@ -108,7 +108,9 @@ Funktionen benutzen statt eigene Fehlerbehandlung zu erfinden.**
   Kontakt über die Zeit, je mit Datum und `status` ('gewonnen'/'verloren').
   Produktkatalog ist bewusst noch **nicht** gebaut — `produkt` ist Freitext,
   ein echter Katalog (wie `items`) ist ein bewusst aufgeschobener nächster
-  Schritt.
+  Schritt. Seit Patch 21: `menge` (Integer, Default 1) — ein Abschluss kann
+  mehrere Zeilen erzeugen (ein Insert pro Produkt inkl. eigener Menge), siehe
+  Kanban-Abschnitt unten (`recordWonSalesLoop()`).
 - `journal_entries` — Tagebuch, **fünf feste Fragen** pro Tag (siehe unten),
   strikt privat (auch Admins sehen fremde Einträge NICHT — bewusst die einzige
   Tabelle ohne Admin-Ausnahme).
@@ -221,6 +223,15 @@ NICHT automatisch, im Kanban zu sein. `kanban_stage` ist nullable und wird nur
 (`renderKanbanBoard()`) werden Kontakte ohne gesetzte Stufe deshalb bewusst
 übersprungen, nicht in "Neuer Lead" einsortiert.
 
+**Bedienung auch ohne Ziehen (seit dieser Session):** die native HTML5-Drag&Drop-
+API (`draggable`, `dragstart`/`dragover`/`drop`) ist eine reine Maus-API und
+feuert auf Touch-Geräten nicht zuverlässig — auf dem Handy ging Ziehen im
+Kanban praktisch nicht. Jede Karte hat deshalb zusätzlich ein ↕-Symbol
+(`.kc-move-btn`), das `openKanbanMoveMenu()` öffnet: ein Menü mit allen
+Zielspalten, Antippen ruft dieselbe `moveKanbanCard()`-Logik auf wie das
+Ziehen (gleiche Validierung, gleiches XP-Logging). Ziehen per Maus funktioniert
+weiterhin zusätzlich, nichts wurde entfernt.
+
 **Spaltenübergänge und was sie auslösen** (Logik in `moveKanbanCard()`):
 - → Ersttermin vereinbart: Aktion `termin_vereinbart`. Auch erreichbar per
   Klick auf "Termin vereinbart" an einem Dungeon (fragt dann nach
@@ -230,11 +241,19 @@ NICHT automatisch, im Kanban zu sein. `kanban_stage` ist nullable und wird nur
   Konversions-Malus).
 - → Angebot versendet / Zweittermin: Aktion `pitch`, danach optionales Popup
   "Bedarfsanalyse geführt?" (Kann übersprungen werden).
-- → Gewonnen: Aktion `abschluss`, danach Produkt-Abfrage → Eintrag in `sales`
-  (gewonnen), `contacts.status` → 'kunde'.
-- → Verloren: **keine XP-Aktion** ("Verloren ist verloren"), nur
-  Produkt-Abfrage → Eintrag in `sales` (verloren), `contacts.status` →
-  'verloren'.
+- → Gewonnen: Aktion `abschluss`, danach Popup `recordWonSalesLoop()` —
+  Produkt + Menge eintragen, "+ Produkt hinzufügen" für beliebig viele weitere
+  Produkte desselben Abschlusses, "Fertig" zum Abschließen (je ein Insert in
+  `sales` pro Produkt, seit Patch 21 inkl. `menge`), `contacts.status` →
+  'kunde'. Dieselbe Wirkung (Spalte, Verkaufs-Popup, Status) hat auch der
+  "Abschluss"-Button im normalen Kontakt-Aktionsdialog (`logActionForContact`)
+  — beide Wege laufen seit dieser Session über die gemeinsame Funktion
+  `recordWinOrLoss()`, vorher fehlte das dort komplett (Bug: Abschluss über
+  den Kontaktdialog loggte XP, sprang aber nicht nach Gewonnen).
+- → Verloren: **keine XP-Aktion** ("Verloren ist verloren"), nur einfache
+  Produkt-Abfrage (kein Mengenfeld, keine Mehrfach-Schleife — bewusst so
+  belassen, "wie viel verkauft" ergibt bei einem verlorenen Deal keinen Sinn)
+  → Eintrag in `sales` (verloren), `contacts.status` → 'verloren'.
 - Von Gewonnen/Verloren zurück zu Ersttermin/Angebot versendet/Zweittermin:
   zählt als Kundenausbau, loggt `kundenausbau` statt der sonst üblichen
   Aktion für diese Spalte.
@@ -254,6 +273,14 @@ setzen (`contactKanbanStageSelect`) — das ist eine reine Korrekturmöglichkeit
 ohne Aktions-Logging, nicht der normale Weg (der bleibt das Ziehen im Board).
 
 ## Bewusst aufgeschobene Ideen (NICHT vergessen, aber NICHT von selbst bauen)
+- **Gilden-basierte Sichtbarkeit** (statt des heutigen organisationsweiten
+  `contactsVisibility`-Schalters): war am 2026-07-30 als aktive, dringliche
+  Baustelle besprochen (Grundidee, zwei Beispiel-Szenarien B2B/B2C, zwei
+  offene Detailfragen), wurde am 2026-07-31 vom Nutzer bewusst zurückgestuft
+  — auf **viel später** verschoben, nicht mehr aktiv. Vor dem Wiederaufnehmen:
+  falls der Chat-Verlauf vom 2026-07-30 verfügbar ist, dort nachlesen (Details
+  wurden hier bewusst nicht mehr mitgeschleppt). Nicht von selbst wieder
+  anfangen, nur wenn der Nutzer es explizit anstößt.
 - **Produktkatalog** (wie `items`, aber für `sales.produkt`) — aktuell Freitext.
 - **Jahresend-Dramatisierung**: alle Tagebucheinträge (+ ggf. Fotos) eines
   Nutzers werden am Jahresende per LLM zu einer zusammenhängenden
@@ -297,6 +324,11 @@ Supabase-Tabelle `rule_configs`.
 
 ## Bekannte, bewusst in Kauf genommene Lücken
 
+- Aktuell sieht JEDES Organisationsmitglied ALLE Accounts/Locations
+  (`locations_select_org`-Policy hat keine Besitzer-Einschränkung) — laut
+  Nutzer eigentlich falsches Verhalten, aber die geplante Lösung (gilden-
+  basierte Sichtbarkeit, siehe "Bewusst aufgeschobene Ideen") ist bewusst auf
+  später verschoben. Bis dahin: kein Alleingang, nicht von selbst reparieren.
 - "Zuletzt kontaktiert" an einem Kontakt zeigt nur **eigene** Log-Einträge des
   gerade eingeloggten Nutzers, nicht die von Kollegen — auch wenn der Kontakt
   auf "shared" steht. Grund: `action_log` bleibt grundsätzlich privat; es gibt
