@@ -1243,7 +1243,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('loading').style.display='flex';
     let existing;
     try{ existing = await checkProfileExists(); }
-    catch(e){ document.getElementById('loading').style.display='none'; return; }
+    catch{ document.getElementById('loading').style.display='none'; return; }
     if(!existing){
       document.getElementById('loading').style.display='none';
       document.getElementById('charCreateScreen').style.display='block';
@@ -1256,7 +1256,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   async function enterApp(){
     applyClassTheme(profile.character_class);
     try{ await loadOrg(); await loadConfig(); await loadLog(); }
-    catch(e){ document.getElementById('loading').style.display='none'; return; }
+    catch{ document.getElementById('loading').style.display='none'; return; }
     await loadProducts();
     phoneTally = Number(localStorage.getItem('phoneTally_'+profile.id) || 0);
     lastKnownLevel = levelInfo(computeTotals().totalXp).level;
@@ -1534,7 +1534,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       return `<div class="quest"><div class="quest-top"><span class="qname">${q.name} <span style="color:var(--muted-2)">(+${q.bonus} XP)</span></span><span class="qprog ${done?'done':''}">${done?'✓ erfüllt':cur+'/'+max}</span></div><div class="quest-track"><div class="quest-fill" style="width:${pct}%"></div></div></div>`;
     }).join('');
 
-    const ctxGroups = abschlussContextGroups();
     document.getElementById('chainList').innerHTML = (config.questChains||[]).map(chain=>{
       let prevDone = true;
       const stagesHtml = chain.stages.map(stage=>{
@@ -1594,7 +1593,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   // ---- Tagebuch-Kundenmarkierung (@mention, persönlich, keine CRM-Statistik) ----
   let mentionSearchTimer = null;
-  let mentionActiveField = null; // welches jN-Feld gerade ein offenes Dropdown hat
 
   function initJournalMentions(){
     JOURNAL_FIELDS.forEach((f,i)=>{
@@ -1604,7 +1602,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       ta.addEventListener('input', ()=>{
         const match = mentionQueryAtCaret(ta);
         if(!match){ box.style.display='none'; box.innerHTML=''; return; }
-        mentionActiveField = qIndex;
         clearTimeout(mentionSearchTimer);
         mentionSearchTimer = setTimeout(()=> searchMentionSuggestions(match.query, ta, box), 250);
       });
@@ -2209,8 +2206,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     }
   });
 
-  let contactsCurrentView = 'dungeon'; // 'dungeon' | 'all'
-
   async function loadContactsBundle(){
     const { data: contacts, error } = await sb.from('contacts').select('*').order('created_at', {ascending:false});
     if(error) return { error };
@@ -2286,14 +2281,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   });
 
   document.getElementById('viewByDungeonBtn').addEventListener('click', ()=>{
-    contactsCurrentView='dungeon';
     document.getElementById('viewByDungeonBtn').classList.add('active');
     document.getElementById('viewAllContactsBtn').classList.remove('active');
     document.getElementById('kontakteByDungeonView').style.display='block';
     document.getElementById('kontakteAllView').style.display='none';
   });
   document.getElementById('viewAllContactsBtn').addEventListener('click', ()=>{
-    contactsCurrentView='all';
     document.getElementById('viewAllContactsBtn').classList.add('active');
     document.getElementById('viewByDungeonBtn').classList.remove('active');
     document.getElementById('kontakteAllView').style.display='block';
