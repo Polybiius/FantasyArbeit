@@ -2157,7 +2157,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   });
 
   let contactsCurrentView = 'dungeon'; // 'dungeon' | 'all'
-  let contactsBundleCache = null;
 
   async function loadContactsBundle(){
     const { data: contacts, error } = await sb.from('contacts').select('*').order('created_at', {ascending:false});
@@ -2197,7 +2196,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       logSilentError('Kontaktliste laden', bundle.error);
       return;
     }
-    contactsBundleCache = bundle;
     renderDungeonList(bundle);
     renderContactsTableInto('allContactsTable', bundle.contacts, bundle);
   }
