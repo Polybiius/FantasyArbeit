@@ -41,7 +41,7 @@ nicht per Code-Änderung.
   SQL-Patch manuell im Supabase SQL-Editor ausgeführt. Das ändert sich jetzt mit
   Claude Code.
 
-## Datenbank — aktueller Stand (Annahme: Patch 1–20 sind alle eingespielt)
+## Datenbank — aktueller Stand (Annahme: Patch 1–23 sind alle eingespielt)
 
 **Wenn das nicht stimmt, sofort korrigieren, bevor irgendetwas gebaut wird** — sonst
 versucht Claude Code eventuell, Dinge doppelt anzulegen oder Migrationen in falscher
@@ -105,13 +105,34 @@ Funktionen benutzen statt eigene Fehlerbehandlung zu erfinden.**
   gemacht, Patch 19 korrigiert das (siehe PATCH_LOG.md).
   Sichtbarkeit konfigurierbar über `contacts_shared_for_org()` (liest
   `rule_configs.contactsVisibility`).
+- `products` — **Produktkatalog** (seit Patch 23), ersetzt den früheren
+  Freitext-Dummy in `sales.produkt`. `org_id`, `key` (stabil, aus dem Namen
+  abgeleitet — für spätere Questline-Verknüpfung), `name`, `category`,
+  `subcategory` (optional), `active`. Kategorien/Unterkategorien sind bewusst
+  einfache Textfelder, keine eigene Tabelle (Rule of Three: erst bei
+  echtem Mehrbedarf abstrahieren). Pflege nur Admins (später ggf. je
+  Organisation, aber weiterhin admin-exklusiv). **Nie löschbar, nur
+  deaktivierbar** (`active=false`) — gleiches Prinzip wie sonst im Projekt,
+  historische Verkäufe zeigen weiterhin auf das damalige Produkt. Verwaltung
+  über den neuen Reiter "Produkte" (nur für Admins sichtbar), Zuordnung
+  Kategorie→Produkt in den Verkaufs-Popups über `populateCategorySelect()`/
+  `populateProductSelect()` in `index.html`.
 - `sales` — echte Verkaufshistorie (nicht nur ein Feld!): mehrere Produkte pro
-  Kontakt über die Zeit, je mit Datum und `status` ('gewonnen'/'verloren').
-  Produktkatalog ist bewusst noch **nicht** gebaut — `produkt` ist Freitext,
-  ein echter Katalog (wie `items`) ist ein bewusst aufgeschobener nächster
-  Schritt. Seit Patch 21: `menge` (Integer, Default 1) — ein Abschluss kann
-  mehrere Zeilen erzeugen (ein Insert pro Produkt inkl. eigener Menge), siehe
-  Kanban-Abschnitt unten (`recordWonSalesLoop()`).
+  Kontakt über die Zeit, `status` ('gewonnen'/'verloren'), `menge` (seit
+  Patch 21, Integer, Default 1). Seit Patch 23: `product_id` (Verweis auf
+  `products`, Pflicht — kein Freitext mehr) statt der früheren `produkt`-
+  Textspalte, dazu `bewertungssumme` und `laufender_beitrag` (beide Zahlen,
+  werden beim Verkaufen erfasst, aber in Phase 1 **noch nicht** zu Provision/
+  Bewertungspunkten verrechnet — kommt als eigener, späterer Patch, siehe
+  "Bewusst aufgeschobene Ideen"), `vertragsbeginn` (Datum, Pflichtfeld beim
+  Gewinnen, kann in der Zukunft liegen — z.B. Kündigungsfristen bei PKV-
+  Wechseln) und `vertragsende` (Datum, nullable — leer = Vertrag läuft noch,
+  gesetzt = gekündigt/ausgelaufen; **nicht** dasselbe wie `status='verloren'`,
+  das bleibt ein eigener Fall für nie zustande gekommene Abschlüsse). Ein
+  Abschluss kann mehrere Zeilen erzeugen (ein Insert pro Produkt inkl.
+  eigener Menge), siehe Kanban-Abschnitt unten (`recordWonSalesLoop()`).
+  Details zur Verkaufshistorie-Anzeige: siehe eigener Abschnitt
+  "Produktkatalog & Verkaufshistorie" unten.
 - `journal_entries` — Tagebuch, **fünf feste Fragen** pro Tag (siehe unten),
   strikt privat (auch Admins sehen fremde Einträge NICHT — bewusst die einzige
   Tabelle ohne Admin-Ausnahme).
@@ -298,6 +319,66 @@ Die Kanban-Stufe eines Kontakts lässt sich auch direkt im Kontaktformular
 setzen (`contactKanbanStageSelect`) — das ist eine reine Korrekturmöglichkeit
 ohne Aktions-Logging, nicht der normale Weg (der bleibt das Ziehen im Board).
 
+## Produktkatalog & Verkaufshistorie, seit Patch 23
+
+Verkauft werden **Versicherungsprodukte** (Lebens-, Kranken- [Voll-/
+Zusatzversicherung als Unterkategorien], Sachversicherungen) an akademische
+Heilberufe. Kategorien können optional eine Unterkategorie haben — nicht
+zwingend bei jeder, ergibt sich beim tatsächlichen Einpflegen der Produkte.
+
+**Phasenansatz, bewusst so entschieden:** Phase 1 (dieser Patch) baut nur die
+Struktur — Katalog, Kategorien, Verkaufserfassung inkl. Bewertungssumme (BWS)
+und laufendem Beitrag. Die eigentliche **Verrechnung** (BWS → Provision →
+Bewertungspunkte) ist bewusst auf Phase 2 verschoben, siehe "Bewusst
+aufgeschobene Ideen". Das BWS-Feld ist im Verkaufs-Popup trotzdem schon von
+Anfang an sichtbar (nicht erst mit Phase 2 nachgerüstet) — Absicht: der
+Nutzer soll sich früh an den Ablauf gewöhnen und beim echten Benutzen merken,
+ob noch weitere Felder/Reiter nötig sind ("learning by doing").
+
+**Drei getrennte Zahlen-Ebenen, nicht verwechseln:**
+1. **XP/Level** (Spiel) — kommt über Quests, nie direkt vom Verkauf.
+2. **Vertriebsstatistik** (rohe Zahlen wie Vertragsanzahl oder BWS-Summe pro
+   Kategorie, z.B. "Lebenproduktion") — bildet reale Vertriebsleistung ab,
+   dient auch der Eigen-/Mitarbeitermotivation. Der noch zu bauende
+   Questbaum (siehe "Ein aktiver, paralleler Nebenstrang") wird sich
+   vermutlich auf **beides** beziehen können: rohe Stückzahlen ("10
+   Lebensversicherungen") UND BWS-Schwellen ("25 Mio Leben-BWS") — deshalb
+   muss `sales.product_id` ein echter Verweis sein, kein Freitext, damit sich
+   später sauber nach Produkt/Kategorie aufsummieren lässt.
+3. **Bewertungssumme → Provision & Bewertungspunkte** — die reale
+   Versicherungs-Kennzahl aus dem Job des Nutzers, unabhängig vom Spiel.
+   Kommt in Phase 2, und wird dann vermutlich (wie XP/Level) **live aus der
+   gespeicherten BWS berechnet, nicht als eigene Spalte gespeichert** —
+   konsistent mit dem Rest des Projekts (`computeTotals()`-Prinzip).
+
+**Verkaufshistorie-Reiter am Kontakt** (zwischen "Übersicht" und
+"Tagebucheintrag", `renderContactSalesTab()` in `index.html`): kompakt
+zunächst nur der Produktname sichtbar (Muster wie überall im Projekt: erst
+kompakt, Klick für Details) — Details bei Klick auf den Kontakt sichtbar in
+zwei Gruppen:
+- **Bestehende Produkte**: `status='gewonnen'` und `vertragsende` leer.
+- **Historisch**: `status='verloren'` (nie zustande gekommen) ODER
+  `status='gewonnen'` mit gesetztem `vertragsende` (war aktiv, dann
+  gekündigt/ausgelaufen) — bewusst **beide** Fälle in einer Gruppe, weil aus
+  Kunden-Historien-Sicht beides "nicht mehr aktiv" bedeutet, auch wenn der
+  Grund unterschiedlich ist.
+
+**Wichtige Geschäftsregel:** Ein Vertrag als gekündigt/ausgelaufen markieren
+(`vertragsende` setzen, per Eingabe des Kündigungsdatums) rührt
+`contacts.status` **nicht** an — ein Kunde bleibt "kunde", solange
+irgendein anderer Vertrag bei ihm noch läuft. Kündigen darf jeder für seine
+eigenen Kontakte (Owner oder Admin, wie sonst auch — technisch bereits durch
+die bestehende `sales_update_like_contact`-RLS-Policy abgedeckt, keine neue
+Policy nötig).
+
+**"Verloren"-Verkäufe** (Kanban-Spalte Verloren, oder Abschluss-Dialog)
+laufen jetzt über ein eigenes, bewusst schlankes Popup (`saleLostModal`/
+`recordLostSale()`) — nur Kategorie+Produkt-Auswahl, weiterhin **ohne**
+Mengenfeld und ohne Mehrfach-Schleife (wie vor Patch 23 dokumentiert: "wie
+viel verkauft" ergibt bei einem verlorenen Deal keinen Sinn). Auch hier
+Pflicht, ein Katalog-Produkt zu wählen — kein Freitext-Fallback mehr,
+irgendwo im System.
+
 ## Bewusst aufgeschobene Ideen (NICHT vergessen, aber NICHT von selbst bauen)
 - **Manatrank-Vergabe an Quests knüpfen** (statt/zusätzlich zum täglichen
   Gratis-Trank aus `grantDailyManatrank()`, siehe oben bei `user_inventory`):
@@ -313,7 +394,27 @@ ohne Aktions-Logging, nicht der normale Weg (der bleibt das Ziehen im Board).
   falls der Chat-Verlauf vom 2026-07-30 verfügbar ist, dort nachlesen (Details
   wurden hier bewusst nicht mehr mitgeschleppt). Nicht von selbst wieder
   anfangen, nur wenn der Nutzer es explizit anstößt.
-- **Produktkatalog** (wie `items`, aber für `sales.produkt`) — aktuell Freitext.
+- **BWS-Verrechnung (Phase 2 des Produktkatalogs)**: `sales.bewertungssumme`
+  wird seit Patch 23 erfasst, aber noch nicht zu Provision/Bewertungspunkten
+  verrechnet. Vor dem Bauen klären: ist die BWS ein fester Wert je Produkt
+  oder wird sie aus `laufender_beitrag` × einem produktabhängigen Faktor
+  berechnet, und wie genau werden daraus Provision und Bewertungspunkte
+  (feste Prozentsätze pro Produkt? organisationsweiter Faktor?).
+- **Vertragsnummer-Feld an `sales`** — vom Nutzer am 2026-07-31 fürs
+  zukünftige B2B-CRM-Geschäft angekündigt (andere Vertriebsorganisationen
+  brauchen das vermutlich), aktuell aber noch nicht gebraucht — bewusst noch
+  nicht ins Schema aufgenommen.
+- **Malus-Berechnung bei gekündigten/ausgelaufenen Verträgen**: vom Nutzer am
+  2026-07-31 als Zukunftsidee erwähnt ("was wir aus dem Malus rechnerisch
+  machen, dazu in Zukunft mehr"), noch ohne jegliche Details — evtl.
+  verwandt mit dem bestehenden Konversions-Malus-Mechanismus beim Kanban
+  (`termin_nicht_wahrgenommen`, −2 XP). Nicht von selbst anfangen.
+- **Admin-Benachrichtigung bei Kündigung durch Mitarbeiter**: wenn ein
+  Team-Mitglied einen Vertrag als gekündigt/ausgelaufen markiert, soll der
+  Admin künftig automatisch informiert werden (vom Nutzer am 2026-07-31
+  angekündigt). Aktuell passiert das noch nicht — braucht vermutlich einen
+  neuen Benachrichtigungsmechanismus, den es im Projekt bisher gar nicht
+  gibt.
 - **Jahresend-Dramatisierung**: alle Tagebucheinträge (+ ggf. Fotos) eines
   Nutzers werden am Jahresende per LLM zu einer zusammenhängenden
   Heldenreise-Erzählung verdichtet. Braucht eine Supabase Edge Function
@@ -381,6 +482,13 @@ Supabase-Tabelle `rule_configs`.
   bevor Code geschrieben wird**. Diese Regel gilt weiter: bei Kernstrukturen
   (Datenmodell-Änderungen, neue zentrale Tabellen, Berechtigungsmodelle) erst
   Verständnis-Rückmeldung + offene Fragen, dann erst nach Bestätigung bauen.
+  **Präzisierung (seit 2026-07-31, Produktkatalog-Feature):** "erst
+  durchsprechen" heißt eine gründliche **Konversation** vorher — NICHT
+  zusätzlich einen SQL-/Code-Entwurf zum Gegenlesen vorlegen, bevor er läuft.
+  Der Nutzer kann rohen SQL-/Code-Text als Nicht-Programmierer ohnehin nicht
+  sinnvoll bewerten ("ich muss es sehen und fühlen") — nach ausführlicher
+  Diskussion einfach bauen, hochladen, der Nutzer testet die laufende
+  Funktion im Alltag und gibt danach Rückmeldung.
 - Der Nutzer denkt gerne "groß"/langfristig (Skalierbarkeit auf andere
   Vertriebe, Templating), will aber in **kleinen, funktionierenden Schritten**
   bauen — nicht alles auf einmal.

@@ -503,6 +503,7 @@
       <button class="nav-btn" data-page="inventar">🎒 Inventar</button>
       <button class="nav-btn" data-page="gilde" id="navGildeBtn">🛡 Gilde</button>
       <button class="nav-btn" data-page="tagebuch">📖 Abenteuerlog</button>
+      <button class="nav-btn" data-page="produkte" id="navProdukteBtn" style="display:none;">📦 Produkte</button>
       <button class="nav-btn" data-page="fehlerprotokoll" id="navFehlerprotokollBtn" style="display:none;">🛠 Fehlerprotokoll</button>
     </nav>
 
@@ -877,6 +878,22 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         </div>
       </div>
 
+      <!-- SEITE: PRODUKTE (nur Admins) -->
+      <div class="page" id="page-produkte" style="display:none;">
+        <div class="card">
+          <h2>Produkte <span class="tag">nur für Admins sichtbar</span></h2>
+          <div class="empty-page-hint" style="margin-bottom:8px;">Der Produktkatalog, aus dem beim Verkaufen ausgewählt wird. Nichts wird gelöscht, nur deaktiviert — alte Verkäufe zeigen weiterhin das damalige Produkt.</div>
+          <div class="kanban-newlead-form" style="margin-bottom:14px;">
+            <input type="text" id="prodNameInput" placeholder="Produktname">
+            <input type="text" id="prodCategoryInput" placeholder="Kategorie (z.B. Lebensversicherungen)">
+            <input type="text" id="prodSubcategoryInput" placeholder="Unterkategorie (optional)">
+            <button class="cal-nav-btn" id="prodAddBtn">+ Produkt anlegen</button>
+            <div class="empty-page-hint" id="prodAddStatus"></div>
+          </div>
+          <div id="productsList"></div>
+        </div>
+      </div>
+
       <!-- SEITE: FEHLERPROTOKOLL (nur Admins) -->
       <div class="page" id="page-fehlerprotokoll" style="display:none;">
         <div class="card">
@@ -907,13 +924,33 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       <button id="saleEntryClose">✕</button>
     </div>
     <div class="kanban-newlead-form">
-      <input type="text" id="saleEntryProdukt" placeholder="Produkt">
-      <input type="number" id="saleEntryMenge" placeholder="Menge" min="1" value="1">
+      <select id="saleEntryCategory"></select>
+      <select id="saleEntryProdukt"></select>
+      <input type="number" id="saleEntryMenge" placeholder="Stückzahl" min="1" value="1">
+      <input type="number" id="saleEntryBeitrag" placeholder="Laufender Beitrag (€)" step="0.01" min="0">
+      <label class="cdl" style="display:block;margin-top:4px;">Vertragsbeginn</label>
+      <input type="date" id="saleEntryVertragsbeginn">
+      <input type="number" id="saleEntryBws" placeholder="Bewertungssumme (BWS)" step="0.01" min="0">
       <button class="cal-nav-btn" id="saleEntryAddBtn">+ Produkt hinzufügen</button>
       <div class="empty-page-hint" id="saleEntryStatus"></div>
       <div class="empty-page-hint" id="saleEntryList"></div>
     </div>
     <button class="cal-nav-btn" id="saleEntryDoneBtn" style="width:100%;margin-top:8px;">Fertig</button>
+  </div>
+</div>
+
+<div class="loc-modal" id="saleLostModal" style="display:none;">
+  <div class="loc-modal-inner">
+    <div class="loc-modal-header">
+      <span>Welches Produkt war im Gespräch für <span id="saleLostContactName"></span>?</span>
+      <button id="saleLostClose">✕</button>
+    </div>
+    <div class="kanban-newlead-form">
+      <select id="saleLostCategory"></select>
+      <select id="saleLostProdukt"></select>
+      <div class="empty-page-hint" id="saleLostStatus"></div>
+    </div>
+    <button class="cal-nav-btn" id="saleLostConfirmBtn" style="width:100%;margin-top:8px;">Als verloren eintragen</button>
   </div>
 </div>
 
@@ -945,9 +982,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     </div>
     <div class="view-switch">
       <button class="cal-nav-btn view-switch-btn active" id="cdTabOverviewBtn">Übersicht</button>
+      <button class="cal-nav-btn view-switch-btn" id="cdTabSalesBtn">Verkaufshistorie</button>
       <button class="cal-nav-btn view-switch-btn" id="cdTabJournalBtn">Tagebucheintrag</button>
     </div>
     <div id="contactDetailBody"></div>
+    <div id="contactDetailSales" style="display:none;"></div>
     <div id="contactDetailJournal" style="display:none;"></div>
   </div>
 </div>
@@ -961,6 +1000,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   let session=null, profile=null, org=null, config=null, log=[];
+  let products=[];
   let phoneTally = 0;
   let lastKnownLevel = 1;
   const QUICKBAR_KEYS = ['telefon_5','termin_vereinbart','ansprache'];
@@ -1186,6 +1226,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(error){ reportError('Aktions-Log laden', error); throw error; }
     log = data || [];
   }
+  async function loadProducts(){
+    const { data, error } = await sb.from('products').select('*').eq('org_id', profile.org_id).order('category').order('subcategory').order('name');
+    if(error){ reportError('Produktkatalog laden', error); throw error; }
+    products = data || [];
+  }
+  function activeProducts(){ return products.filter(p=>p.active); }
+  function productById(id){ return products.find(p=>p.id===id); }
 
   async function afterLogin(){
     document.getElementById('authScreen').style.display='none';
@@ -1204,7 +1251,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   async function enterApp(){
     applyClassTheme(profile.character_class);
-    try{ await loadOrg(); await loadConfig(); await loadLog(); }
+    try{ await loadOrg(); await loadConfig(); await loadLog(); await loadProducts(); }
     catch(e){ document.getElementById('loading').style.display='none'; return; }
     phoneTally = Number(localStorage.getItem('phoneTally_'+profile.id) || 0);
     lastKnownLevel = levelInfo(computeTotals().totalXp).level;
@@ -1214,6 +1261,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('orgSubtitle').textContent = `Klasse: ${CLASS_LABELS[profile.character_class]||profile.character_class} · Organisation: ${org ? org.name : ''}`;
     document.getElementById('adminToggleBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
     document.getElementById('navFehlerprotokollBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
+    document.getElementById('navProdukteBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
     if(profile.role==='admin'){
       document.getElementById('classSwitcher').style.display='flex';
       updateClassSwitcherActive();
@@ -2301,27 +2349,20 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     html += field('Zuletzt kontaktiert (von dir)', lastTs ? fmtTime(lastTs) : 'Noch kein eigener Kontaktpunkt');
     html += field('Notizen', c.notes);
 
-    html += `<div class="cc-sales-block"><span class="cdl">Verkaufshistorie</span>`;
-    html += cSales.length ? cSales.map(s=>`<div class="cc-notes">${s.status==='gewonnen'?'✅':'❌'} ${s.produkt} — ${fmtDate(s.datum)}</div>`).join('') : '<div class="cc-notes">Noch keine Verkaufshistorie.</div>';
-    if(canEdit) html += `<button id="cdAddSaleBtn" style="margin-top:6px;">+ Verkauf eintragen</button>`;
-    html += `</div>`;
-
     html += `<div class="cc-actions" style="margin-top:14px;">
       <button id="cdLogActionBtn">Aktion loggen</button>
       ${canEdit ? `<button id="cdEditBtn">Bearbeiten</button><button id="cdDeleteBtn">Löschen</button>` : ''}
     </div>`;
 
     document.getElementById('contactDetailBody').innerHTML = html;
+    renderContactSalesTab(c, cSales, canEdit, fmtDate);
 
     const journalHtml = mentions.length>0
       ? `<div class="cd-mentions">${mentions.map(d=>`<a class="cal-nav-btn" data-jump="${d}">📖 ${new Date(d+'T12:00:00').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'})}</a>`).join('')}</div>`
       : `<div class="empty-page-hint">Noch kein Tagebucheintrag mit diesem Kontakt.</div>`;
     document.getElementById('contactDetailJournal').innerHTML = journalHtml;
 
-    document.getElementById('cdTabOverviewBtn').classList.add('active');
-    document.getElementById('cdTabJournalBtn').classList.remove('active');
-    document.getElementById('contactDetailBody').style.display='block';
-    document.getElementById('contactDetailJournal').style.display='none';
+    showContactDetailTab('overview');
 
     document.getElementById('contactDetailModal').style.display='flex';
 
@@ -2332,8 +2373,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       document.getElementById('contactDetailModal').style.display='none';
       openContactActionModal(c);
     });
-    const saleBtn = document.getElementById('cdAddSaleBtn');
-    if(saleBtn) saleBtn.addEventListener('click', ()=> addSaleForContact(c.id));
     const editBtn = document.getElementById('cdEditBtn');
     if(editBtn) editBtn.addEventListener('click', ()=>{ document.getElementById('contactDetailModal').style.display='none'; startEditContact(c); });
     const delBtn = document.getElementById('cdDeleteBtn');
@@ -2348,29 +2387,70 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   document.getElementById('contactDetailClose').addEventListener('click', ()=>{
     document.getElementById('contactDetailModal').style.display='none';
   });
-  document.getElementById('cdTabOverviewBtn').addEventListener('click', ()=>{
-    document.getElementById('cdTabOverviewBtn').classList.add('active');
-    document.getElementById('cdTabJournalBtn').classList.remove('active');
-    document.getElementById('contactDetailBody').style.display='block';
-    document.getElementById('contactDetailJournal').style.display='none';
-  });
-  document.getElementById('cdTabJournalBtn').addEventListener('click', ()=>{
-    document.getElementById('cdTabJournalBtn').classList.add('active');
-    document.getElementById('cdTabOverviewBtn').classList.remove('active');
-    document.getElementById('contactDetailJournal').style.display='block';
-    document.getElementById('contactDetailBody').style.display='none';
-  });
+  function showContactDetailTab(tab){ // 'overview' | 'sales' | 'journal'
+    document.getElementById('cdTabOverviewBtn').classList.toggle('active', tab==='overview');
+    document.getElementById('cdTabSalesBtn').classList.toggle('active', tab==='sales');
+    document.getElementById('cdTabJournalBtn').classList.toggle('active', tab==='journal');
+    document.getElementById('contactDetailBody').style.display = tab==='overview' ? 'block' : 'none';
+    document.getElementById('contactDetailSales').style.display = tab==='sales' ? 'block' : 'none';
+    document.getElementById('contactDetailJournal').style.display = tab==='journal' ? 'block' : 'none';
+  }
+  document.getElementById('cdTabOverviewBtn').addEventListener('click', ()=> showContactDetailTab('overview'));
+  document.getElementById('cdTabSalesBtn').addEventListener('click', ()=> showContactDetailTab('sales'));
+  document.getElementById('cdTabJournalBtn').addEventListener('click', ()=> showContactDetailTab('journal'));
 
-  async function addSaleForContact(contactId){
-    const produkt = prompt('Welches Produkt?');
-    if(!produkt || !produkt.trim()) return;
-    const gewonnen = confirm('Gewonnen? (Abbrechen = Verloren)');
-    const { error } = await sb.from('sales').insert({
-      contact_id: contactId, org_id: profile.org_id, produkt: produkt.trim(),
-      status: gewonnen ? 'gewonnen' : 'verloren', created_by: profile.id
+  function fmtEuro(n){ return n==null ? '—' : n.toLocaleString('de-DE',{minimumFractionDigits:2, maximumFractionDigits:2})+' €'; }
+
+  // Verkaufshistorie-Reiter: "Bestehende Produkte" (gewonnen, noch kein
+  // Vertragsende) vs. "Historisch" (verloren ODER gewonnen, aber inzwischen
+  // gekündigt/ausgelaufen). Ein gekündigter Vertrag rührt den Kontaktstatus
+  // NICHT an — der Kunde bleibt Kunde, solange irgendein anderer Vertrag
+  // noch läuft (siehe CLAUDE.md).
+  function renderContactSalesTab(c, cSales, canEdit, fmtDate){
+    const bestehend = cSales.filter(s=>s.status==='gewonnen' && !s.vertragsende);
+    const historisch = cSales.filter(s=>s.status==='verloren' || (s.status==='gewonnen' && s.vertragsende));
+
+    const row = (s, showKuendigen) => {
+      const p = productById(s.product_id);
+      return `<div class="cc-notes" data-sale="${s.id}">
+        <strong>${p ? p.name : '?'}</strong> — Start: ${fmtDate(s.vertragsbeginn)} · Stückzahl: ${s.menge}
+        · laufender Beitrag: ${fmtEuro(s.laufender_beitrag)} · ausgeschüttete Provision: —
+        ${s.status==='verloren' ? ' · <span style="color:var(--danger)">verloren</span>' : ''}
+        ${s.vertragsende ? ` · gekündigt zum ${fmtDate(s.vertragsende)}` : ''}
+        ${showKuendigen && canEdit ? `<button class="cal-nav-btn" data-kuendigen="${s.id}" style="margin-left:8px;">Gekündigt/ausgelaufen</button>` : ''}
+      </div>`;
+    };
+
+    let html = `<div class="cc-sales-block"><span class="cdl">Bestehende Produkte</span>`;
+    html += bestehend.length ? bestehend.map(s=>row(s,true)).join('') : '<div class="cc-notes">Keine laufenden Verträge.</div>';
+    html += `</div>`;
+    html += `<div class="cc-sales-block" style="margin-top:10px;"><span class="cdl">Historisch</span>`;
+    html += historisch.length ? historisch.map(s=>row(s,false)).join('') : '<div class="cc-notes">Noch nichts Historisches.</div>';
+    html += `</div>`;
+    if(canEdit) html += `<button id="cdAddSaleBtn" style="margin-top:10px;">+ Verkauf eintragen</button>`;
+
+    document.getElementById('contactDetailSales').innerHTML = html;
+
+    const saleBtn = document.getElementById('cdAddSaleBtn');
+    if(saleBtn) saleBtn.addEventListener('click', async ()=>{
+      document.getElementById('contactDetailModal').style.display='none';
+      const gewonnen = confirm('Gewonnen? (Abbrechen = Verloren)');
+      if(gewonnen) await recordWonSalesLoop(c); else await recordLostSale(c);
+      if(gewonnen){
+        const { error } = await sb.from('contacts').update({status:'kunde'}).eq('id', c.id);
+        if(error) logSilentError('Kontaktstatus aktualisieren', error);
+      }
+      await renderContactsPage();
     });
-    if(error){ reportError('Verkauf eintragen', error); return; }
-    await renderContactsPage();
+    document.querySelectorAll('#contactDetailSales [data-kuendigen]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const datum = prompt('Kündigungsdatum (JJJJ-MM-TT):', todayKey(new Date()));
+        if(!datum) return;
+        const { error } = await sb.from('sales').update({ vertragsende: datum }).eq('id', btn.dataset.kuendigen);
+        if(error){ reportError('Vertrag als gekündigt markieren', error); return; }
+        await renderContactsPage();
+      });
+    });
   }
 
   async function startEditContact(c){
@@ -2925,24 +3005,69 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     return true;
   }
 
-  async function recordSaleForKanban(contact, status){
-    if(status==='gewonnen'){ await recordWonSalesLoop(contact); return; }
-    const produkt = prompt('Welches Produkt/Angebot war das?');
-    if(!produkt || !produkt.trim()) return;
-    const { error } = await sb.from('sales').insert({
-      contact_id: contact.id, org_id: profile.org_id, produkt: produkt.trim(),
-      status, created_by: profile.id
-    });
-    if(error) reportError('Verkauf eintragen', error);
+  // Katalog-Gruppierung: "Kategorie" oder "Kategorie — Unterkategorie",
+  // wird für die Kategorie-Auswahl in beiden Verkaufs-Popups gebraucht.
+  function productGroupKey(p){ return p.category + (p.subcategory ? ' — '+p.subcategory : ''); }
+
+  function populateCategorySelect(selectEl){
+    const groups = [...new Set(activeProducts().map(productGroupKey))].sort();
+    selectEl.innerHTML = groups.length
+      ? groups.map(g=>`<option value="${g}">${g}</option>`).join('')
+      : '<option value="">Keine Produkte im Katalog</option>';
+  }
+  function populateProductSelect(catSelectEl, prodSelectEl){
+    const opts = activeProducts().filter(p=>productGroupKey(p)===catSelectEl.value);
+    prodSelectEl.innerHTML = opts.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
   }
 
-  // Bei Gewonnen: Produkt + Menge abfragen, danach direkt weiter mit dem
-  // nächsten Produkt (statt nur einem einzelnen Freitext-Prompt) — ein
-  // Abschluss kann mehrere Produkte umfassen.
+  async function recordSaleForKanban(contact, status){
+    if(status==='gewonnen'){ await recordWonSalesLoop(contact); return; }
+    await recordLostSale(contact);
+  }
+
+  function recordLostSale(contact){
+    return new Promise(resolve=>{
+      const catEl = document.getElementById('saleLostCategory');
+      const prodEl = document.getElementById('saleLostProdukt');
+      const statusEl = document.getElementById('saleLostStatus');
+      const modal = document.getElementById('saleLostModal');
+      const confirmBtn = document.getElementById('saleLostConfirmBtn');
+      const closeBtn = document.getElementById('saleLostClose');
+      document.getElementById('saleLostContactName').textContent = contact.name;
+      statusEl.textContent = '';
+      populateCategorySelect(catEl);
+      populateProductSelect(catEl, prodEl);
+      catEl.onchange = ()=> populateProductSelect(catEl, prodEl);
+      modal.style.display = 'flex';
+
+      function finish(){
+        modal.style.display = 'none';
+        confirmBtn.onclick = null; closeBtn.onclick = null;
+        resolve();
+      }
+      confirmBtn.onclick = async ()=>{
+        if(!prodEl.value){ statusEl.textContent = 'Bitte Produkt auswählen.'; return; }
+        const { error } = await sb.from('sales').insert({
+          contact_id: contact.id, org_id: profile.org_id, product_id: prodEl.value,
+          status: 'verloren', created_by: profile.id
+        });
+        if(error){ reportError('Verkauf eintragen', error, statusEl); return; }
+        finish();
+      };
+      closeBtn.onclick = finish;
+    });
+  }
+
+  // Bei Gewonnen: Produkt + Vertragsdaten abfragen, danach direkt weiter mit
+  // dem nächsten Produkt — ein Abschluss kann mehrere Produkte umfassen.
   function recordWonSalesLoop(contact){
     return new Promise(resolve=>{
+      const catEl = document.getElementById('saleEntryCategory');
       const produktEl = document.getElementById('saleEntryProdukt');
       const mengeEl = document.getElementById('saleEntryMenge');
+      const beitragEl = document.getElementById('saleEntryBeitrag');
+      const beginnEl = document.getElementById('saleEntryVertragsbeginn');
+      const bwsEl = document.getElementById('saleEntryBws');
       const statusEl = document.getElementById('saleEntryStatus');
       const listEl = document.getElementById('saleEntryList');
       const modal = document.getElementById('saleEntryModal');
@@ -2950,22 +3075,30 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       const doneBtn = document.getElementById('saleEntryDoneBtn');
       const closeBtn = document.getElementById('saleEntryClose');
       document.getElementById('saleEntryContactName').textContent = contact.name;
-      produktEl.value = ''; mengeEl.value = '1'; statusEl.textContent = ''; listEl.textContent = '';
+      populateCategorySelect(catEl);
+      populateProductSelect(catEl, produktEl);
+      catEl.onchange = ()=> populateProductSelect(catEl, produktEl);
+      mengeEl.value = '1'; beitragEl.value = ''; beginnEl.value = ''; bwsEl.value = '';
+      statusEl.textContent = ''; listEl.textContent = '';
       const added = [];
       modal.style.display = 'flex';
 
       async function addProduct(){
-        const produkt = produktEl.value.trim();
+        const product = productById(produktEl.value);
         const menge = parseInt(mengeEl.value, 10) || 1;
-        if(!produkt){ statusEl.textContent = 'Bitte Produkt eingeben.'; return; }
+        if(!product){ statusEl.textContent = 'Bitte Produkt auswählen.'; return; }
+        if(!beginnEl.value){ statusEl.textContent = 'Bitte Vertragsbeginn eintragen.'; return; }
         const { error } = await sb.from('sales').insert({
-          contact_id: contact.id, org_id: profile.org_id, produkt, menge,
+          contact_id: contact.id, org_id: profile.org_id, product_id: product.id, menge,
+          laufender_beitrag: beitragEl.value ? parseFloat(beitragEl.value) : null,
+          vertragsbeginn: beginnEl.value,
+          bewertungssumme: bwsEl.value ? parseFloat(bwsEl.value) : null,
           status: 'gewonnen', created_by: profile.id
         });
         if(error){ reportError('Verkauf eintragen', error, statusEl); return; }
-        added.push(`${produkt} × ${menge}`);
+        added.push(`${product.name} × ${menge}`);
         listEl.innerHTML = added.map(x=>'✓ '+x).join('<br>');
-        produktEl.value = ''; mengeEl.value = '1'; statusEl.textContent = ''; produktEl.focus();
+        mengeEl.value = '1'; beitragEl.value = ''; beginnEl.value = ''; bwsEl.value = ''; statusEl.textContent = '';
       }
       function finish(){
         modal.style.display = 'none';
@@ -3083,6 +3216,64 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     await renderKanbanBoard();
   });
 
+  // ---- Produkte-Seite (nur Admins) ----
+  // key wird aus dem Namen abgeleitet (für spätere Questline-Verknüpfung,
+  // siehe CLAUDE.md) — der Admin tippt nur den Anzeigenamen ein.
+  function slugifyProductKey(name){
+    return name.toLowerCase()
+      .replace(/ä/g,'ae').replace(/ö/g,'oe').replace(/ü/g,'ue').replace(/ß/g,'ss')
+      .replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
+  }
+
+  async function renderProductsPage(){
+    const listEl = document.getElementById('productsList');
+    if(profile.role!=='admin') return;
+    if(products.length===0){ listEl.innerHTML = '<div class="empty-page-hint">Noch keine Produkte angelegt.</div>'; return; }
+    const groups = {};
+    products.forEach(p=>{
+      const g = p.category + (p.subcategory ? ' — '+p.subcategory : '');
+      if(!groups[g]) groups[g]=[];
+      groups[g].push(p);
+    });
+    listEl.innerHTML = Object.keys(groups).sort().map(g=>`
+      <div class="cc-sales-block" style="margin-bottom:10px;">
+        <span class="cdl">${g}</span>
+        ${groups[g].map(p=>`
+          <div class="cc-notes" data-prod="${p.id}">
+            ${p.active ? '' : '<s>'}${p.name}${p.active ? '' : '</s> (deaktiviert)'}
+            <button class="cal-nav-btn" data-toggleprod="${p.id}" style="margin-left:8px;">${p.active ? 'Deaktivieren' : 'Reaktivieren'}</button>
+          </div>`).join('')}
+      </div>`).join('');
+    listEl.querySelectorAll('[data-toggleprod]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const p = productById(btn.dataset.toggleprod);
+        const { error } = await sb.from('products').update({ active: !p.active }).eq('id', p.id);
+        if(error){ reportError('Produkt-Status ändern', error); return; }
+        await loadProducts();
+        await renderProductsPage();
+      });
+    });
+  }
+
+  document.getElementById('prodAddBtn').addEventListener('click', async ()=>{
+    const name = document.getElementById('prodNameInput').value.trim();
+    const category = document.getElementById('prodCategoryInput').value.trim();
+    const subcategory = document.getElementById('prodSubcategoryInput').value.trim();
+    const statusEl = document.getElementById('prodAddStatus');
+    if(!name || !category){ statusEl.textContent = 'Bitte mindestens Name und Kategorie eingeben.'; return; }
+    const { error } = await sb.from('products').insert({
+      org_id: profile.org_id, key: slugifyProductKey(name) || name, name, category,
+      subcategory: subcategory || null
+    });
+    if(error){ reportError('Produkt anlegen', error, statusEl); return; }
+    document.getElementById('prodNameInput').value = '';
+    document.getElementById('prodCategoryInput').value = '';
+    document.getElementById('prodSubcategoryInput').value = '';
+    statusEl.textContent = '';
+    await loadProducts();
+    await renderProductsPage();
+  });
+
   // ---- Fehlerprotokoll-Seite (nur Admins) ----
   async function renderErrorLog(){
     const listEl = document.getElementById('errorLogList');
@@ -3105,17 +3296,19 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   // ---- Seitennavigation ----
-  const VALID_PAGES = ['charakter','handlungen','inventar','gilde','dungeons','kontakte','tagebuch','kanban','fehlerprotokoll'];
+  const VALID_PAGES = ['charakter','handlungen','inventar','gilde','dungeons','kontakte','tagebuch','kanban','fehlerprotokoll','produkte'];
 
   function showPage(pageName, updateHash){
     if(!VALID_PAGES.includes(pageName)) pageName = 'charakter';
     if(pageName==='fehlerprotokoll' && profile.role!=='admin') pageName = 'charakter';
+    if(pageName==='produkte' && profile.role!=='admin') pageName = 'charakter';
     document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active', b.dataset.page===pageName));
     document.querySelectorAll('.page').forEach(p=>p.style.display='none');
     document.getElementById('page-'+pageName).style.display='block';
     if(updateHash!==false) location.hash = pageName;
     if(pageName==='dungeons'){ ensureDungeonMap(); if(dungeonMap) setTimeout(()=>dungeonMap.invalidateSize(),150); }
     if(pageName==='fehlerprotokoll') renderErrorLog();
+    if(pageName==='produkte') renderProductsPage();
     if(pageName==='kanban') renderKanbanBoard();
   }
 

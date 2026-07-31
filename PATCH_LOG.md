@@ -31,6 +31,7 @@ alle bis einschließlich Patch 15 im Supabase-Projekt eingespielt sind.
 | 20 | `patch20_manareserve_20.sql` | `energyMax` (Manareserve/Tagesenergie) von 15 auf 20 angehoben — reine Regelwerk-Konfiguration, kein Code betroffen |
 | 21 | `patch21_verkaufsmenge.sql` | `sales.menge` (Integer, Default 1) — Verkäufe können jetzt eine Stückzahl pro Produkt tragen, nicht nur den Produktnamen |
 | 22 | `patch22_manatrank_katalog.sql` | Manatrank-Item-Katalogeintrag idempotent (neu) gesetzt, `items` als Objekt abgesichert. Bewusst **ohne** `where org_id = ...`-Filter (Lehre aus dem Patch-20-Vorfall: hartkodierte ID kann still ins Leere laufen, ohne Fehlermeldung) |
+| 23 | `patch23_produktkatalog.sql` | Neue Tabelle `products` (Kategorie/Unterkategorie, admin-gepflegt, nur deaktivierbar statt löschbar). `sales.produkt` (Freitext) ersetzt durch `product_id` + neue Felder `bewertungssumme`, `laufender_beitrag`, `vertragsbeginn`, `vertragsende`. **Löscht vorher alle bestehenden `sales`-Zeilen** (waren laut Nutzer nur Testverkäufe) |
 
 ## Wichtiger Hinweis zu Patch 13
 
