@@ -6,7 +6,8 @@ irgendetwas im Repo arbeitest.
 
 ## Die Grundidee
 
-Der Nutzer (Vertrieb, aktuell akademische Heilberufe/Krankenhäuser) wollte die
+Der Nutzer (Vertrieb, aktuell Versicherungsprodukte — Lebens-, Kranken- und
+Sachversicherungen — an akademische Heilberufe/Krankenhäuser) wollte die
 Motivationsmechanik von Rollenspielen (XP, Level, Quests, Charakterklassen) auf
 echten Vertriebsalltag übertragen — UND daraus organisch ein vollwertiges,
 generalisierbares CRM wachsen lassen, das später an andere Vertriebsorganisationen
