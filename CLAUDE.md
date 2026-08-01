@@ -475,10 +475,13 @@ irgendwo im System.
   das Asset-Paket selbst, `equipItem()`/`unequipItem()`, und das
   Reward-Feld in Quests.
 
-  **Asset-Quelle, seit 2026-08-01 in Prüfung:** heruntergeladene
+  **Asset-Quelle, seit 2026-08-01 im Testeinsatz:** heruntergeladene
   GandalfHardcore-Pakete (Basis-Körper, Arm-/Handschuh-Ebenen, Hand-Items/
-  Waffen, Rücken-Ebenen, weibliche Kleidung), liegen lokal unter
-  `~/Schreibtisch/GandalfHardcore *.zip`. Verifiziert (Python/Pillow-
+  Waffen, Rücken-Ebenen, Kleidung männlich/weiblich, Hüte, Masken,
+  Elfenohren, Rücken-Layer, u.a.), liegen lokal unter
+  `~/Schreibtisch/GandalfHardcore *.zip` (wird laufend um weitere
+  Zusatzpakete ergänzt, noch kein Bogen/Zauberstab dabei — fehlt für
+  Schütze/Hexer). Verifiziert (Python/Pillow-
   Komposit): Ebenen liegen pixelgenau übereinander, keine Ausrichtungs-
   probleme. Sheets sind Animations-Spritesheets mit mehreren Reihen
   unterschiedlicher Frame-Anzahl je Aktion (Idle/Laufen/Angriff/...) — für
@@ -503,6 +506,30 @@ irgendwo im System.
   jedes neue Item danach günstiger als ein komplett neu gezeichnetes
   2D-Bild. Höherer Einstiegsaufwand, deshalb bewusst zurückgestellt, solange
   die 2D-Ebenen-Lösung oben für die aktuellen 3 Klassen ausreicht.
+
+  **Krieger-Portrait, seit 2026-08-01 testweise live** (Nutzer: "kann sein,
+  wenn es nicht schön ist, dass wir das wieder rückgängig machen" — bewusst
+  ein Versuch, kein endgültiger Beschluss): Basis-Körper + roter Umhang +
+  Schwert + Standard-Kleidung + Haare, aus einem Idle-Frame der Sheets
+  zusammengesetzt (Python/Pillow, Frame-Ausschnitt (31,21,48,64) auf der
+  800×448-Leinwand). Datei liegt unter `img/characters/krieger.png` (erster
+  Bild-Ordner im Repo, es gab bisher keine lokalen Bild-Assets). Eingebaut
+  an drei Stellen in `index.html`:
+  - `#authScreen` (Login-Formular): `.auth-portrait`, rein dekorativ, zeigt
+    sich unabhängig von der eigenen Klasse.
+  - `#charCreateScreen`: Krieger-Klassenkarte, `.class-portrait-img`
+    ersetzt dort das ⚔️-Emoji (Hexer/Schütze behalten ihre Emoji, kein Bild
+    vorhanden).
+  - `#page-charakter` (`charArtStack`): `renderCharacterEquipment()` hat
+    jetzt eine `CLASS_BASE_ART`-Map (aktuell nur `krieger` gefüllt) — zeigt
+    bei passender Klasse das Basisbild UNTER den bereits bestehenden
+    Ausrüstungs-Ebenen (siehe oben), andere Klassen fallen weiter auf den
+    Hinweistext zurück.
+  `image-rendering:pixelated` überall gesetzt, damit die Pixel-Art beim
+  Hochskalieren scharf bleibt statt zu verschwimmen. Schütze/Hexer bewusst
+  noch nicht gebaut (dem Nutzer gefielen die ersten Test-Kombinationen mit
+  dem "Stick"-Platzhalter-Item nicht) — fehlt aktuell vor allem ein
+  Bogen/Zauberstab-Asset, siehe oben.
 - **Multi-Org-Charakter-Portabilität**: die Idee, dass ein Nutzer den
   Charakter (Level/Skills/Tagebuch) über einen Arbeitgeberwechsel hinweg
   mitnehmen könnte, während Dungeons/Items/Quests bei der alten Organisation
