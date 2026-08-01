@@ -435,16 +435,74 @@ irgendwo im System.
 - **KI-Bildumwandlung von Tagebuch-Fotos** — z.B. "Hexer im Rat der Weißen".
   `journal_photos.transformed_path` ist als Platzhalter schon da. Selbes
   Kostenprinzip: on-demand statt pro Foto.
-- **Ausrüstungs-Charakterbilder** ("wie in Elden Ring"). Wichtige Erkenntnis
-  aus der Diskussion: handgezeichnete SVGs von Claude sind KEINE brauchbare
-  Grundlage für echte Charakterkunst (Qualitätsproblem, nicht Architektur-
-  problem). Empfohlener Weg: entweder (a) fertige, bereits in Ebenen
-  aufgeteilte Asset-Pakete (z.B. itch.io), oder (b) Bild-KI **pro Einzelteil**
-  statt pro Kombination generieren lassen (kein kombinatorisches
-  Kostenproblem). Technisches Fundament ist **fertig**: `profiles.
-  equipped_weapon/armor/accessory`, `items.image`-Feld (aktuell leer) — sobald
-  eine Bild-URL im Regelwerk hinterlegt wird, rendert die Charakter-Seite sie
-  automatisch als Ebene, ohne Code-Änderung.
+- **Ausrüstungs-Charakterbilder / echter Charakterscreen** (wie in einem
+  RPG, nicht nur Icons). Wichtige Erkenntnis aus der Diskussion:
+  handgezeichnete SVGs von Claude sind KEINE brauchbare Grundlage für echte
+  Charakterkunst (Qualitätsproblem, nicht Architekturproblem).
+  **KI-Bildgenerierung pro Einzelteil wurde verworfen** (Thema
+  abgeschlossen, 2026-08-01): unabhängig generierte Bilder halten Proportion
+  und Ankerpunkte nicht zuverlässig ein, die Ebenen (`profiles.
+  equipped_weapon/armor/accessory` + `items.image`) müssen aber pixelgenau
+  zueinander passen — ein technisches Problem, kein Geschmacksproblem.
+  Einziger tragfähiger Weg: fertige, bereits in Ebenen aufgeteilte
+  Asset-Pakete (z.B. itch.io — Lizenz für spätere kommerzielle Nutzung des
+  Produkts vorher prüfen).
+
+  **Design für Gewinnen/Anziehen, seit 2026-08-01 festgelegt (noch nicht
+  gebaut):**
+  - *Gewinnen*: über das bestehende `grantItem()` (bisher nur für
+    Quest-Belohnungen wie den täglichen Manatrank genutzt) — Quests
+    bekommen ein optionales `reward_item_key`+`qty`-Feld im Regelwerk, bei
+    Abschluss landet das Item wie gehabt in `user_inventory`. Keine neue
+    Infrastruktur nötig.
+  - *Anziehen/Ausziehen*: bewusst **keine geloggte Aktion** (kein XP, kein
+    `action_log`-Eintrag) — reine Kosmetik, kein Vertriebsverhalten. Neues,
+    einfaches `equipItem(slot, item_key)`/`unequipItem(slot)`, setzt nur
+    `profiles.equipped_<slot>`, beliebig oft wiederholbar, verbraucht das
+    Item in `user_inventory` NICHT (Unterschied zu Verbrauchsgütern wie dem
+    Manatrank, die beim Benutzen abgezogen werden).
+  - Dafür braucht der Item-Katalog (`rule_configs.config.items`) eine
+    Unterscheidung: `slot: 'weapon'|'armor'|'accessory'` für Ausrüstung
+    (nicht verbraucht) vs. das bestehende `effect`-Feld für Verbrauchsgüter
+    (wird verbraucht, siehe `useItem()`). Kein neues DB-Schema nötig — passt
+    komplett in die bestehenden Tabellen (`user_inventory`, `profiles.
+    equipped_*`, Regelwerk-JSON).
+
+  Technisches Fundament ist **fertig**: `profiles.
+  equipped_weapon/armor/accessory`, `items.image`-Feld (aktuell leer) —
+  sobald eine Bild-URL im Regelwerk hinterlegt wird, rendert die
+  Charakter-Seite sie automatisch als Ebene, ohne Code-Änderung. Fehlt noch:
+  das Asset-Paket selbst, `equipItem()`/`unequipItem()`, und das
+  Reward-Feld in Quests.
+
+  **Asset-Quelle, seit 2026-08-01 in Prüfung:** heruntergeladene
+  GandalfHardcore-Pakete (Basis-Körper, Arm-/Handschuh-Ebenen, Hand-Items/
+  Waffen, Rücken-Ebenen, weibliche Kleidung), liegen lokal unter
+  `~/Schreibtisch/GandalfHardcore *.zip`. Verifiziert (Python/Pillow-
+  Komposit): Ebenen liegen pixelgenau übereinander, keine Ausrichtungs-
+  probleme. Sheets sind Animations-Spritesheets mit mehreren Reihen
+  unterschiedlicher Frame-Anzahl je Aktion (Idle/Laufen/Angriff/...) — für
+  den Charakterscreen reicht das Herausschneiden EINES Frames (z.B.
+  Idle-Pose) pro Ebene, keine Animation nötig. Lizenz erlaubt kommerzielle
+  Projekte, Verändern erlaubt, keine Namensnennungspflicht — verbietet aber
+  Weiterverkauf/Weitergabe der rohen Assets, KI-Training und Einbau in
+  "Game Tools". **Lizenzfrage Multi-Tenant-SaaS (mehrere zahlende
+  Kundenorganisationen) bewusst zurückgestellt** (Nutzer, 2026-08-01): das
+  Projekt ist aktuell rein persönlich/intern (siehe auch
+  "Bewusst aufgeschobene Ideen" unten, Verkauf ist noch weit weg) — erst
+  klären, wenn ein tatsächlicher Verkauf an eine zweite Organisation
+  ansteht, nicht vorher. Bei der Outfit-Auswahl aus "Female Clothing"
+  trotzdem schon jetzt bewusst freizügige
+  Teile (Bikini/Unterwäsche) aussortieren — passt nicht zum B2B-Kontext
+  (Vertrieb an akademische Heilberufe).
+
+  **Zurückgestellte Alternative, falls mehrere Organisationen später einen
+  jeweils eigenen Look brauchen:** ein riggtes 3D-Charaktermodell (z.B.
+  Reallusion Character Creator) statt 2D-Ebenen — löst Bild-Ausrichtung
+  strukturell (Ausrüstung wird auf das Skelett gesteckt, nicht gezeichnet),
+  jedes neue Item danach günstiger als ein komplett neu gezeichnetes
+  2D-Bild. Höherer Einstiegsaufwand, deshalb bewusst zurückgestellt, solange
+  die 2D-Ebenen-Lösung oben für die aktuellen 3 Klassen ausreicht.
 - **Multi-Org-Charakter-Portabilität**: die Idee, dass ein Nutzer den
   Charakter (Level/Skills/Tagebuch) über einen Arbeitgeberwechsel hinweg
   mitnehmen könnte, während Dungeons/Items/Quests bei der alten Organisation
