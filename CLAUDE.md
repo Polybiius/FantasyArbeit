@@ -64,14 +64,18 @@ nicht per Code-Änderung.
   weiterhin manuell** über den Supabase SQL-Editor beim Nutzer — dafür hat
   Claude Code keinen Zugriff/Zugangsdaten.
 
-## Datenbank — aktueller Stand (Annahme: Patch 1–23 sind alle eingespielt)
+## Datenbank — aktueller Stand (Annahme: Patch 1–23 eingespielt, Patch 24 noch offen)
 
 **Wenn das nicht stimmt, sofort korrigieren, bevor irgendetwas gebaut wird** — sonst
 versucht Claude Code eventuell, Dinge doppelt anzulegen oder Migrationen in falscher
-Reihenfolge zu bauen.
+Reihenfolge zu bauen. **Patch 24 (`patch24_profil_onboarding.sql`, siehe unten bei
+"Profil-Onboarding") wurde am 2026-08-02 neu erstellt und muss vom Nutzer noch
+manuell im Supabase SQL-Editor ausgeführt werden** — ohne ihn schlägt die
+Charaktererstellung fehl, weil das Frontend bereits `real_name`/`gender`/`company`
+mit ins `profiles`-Insert schreibt.
 
 Alle SQL-Patches liegen im Ordner `sql/` (chronologisch benannt, `schema.sql` +
-`patch.sql` sind die ursprüngliche Basis, danach `patch2_...` bis `patch23_...`).
+`patch.sql` sind die ursprüngliche Basis, danach `patch2_...` bis `patch24_...`).
 Sie wurden bisher **einzeln, nacheinander, manuell** im Supabase SQL-Editor
 ausgeführt — nicht über eine Migrations-Toolchain. `PATCH_LOG.md` listet die
 genaue Reihenfolge und was jeder Patch bewirkt.
@@ -96,7 +100,13 @@ Funktionen benutzen statt eigene Fehlerbehandlung zu erfinden.**
   `character_class` ('hexer'|'krieger'|'schuetze'), `role` ('admin'|'member'),
   `total_xp`/`level` (**Cache!** — wird bei jedem Render clientseitig
   nachgezogen, damit Gildenmitglieder das Level sehen können, ohne Zugriff auf
-  fremde private Logs zu brauchen).
+  fremde private Logs zu brauchen). Seit Patch 24 zusätzlich `real_name`
+  (echter Name, getrennt vom Charakternamen in `display_name`), `gender`
+  ('m'|'w', steuert nur die Anzeige der Klassenbezeichnung bei der
+  Charaktererstellung, siehe "Profil-Onboarding" unten) und `company`
+  (Freitext, optional — **kein** Bezug zum Mandanten-System
+  `organizations`, siehe dort). Alle drei nullable, bei alten Profilen
+  (vor Patch 24 registriert) bleiben sie leer.
 - `rule_configs` — **das Herzstück der Templating-Fähigkeit**. Ein JSONB-Blob
   pro Organisation mit: `actions` (XP-Aktionen), `skills`, `levelBase`/
   `levelExponent` (Level-Kurve: `XP für Level L = levelBase * L^levelExponent`),
@@ -256,6 +266,76 @@ Klassenabhängige Begriffe für dieselbe Funktion:
 | Mitglied hinzufügen | Arkanisten hinzufügen | Legionäre hinzufügen | Bundesbrüder hinzufügen |
 | Kundendatenbank | Arkanes Register | Kriegsarchiv | Jägerchronik |
 | Kanban | Questpfad | Gildenbrett | Feldzug |
+
+## Profil-Onboarding, seit Patch 24 (2026-08-02)
+
+Zwischen Anmeldung und Klassenwahl gibt es jetzt einen dritten Schritt,
+`#profileScreen` in `index.html` (drei Screens insgesamt: `authScreen` →
+`profileScreen` → `charCreateScreen`). Dort werden vier Felder erfasst, bevor
+der eigentliche Charakter erschaffen wird:
+
+- **Echter Name** (`realNameInput` → `profiles.real_name`) — bewusst getrennt
+  vom Charakternamen (`charNameInput` → `profiles.display_name`, wie bisher).
+- **Geschlecht** (`männlich`/`weiblich`, zwei Toggle-Buttons `.gender-btn` →
+  `profiles.gender`, Werte `'m'`/`'w'`). Steuert **ausschließlich** die
+  Anzeige-Bezeichnung der Klassen bei der Klassenwahl direkt danach (siehe
+  unten) — keine Auswirkung auf Regelwerk, Berechnungen oder sonstige Logik.
+  Bewusst nur zwei Optionen (Entscheidung vom Nutzer, 2026-08-02): eine
+  dritte/neutrale Form hätte eine eigene grammatikalische Lösung gebraucht,
+  die noch nicht ansteht.
+- **Unternehmen** (`companyInput`, optional → `profiles.company`) — reines
+  Freitext-Anzeigefeld ("wo arbeitest du", darf leer bleiben, z.B. bei
+  Selbstständigkeit). **Wichtig, nicht verwechseln:** hat NICHTS mit dem
+  Mandanten-System `organizations` zu tun — es wird keine echte Organisation
+  ausgewählt oder gewechselt, nur ein Textfeld gespeichert. Eine echte
+  Mehrfach-Organisations-Auswahl wäre ein großer struktureller Umbau (aktuell
+  fest auf `DEFAULT_ORG_ID` verdrahtet) und war explizit nicht gemeint.
+- **Charaktername** (wie bisher, jetzt nur räumlich auf diesen Screen
+  verschoben statt auf dem Klassenwahl-Screen).
+
+Der "Weiter"-Button (`profileNextBtn`) bleibt sichtbar gedimmt (Klasse
+`.btn-disabled`, KEIN natives `disabled`-Attribut — bewusst so, siehe
+unten), bis Name, Geschlecht und Charaktername ausgefüllt sind (Unternehmen
+bleibt optional). Klickt man trotzdem, wackeln genau die fehlenden Felder
+kurz rot (`.shake`-Klasse, `@keyframes wobble`, per `shakeEl()`-Helfer in
+`index.html`) statt stumm nichts zu tun.
+
+**Geschlechtsabhängige Klassenbezeichnung**: Beim Wechsel auf den
+Klassenwahl-Screen setzt `CLASS_NAMES[gender]` die Beschriftung der drei
+Klassenkarten auf Hexer/Krieger/Schütze (männlich) oder
+Hexerin/Kriegerin/Schützin (weiblich). Das betrifft **nur** die Karten-Texte
+in diesem einen Screen — `CLASS_LABELS` (Klassenanzeige im Header nach dem
+Einloggen, "Klasse: Hexer") und alle klassenabhängigen Begriffe oben in
+dieser Tabelle (Gilde/Kanban/Kundendatenbank) enthalten das Wort
+Hexer/Krieger/Schütze selbst nicht und brauchten deshalb keine Anpassung.
+Falls die Kopfzeilen-Anzeige nach dem Einloggen künftig auch geschlechtsabhängig
+sein soll, ist das ein separater, noch nicht gebauter Schritt.
+
+**"Charakter erschaffen"-Button** (`charCreateBtn`, Klassenwahl-Screen)
+funktioniert nach demselben Muster: gedimmt via `.btn-disabled` bis eine
+Klasse gewählt ist, wackelnde Klassenkarten (nicht der Button selbst) bei
+einem Klick ohne Auswahl. Der eigentliche `profiles`-Insert passiert weiterhin
+erst hier, ganz am Ende (ein einziger atomarer Insert mit allen sechs
+Feldern: `display_name`, `character_class`, `real_name`, `gender`, `company`,
+plus `id`/`org_id`/`role` wie bisher) — die Werte aus dem Profil-Screen werden
+dafür einfach erneut aus den (nur visuell versteckten, nicht entfernten)
+Input-Feldern gelesen.
+
+**`.btn-disabled` statt natives `disabled`-Attribut, bewusst so** (bei
+`profileNextBtn` UND `charCreateBtn`): ein echtes `disabled`-Attribut
+unterdrückt Klick-Events komplett, dann könnte kein Wobble-Hinweis beim
+Versuch ausgelöst werden. Die CSS-Regel `.auth-btn:disabled,.auth-btn.btn-disabled`
+sorgt dafür, dass beide Zustände (natives Attribut UND die neue Klasse)
+gleich aussehen (gedimmt, kein Leucht-Gradient) — betrifft auch den
+`authSubmitBtn`, falls der je ein `disabled`-Attribut bekommen sollte.
+
+**Entstehungsweg**: Diese ganze Änderung wurde zuerst in einer separaten,
+nicht versionierten Datei `dummy-anmeldung.html` (Projekt-Root, lokal, nicht
+committed) durchgespielt und optisch geprüft, bevor sie hierher übertragen
+wurde — ein wiederkehrendes Muster für riskoarme visuelle Vorab-Iteration am
+Anmelde-/Charaktererstellungs-Bereich, ohne echte Anmeldedaten/Datenbank zu
+brauchen. Playwright/Chromium (siehe oben) dient dabei der automatisierten
+Kontrolle beider Versionen.
 
 ## Kanban (Questpfad / Gildenbrett / Feldzug), seit Patch 18
 

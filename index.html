@@ -32,18 +32,33 @@
   .auth-card p{color:var(--muted);font-size:13px;margin:0 0 20px;}
   .auth-card input{width:100%;background:#0e0c17;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;color:var(--text);margin-bottom:10px;font-family:'Inter',sans-serif;font-size:14px;}
   .auth-card input:focus{outline:none;border-color:var(--arcane);}
-  .auth-btn{width:100%;background:linear-gradient(90deg,var(--arcane),var(--arcane-glow));border:none;border-radius:var(--radius-sm);padding:11px;color:#fff;font-weight:600;cursor:pointer;font-size:14px;}
+  .auth-btn{width:100%;background:linear-gradient(90deg,var(--arcane),var(--arcane-glow));border:none;border-radius:var(--radius-sm);padding:11px;color:#fff;font-weight:600;cursor:pointer;font-size:14px;transition:opacity .15s;}
   .auth-btn:hover{opacity:.9;}
+  .auth-btn:disabled,.auth-btn.btn-disabled{background:var(--panel-2);color:var(--muted);cursor:not-allowed;box-shadow:none;}
+  .auth-btn:disabled:hover,.auth-btn.btn-disabled:hover{opacity:1;}
   .auth-switch{margin-top:14px;font-size:12.5px;color:var(--muted);text-align:center;}
   .auth-switch a{color:var(--arcane-glow);cursor:pointer;text-decoration:underline;}
   .auth-error{color:var(--danger);font-size:12.5px;margin-top:8px;min-height:16px;}
   .auth-portrait{display:block;margin:0 auto 14px;height:130px;image-rendering:pixelated;}
+  @keyframes wobble{
+    0%,100%{transform:translateX(0);}
+    20%{transform:translateX(-6px);}
+    40%{transform:translateX(5px);}
+    60%{transform:translateX(-4px);}
+    80%{transform:translateX(3px);}
+  }
+  .shake{animation:wobble .4s ease;border-color:var(--danger) !important;}
 
   .charcreate-card{display:none;max-width:640px;margin:8vh auto;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:34px;box-shadow:var(--shadow-rest);}
   .charcreate-card h1{font-family:'Cinzel',serif;font-size:24px;margin:0 0 6px;text-align:center;}
   .charcreate-sub{color:var(--muted);font-size:13px;margin:0 0 22px;text-align:center;}
-  #charNameInput{width:100%;background:#0e0c17;border:1px solid var(--border);border-radius:var(--radius-sm);padding:11px 14px;color:var(--text);margin-bottom:22px;font-family:'Inter',sans-serif;font-size:14px;text-align:center;}
-  #charNameInput:focus{outline:none;border-color:var(--arcane);}
+  #realNameInput,#companyInput,#charNameInput{width:100%;background:#0e0c17;border:1px solid var(--border);border-radius:var(--radius-sm);padding:11px 14px;color:var(--text);margin-bottom:14px;font-family:'Inter',sans-serif;font-size:14px;text-align:center;}
+  #realNameInput:focus,#companyInput:focus,#charNameInput:focus{outline:none;border-color:var(--arcane);}
+  #charNameInput{margin-bottom:22px;}
+  .gender-toggle{display:flex;gap:8px;margin-bottom:14px;}
+  .gender-btn{flex:1;background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:11px;color:var(--muted);cursor:pointer;font-family:'Inter',sans-serif;font-size:13.5px;font-weight:500;transition:all .15s;}
+  .gender-btn:hover{border-color:var(--arcane);color:var(--text);}
+  .gender-btn.active{border-color:var(--arcane);background:rgba(139,92,246,0.15);color:var(--text);}
   .class-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:22px;}
   @media (max-width:560px){.class-grid{grid-template-columns:1fr;}}
   .class-card{
@@ -418,7 +433,6 @@
 <div id="loading">Verbindung zum Dungeon wird aufgebaut …</div>
 
 <div class="auth-card" id="authScreen">
-  <img class="auth-portrait" src="img/characters/krieger.png" alt="">
   <h1 class="display">Vertriebs-Quest</h1>
   <p id="authSubtitle">Melde dich an, um deinen Charakter zu sehen.</p>
   <input type="email" id="authEmail" placeholder="E-Mail">
@@ -428,11 +442,28 @@
   <div class="auth-switch" id="authSwitch">Noch kein Konto? <a id="authToggleLink">Registrieren</a></div>
 </div>
 
-<div class="charcreate-card" id="charCreateScreen">
-  <h1 class="display">Erschaffe deinen Charakter</h1>
-  <p class="charcreate-sub">Wähle einen Namen und deine Klasse — beides ist dauerhaft.</p>
+<div class="charcreate-card" id="profileScreen">
+  <h1 class="display">Dein Profil</h1>
+  <p class="charcreate-sub">Ein paar Angaben zu dir, bevor's losgeht.</p>
+
+  <input type="text" id="realNameInput" placeholder="Dein Name" maxlength="60">
+
+  <div class="gender-toggle">
+    <button type="button" class="gender-btn" data-gender="m">Männlich</button>
+    <button type="button" class="gender-btn" data-gender="w">Weiblich</button>
+  </div>
+
+  <input type="text" id="companyInput" placeholder="Unternehmen (optional)" maxlength="80">
 
   <input type="text" id="charNameInput" placeholder="Name deines Charakters" maxlength="30">
+
+  <button class="auth-btn btn-disabled" id="profileNextBtn">Weiter</button>
+  <div class="auth-error" id="profileError"></div>
+</div>
+
+<div class="charcreate-card" id="charCreateScreen">
+  <h1 class="display">Wähle deine Klasse</h1>
+  <p class="charcreate-sub">Diese Wahl ist dauerhaft.</p>
 
   <div class="class-grid">
     <button class="class-card" data-class="hexer" style="--cc:#8b5cf6;--cc-glow:#a78bfa;">
@@ -452,7 +483,7 @@
     </button>
   </div>
 
-  <button class="auth-btn" id="charCreateBtn" disabled>Charakter erschaffen</button>
+  <button class="auth-btn btn-disabled" id="charCreateBtn">Charakter erschaffen</button>
   <div class="auth-error" id="charCreateError"></div>
 </div>
 
@@ -1185,6 +1216,54 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     root.setProperty('--bg-glow-2', t.bgGlow2);
   }
 
+  function shakeEl(el){
+    el.classList.remove('shake');
+    void el.offsetWidth; // Reflow erzwingen, damit die Animation erneut startet
+    el.classList.add('shake');
+    el.addEventListener('animationend', ()=>el.classList.remove('shake'), { once:true });
+  }
+
+  // ---- Profil-Screen: echter Name, Geschlecht, Unternehmen (optional), Charaktername ----
+  let selectedGender = null;
+  document.querySelectorAll('.gender-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('.gender-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedGender = btn.dataset.gender;
+      updateProfileNextBtn();
+    });
+  });
+  document.getElementById('realNameInput').addEventListener('input', updateProfileNextBtn);
+  document.getElementById('charNameInput').addEventListener('input', updateProfileNextBtn);
+  function updateProfileNextBtn(){
+    const realName = document.getElementById('realNameInput').value.trim();
+    const charName = document.getElementById('charNameInput').value.trim();
+    const ready = !!(realName && selectedGender && charName);
+    document.getElementById('profileNextBtn').classList.toggle('btn-disabled', !ready);
+  }
+
+  const CLASS_NAMES = {
+    m: { hexer:'Hexer', krieger:'Krieger', schuetze:'Schütze' },
+    w: { hexer:'Hexerin', krieger:'Kriegerin', schuetze:'Schützin' },
+  };
+  document.getElementById('profileNextBtn').addEventListener('click', ()=>{
+    const realNameInput = document.getElementById('realNameInput');
+    const charNameInput = document.getElementById('charNameInput');
+    let missing = false;
+    if(!realNameInput.value.trim()){ shakeEl(realNameInput); missing = true; }
+    if(!selectedGender){ document.querySelectorAll('.gender-btn').forEach(shakeEl); missing = true; }
+    if(!charNameInput.value.trim()){ shakeEl(charNameInput); missing = true; }
+    if(missing) return;
+
+    document.querySelectorAll('.class-card').forEach(card=>{
+      const names = CLASS_NAMES[selectedGender] || CLASS_NAMES.m;
+      card.querySelector('.class-name').textContent = names[card.dataset.class];
+    });
+    document.getElementById('profileScreen').style.display = 'none';
+    document.getElementById('charCreateScreen').style.display = 'block';
+  });
+
+  // ---- Klassenwahl-Screen ----
   let selectedClass = null;
   document.querySelectorAll('.class-card').forEach(card=>{
     card.addEventListener('click', ()=>{
@@ -1194,17 +1273,21 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       updateCharCreateBtn();
     });
   });
-  document.getElementById('charNameInput').addEventListener('input', updateCharCreateBtn);
   function updateCharCreateBtn(){
-    const name = document.getElementById('charNameInput').value.trim();
-    document.getElementById('charCreateBtn').disabled = !(name && selectedClass);
+    document.getElementById('charCreateBtn').classList.toggle('btn-disabled', !selectedClass);
   }
   document.getElementById('charCreateBtn').addEventListener('click', async ()=>{
-    const name = document.getElementById('charNameInput').value.trim();
+    if(!selectedClass){
+      document.querySelectorAll('.class-card').forEach(shakeEl);
+      return;
+    }
     const errEl = document.getElementById('charCreateError');
-    if(!name || !selectedClass){ errEl.textContent='Bitte Namen eingeben und eine Klasse wählen.'; return; }
+    const realName = document.getElementById('realNameInput').value.trim();
+    const company = document.getElementById('companyInput').value.trim();
+    const charName = document.getElementById('charNameInput').value.trim();
     const { data: inserted, error } = await sb.from('profiles').insert({
-      id: session.user.id, org_id: DEFAULT_ORG_ID, display_name:name, role:'member', character_class:selectedClass
+      id: session.user.id, org_id: DEFAULT_ORG_ID, display_name:charName, role:'member', character_class:selectedClass,
+      real_name:realName, gender:selectedGender, company: company || null
     }).select().single();
     if(error){ reportError('Charakter erstellen', error, errEl); return; }
     profile = inserted;
@@ -1254,8 +1337,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     catch{ document.getElementById('loading').style.display='none'; return; }
     if(!existing){
       document.getElementById('loading').style.display='none';
-      document.getElementById('charCreateScreen').style.display='block';
-      return; // wartet auf Charaktererstellung, siehe charCreateBtn-Listener
+      document.getElementById('profileScreen').style.display='block';
+      return; // wartet auf Profil + Charaktererstellung, siehe profileNextBtn/charCreateBtn-Listener
     }
     profile = existing;
     await enterApp();
