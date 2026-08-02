@@ -402,45 +402,75 @@ Zwei Auswahlen, wie in einem RPG-Charaktereditor:
   einfach die `color`-Zuordnung im `HAIR_CATALOG`-Array von Hand korrigieren,
   keine strukturelle Änderung nötig.
 
-**Live-Vorschau durch Ebenen-Stapelung**: Haut- und Haar-Bild werden im
-Browser einfach übereinandergelegt (`position:absolute`, gleiche
-Bildgröße) statt für jede Kombination ein fertiges Bild vorzuhalten (5
-Hauttöne × 58 Frisuren wären 290 Stück gewesen). Damit das exakt aufgeht,
-sind ALLE Vorschau-Bilder (Haut wie Haar) auf **denselben festen
-Bildausschnitt** des Sprite-Grids zugeschnitten (`CROP_BOX = (26,12,57,64)`
-in `Design/export_creator_assets.py`, bewusst NICHT pro Bild eng
-zugeschnitten wie bei den Katalog-Vorschauen weiter unten) — dasselbe
-Grundprinzip, das später auch fürs echte Ausrüstungssystem
-(`equipped_weapon/armor/accessory`, siehe "Bewusst aufgeschobene Ideen")
-gebraucht wird.
+**Live-Vorschau: animiert, dynamisch aus Ebenen zusammengesetzt (seit
+2026-08-03, zweite Überarbeitung)** — nicht mehr `<img>`-Ebenen
+übereinandergelegt, sondern ein `<canvas>`, das jeden Frame per
+`drawImage()` aus den einzelnen Ebenen-Sheets neu zusammensetzt. Grund für
+den Wechsel: der Nutzer wollte explizit **keine statischen Einzelbilder**
+("wir wollten ja ein dynamisches Charakterscreen") und dass der Charakter
+sichtbar **auf der Stelle läuft** statt (wie bei einem ersten,
+verworfenen CSS-`steps()`-Versuch) unsauber zu wirken.
 
-**Vorschau zeigt seit 2026-08-02 auch die Basis-Kleidung + das Klassenitem**
-(Nutzer-Wunsch: "man erkennt es ja sonst nicht, wenn man das Aussehen
-ändert"), nicht nur Haut+Haar — zusätzliche Ebenen `previewBack` (Cape/
-Rucksack, unterste Ebene), `previewBody` (Hemd/Hose/Stiefel bzw. Corset/
-Rock/Socken), `previewGloves`, `previewWeapon` (oberste Ebene), alle mit
-demselben `CROP_BOX` exportiert (`Design/export_outfit_layers.py`, Bilder
-liegen wie die Haut-/Frisuren-Vorschauen unter `img/characters/creator/`,
-Präfix `outfit_`). `updateOutfitLayers()` setzt diese vier beim Betreten
-des Screens einmalig passend zu `selectedClass`/`selectedGender`
-(`CLASS_OUTFIT`-Map: Hexer → Cape blue + Stick, Krieger → nur Schwert,
-Schütze → nur Rucksack, kein Waffen-Asset) — ändert sich NICHT mehr, wenn
-man danach Hautfarbe/Frisur wechselt, nur Haut- und Haar-Ebene reagieren
-auf Klicks. **Bewusst OHNE Kopfbedeckung** (Krieger hätte sonst den Guard
-Helmet aus dem Klassenwahl-Beispielbild), damit die gerade gewählte Frisur
-sichtbar bleibt.
+Technik (`createSpriteRenderer(canvas, scale)` in `dummy-anmeldung.html`):
+- Jede Ebene (Haut, Kleidung, Handschuhe, Frisur, Waffe, Rücken-Item) ist
+  ein volles, unbeschnittenes Sprite-Sheet (`img/characters/sheets/`,
+  siehe unten) — **kein zugeschnittenes Vorschaubild**, sondern dieselbe
+  Datei, die auch die komplette Animationsmatrix enthält.
+- Reihe 2 des Sprite-Grids (y=128–192) ist der Laufzyklus. **Wichtiger
+  Stolperstein:** die Frames dieser Reihe liegen NICHT im 100px-Raster,
+  das für die Item-Kacheln (ein Frame pro 100×64-Zelle) gilt, sondern
+  enger bei **~80px Abstand** — empirisch gemessen durch Absuchen der
+  Alpha-Kanäle nach zusammenhängenden Blöcken (8 klare Blobs bei
+  x≈32,110,192,271,351,431,512,591, praktisch identisch über alle
+  Ebenen-Typen hinweg). Mit dem falschen 100px-Raster hat der
+  Bildausschnitt gelegentlich zwei benachbarte Frames gleichzeitig
+  erwischt — genau der vom Nutzer gemeldete Bug ("der Charakter läuft aus
+  dem Bild" / wirkt doppelt). `FRAME_W = 80` behebt das.
+- Pro Tick (9 FPS, `setInterval`) wird der Frame-Index weitergezählt und
+  für jede Ebene derselbe Ausschnitt (`frame*80, 128, 80, 64`) auf die
+  volle Canvas-Größe hochskaliert gezeichnet (`ctx.imageSmoothingEnabled
+  = false` für scharfe Pixel-Art) — daher "läuft auf der Stelle", nie aus
+  dem Bild heraus.
+- `setLayers(fileNames)` tauscht die Ebenen-Liste aus (z.B. bei
+  Hautfarben-/Frisur-Wechsel) und rendert sofort neu, ohne den
+  Animations-Timer neu zu starten.
 
-**Asset-Pipeline / Lizenz-Grenze, wichtig:** die rohen GandalfHardcore-Zips
-liegen unter `Design/` (gitignored, siehe oben — Lizenz verbietet
-Weitergabe der Rohdaten). Die für den Aussehen-Screen tatsächlich
-gebrauchten Bilder sind aber **abgeleitete, zugeschnittene Einzelbilder**
-(10 Hauttöne + 58 Frisuren, erzeugt von `Design/export_creator_assets.py`)
-und liegen — genau wie `img/characters/krieger.png` vorher schon — ganz
-regulär unter `img/characters/creator/` **im Repo, nicht gitignored**. Das
-ist laut Lizenz gedeckt ("modifying them as needed, and displaying work
-featuring the assets on designated websites") — verboten ist nur die
-Weitergabe der unveränderten Rohdaten selbst, nicht das Einbauen
-bearbeiteter Ausschnitte ins eigene Produkt.
+Zwei Renderer-Instanzen im Dummy:
+- **Klassenwahl-Portraits** (`portraitRenderers`, drei `<canvas>` statt
+  der früheren `<img>`): feste Basis-Kleidung + Klassenitem, bewusst
+  glatzköpfig (Frisur kommt ja erst im nächsten Screen), Krieger inkl.
+  Guard Helmet. `layersForClassPortrait(cls, gender)` baut die Ebenen-Liste,
+  aktualisiert beim Wechsel von `profileScreen` zu `charCreateScreen`
+  passend zum gewählten Geschlecht.
+- **Aussehen-Vorschau** (`appearanceRenderer`, ein `<canvas>`):
+  Basis-Kleidung + Klassenitem **ohne Kopfbedeckung** (damit die gewählte
+  Frisur sichtbar bleibt) + die gerade gewählte Hautfarbe/Frisur.
+  `refreshAppearanceCanvas()` baut die Ebenen-Liste neu und wird bei jeder
+  Hautfarben-/Frisur-/Glatze-Auswahl aufgerufen.
+
+**Asset-Pipeline / Lizenz-Grenze:** die rohen GandalfHardcore-Zips liegen
+unter `Design/` (gitignored — Lizenz verbietet Weitergabe der Rohdaten).
+Für die Canvas-Animation werden aber die **vollen, unveränderten
+Sprite-Sheets** gebraucht (nicht nur ein Ausschnitt) — liegen als
+abgeleitete Kopien unter `img/characters/sheets/` (`Design/
+export_full_sheets.py`: 10 Hauttöne, 58 Frisuren, Basis-Kleidung als
+Hemd+Hose+Stiefel bzw. Corset+Rock+Socken zu einem Sheet zusammengeführt,
+Handschuhe, Cape, Rucksack, zwei Waffen, Guard Helmet — ca. 780KB
+insgesamt). Genau wie bei `img/characters/krieger.png` gilt: das ist
+laut Lizenz gedeckt ("modifying them as needed, and displaying work
+featuring the assets on designated websites"), verboten ist nur die
+Weitergabe der unveränderten Rohdaten als eigenständiges Downloadpaket,
+nicht das Einbauen (auch unveränderter) Einzel-Sheets ins eigene Produkt.
+Die kleinen, eng zugeschnittenen Vorschaubilder unter
+`img/characters/creator/` (`Design/export_creator_assets.py`) bleiben
+weiterhin bestehen, aber nur noch für die **Auswahl-Kacheln** (Hautton-
+Buttons, Frisuren-Raster) — nicht mehr für die Vorschau selbst. Die
+frühere Zwischenstufe (`export_outfit_layers.py`, eng zugeschnittene
+Basis-Kleidung/Klassenitem-Bilder unter `creator/outfit_*`) ist mit
+diesem Umbau überflüssig geworden und wurde aus dem Repo entfernt,
+ebenso die sechs statischen `img/characters/{hexer,krieger,schuetze}_{m,w}.png`
+von der ersten Klassenwahl-Bildschirm-Version — beides durch die
+Canvas-Animation ersetzt.
 
 **Datenbank (Patch 25, `sql/patch25_aussehen.sql`, bereits ausgeführt):** zwei
 neue nullable Spalten `profiles.skin_tone`/`hair_style` — reine Schlüssel in
@@ -740,25 +770,28 @@ irgendwo im System.
   `image-rendering:pixelated` überall gesetzt, damit die Pixel-Art beim
   Hochskalieren scharf bleibt statt zu verschwimmen.
 
-  **Klassenwahl-Bildschirm auf 6 angezogene Beispielcharaktere erweitert
-  (2026-08-02, bisher nur im Dummy):** `#charCreateScreen` zeigte bis dahin
-  nur für Krieger ein Bild (`img/characters/krieger.png`, s.o.), Hexer/
-  Schütze hatten Emoji. Jetzt gibt's für alle drei Klassen je ein
-  männliches und weibliches Beispielbild (`img/characters/hexer_m.png`,
-  `hexer_w.png`, `krieger_m.png`, `krieger_w.png`, `schuetze_m.png`,
-  `schuetze_w.png`) — abgeleitet aus dem `Design/gallery/concept/`-
-  Sandkasten (`Design/compose_concept.py`): einheitliche Basis-Kleidung
-  (Hemd/Hose/Stiefel bzw. Corset/Rock/Socken) + ein klassentypisches Item
-  (Hexer: Stick + blaues Cape, Krieger: Holzschwert + Guard Helmet, Schütze:
-  Small Backpack — Schütze/Hexer noch ohne Fernkampfwaffe, Bogen/
-  Zauberstab-Asset fehlt weiterhin). Bewusst glatzköpfig (Frisur kommt ja
-  erst im Aussehen-Screen danach). `profileNextBtn`-Handler in
-  `dummy-anmeldung.html` setzt beim Übergang zur Klassenwahl das passende
-  Geschlecht-Suffix (`_m`/`_w`) auf allen drei `<img>`-Tags — **das alte
-  `img/characters/krieger.png` bleibt unangetastet**, wird nur an dieser
-  einen Stelle nicht mehr benutzt (weiter aktiv im `page-charakter`-
-  `CLASS_BASE_ART`-Fall oben). Noch nicht ins echte `index.html`
-  übertragen.
+  **Klassenwahl-Bildschirm auf 6 angezogene, animierte Beispielcharaktere
+  erweitert (2026-08-02/03, bisher nur im Dummy):** `#charCreateScreen`
+  zeigte anfangs nur für Krieger ein Bild (`img/characters/krieger.png`,
+  s.o.), Hexer/Schütze hatten Emoji. Nach zwei Überarbeitungen (erst
+  statische Einzelbilder pro Klasse+Geschlecht, dann — auf Wunsch des
+  Nutzers, der explizit ein **dynamisches**, nicht aus flachen Einzelbildern
+  bestehendes Charakterscreen wollte — durch `<canvas>`-Elemente ersetzt,
+  siehe "Aussehen-Screen" oben für die Technik) zeigt der Bildschirm jetzt
+  für alle drei Klassen ein animiertes, live aus Ebenen zusammengesetztes
+  Beispiel: einheitliche Basis-Kleidung (Hemd/Hose/Stiefel bzw.
+  Corset/Rock/Socken) + ein klassentypisches Item (Hexer: Stick + blaues
+  Cape, Krieger: Holzschwert + Guard Helmet, Schütze: Small Backpack —
+  Schütze/Hexer noch ohne Fernkampfwaffe, Bogen/Zauberstab-Asset fehlt
+  weiterhin), bewusst glatzköpfig (Frisur kommt ja erst im Aussehen-Screen
+  danach). `layersForClassPortrait(cls, gender)` + `portraitRenderers` in
+  `dummy-anmeldung.html`. **Das alte `img/characters/krieger.png` bleibt
+  unangetastet und im Repo** (weiter aktiv im `page-charakter`-
+  `CLASS_BASE_ART`-Fall oben) — nur an dieser einen Stelle (Klassenwahl)
+  nicht mehr benutzt; die sechs zwischenzeitlich erzeugten statischen
+  `hexer_m.png`/`hexer_w.png`/etc. wurden nach dem Umbau auf Canvas wieder
+  aus dem Repo entfernt (überflüssig geworden). Noch nicht ins echte
+  `index.html` übertragen.
 - **Multi-Org-Charakter-Portabilität**: die Idee, dass ein Nutzer den
   Charakter (Level/Skills/Tagebuch) über einen Arbeitgeberwechsel hinweg
   mitnehmen könnte, während Dungeons/Items/Quests bei der alten Organisation
