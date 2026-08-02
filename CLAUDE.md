@@ -354,9 +354,15 @@ gleich aussehen (gedimmt, kein Leucht-Gradient) — betrifft auch den
 **Entstehungsweg**: Diese ganze Änderung wurde zuerst in einer separaten,
 nicht versionierten Datei `dummy-anmeldung.html` (Projekt-Root, lokal, nicht
 committed) durchgespielt und optisch geprüft, bevor sie hierher übertragen
-wurde — ein wiederkehrendes Muster für riskoarme visuelle Vorab-Iteration am
-Anmelde-/Charaktererstellungs-Bereich, ohne echte Anmeldedaten/Datenbank zu
-brauchen. Playwright/Chromium (siehe oben) dient dabei der automatisierten
+wurde. Grund ist NICHT Risiko-Minimierung, sondern schlicht Sichtbarkeit: der
+Nutzer hat längst ein eigenes Profil und kann Anmelde-/Charaktererstellungs-
+Bildschirme im echten Programm gar nicht mehr erreichen, um Änderungen daran
+zu begutachten — ohne Dummy hätte er sie schlicht nicht sehen können. Dieses
+Muster lohnt sich deshalb gezielt für Bildschirme, die nur einmalig VOR einem
+bestimmten Zustand erscheinen (Erstanmeldung, Ersteinrichtung) — nicht
+pauschal für jede riskante Änderung an normal erreichbaren Seiten, die sich
+der Nutzer direkt in der echten Anwendung ansehen kann. Playwright/Chromium
+(siehe oben) dient dabei der automatisierten
 Kontrolle beider Versionen.
 
 ## Kanban (Questpfad / Gildenbrett / Feldzug), seit Patch 18
