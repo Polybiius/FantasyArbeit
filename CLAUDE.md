@@ -44,6 +44,15 @@ nicht per Code-Änderung.
   Prüfen, VS-Code-Erweiterung "ESLint" zeigt Warnungen live beim Tippen an.
   Absichtlich schlanker Regelsatz bisher (nur `no-unused-vars`/`no-undef`) —
   erst bei echtem Bedarf erweitern, nicht vorab.
+- **Radius-/Schatten-System** (seit 2026-08-02): einheitliche CSS-Variablen im
+  `:root`-Block von `index.html` statt roher Werte — `--radius-xs/sm/md/lg/pill`
+  (4/8/12/14/999px, nach Element-Größe: kleine Bedienelemente=sm,
+  Karten/Kacheln=md, große Container/Panels=lg) und `--shadow-rest`/
+  `--shadow-raised` (dezenter Schatten im Ruhezustand auf Panels/Karten,
+  kräftigerer beim Hover auf klickbaren Kacheln). Vorher liefen `border-radius`
+  auf 9 verschiedenen unsystematischen Werten und Schatten fast nirgends außer
+  bei den Dungeon-Kacheln. **Neue UI-Elemente sollten diese Variablen
+  weiterverwenden statt neue Radius-/Schatten-Werte zu erfinden.**
 - **Visuelle Prüfung durch Claude Code** (seit 2026-08-02): Playwright +
   Chromium liegen portabel unter `~/.local/share/playwright-portable`
   (eigenes kleines `npm`-Projekt dort, nicht Teil des Repos/`package.json`
@@ -55,6 +64,19 @@ nicht per Code-Änderung.
   CSS-Code zu lesen und zu hoffen, dass es passt. Chromium ist technisch
   derselbe Rendering-Kern (Blink) wie im vom Nutzer verwendeten Brave —
   visuell identisch für CSS/Layout-Zwecke.
+- **Lokales Öffnen von HTML-Dateien beim Nutzer** (seit 2026-08-02): Brave
+  läuft bei ihm sandboxed (vermutlich Flatpak) — ein direkter `file://`-Zugriff
+  auf den Projektordner schlägt fehl (`ERR_FILE_NOT_FOUND`), und Dateien über
+  den Datei-Öffnen-Dialog ausgewählt landen nur mit Zugriff auf genau diese
+  eine Datei hinter einem `/run/user/.../doc/...`-Portal-Pfad — Nachbarordner
+  wie `img/` sind dann nicht erreichbar, Bilder mit relativen Pfaden bleiben
+  kaputt. Lösung: VS-Code-Erweiterung **"Live Server"** (ritwickdey.LiveServer,
+  installiert per `code --install-extension ritwickdey.LiveServer`) —
+  Rechtsklick auf eine HTML-Datei im Explorer → "Open with Live Server"
+  liefert sie über `http://127.0.0.1:5500/...` aus, das umgeht die
+  Sandbox-Einschränkung komplett (Netzwerkzugriff ist uneingeschränkt) und
+  lädt bei jedem Speichern automatisch neu. Das ist jetzt der Standardweg für
+  den Nutzer, um lokale HTML-Dateien (Produkt oder Dummy) im Browser zu sehen.
 - **Bisheriger Workflow**: Der Nutzer hat NICHT lokal mit Git gearbeitet, sondern
   jede neue `index.html`-Version über den GitHub-Web-Upload hochgeladen, und jeden
   SQL-Patch manuell im Supabase SQL-Editor ausgeführt. Das ändert sich jetzt mit
@@ -604,10 +626,12 @@ irgendwo im System.
   Schwert + Standard-Kleidung + Haare, aus einem Idle-Frame der Sheets
   zusammengesetzt (Python/Pillow, Frame-Ausschnitt (31,21,48,64) auf der
   800×448-Leinwand). Datei liegt unter `img/characters/krieger.png` (erster
-  Bild-Ordner im Repo, es gab bisher keine lokalen Bild-Assets). Eingebaut
-  an drei Stellen in `index.html`:
-  - `#authScreen` (Login-Formular): `.auth-portrait`, rein dekorativ, zeigt
-    sich unabhängig von der eigenen Klasse.
+  Bild-Ordner im Repo, es gab bisher keine lokalen Bild-Assets).
+  Ursprünglich an drei Stellen in `index.html` eingebaut, seit 2026-08-02 nur
+  noch an zweien — der Nutzer wollte es auf dem Login-Bildschirm nicht mehr
+  sehen, `.auth-portrait` in `#authScreen` wurde wieder entfernt (erst im
+  Dummy getestet, siehe "Profil-Onboarding" oben, dann übertragen).
+  Verbleibende Stellen:
   - `#charCreateScreen`: Krieger-Klassenkarte, `.class-portrait-img`
     ersetzt dort das ⚔️-Emoji (Hexer/Schütze behalten ihre Emoji, kein Bild
     vorhanden).
