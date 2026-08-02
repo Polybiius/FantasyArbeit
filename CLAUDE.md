@@ -414,6 +414,22 @@ Grundprinzip, das später auch fürs echte Ausrüstungssystem
 (`equipped_weapon/armor/accessory`, siehe "Bewusst aufgeschobene Ideen")
 gebraucht wird.
 
+**Vorschau zeigt seit 2026-08-02 auch die Basis-Kleidung + das Klassenitem**
+(Nutzer-Wunsch: "man erkennt es ja sonst nicht, wenn man das Aussehen
+ändert"), nicht nur Haut+Haar — zusätzliche Ebenen `previewBack` (Cape/
+Rucksack, unterste Ebene), `previewBody` (Hemd/Hose/Stiefel bzw. Corset/
+Rock/Socken), `previewGloves`, `previewWeapon` (oberste Ebene), alle mit
+demselben `CROP_BOX` exportiert (`Design/export_outfit_layers.py`, Bilder
+liegen wie die Haut-/Frisuren-Vorschauen unter `img/characters/creator/`,
+Präfix `outfit_`). `updateOutfitLayers()` setzt diese vier beim Betreten
+des Screens einmalig passend zu `selectedClass`/`selectedGender`
+(`CLASS_OUTFIT`-Map: Hexer → Cape blue + Stick, Krieger → nur Schwert,
+Schütze → nur Rucksack, kein Waffen-Asset) — ändert sich NICHT mehr, wenn
+man danach Hautfarbe/Frisur wechselt, nur Haut- und Haar-Ebene reagieren
+auf Klicks. **Bewusst OHNE Kopfbedeckung** (Krieger hätte sonst den Guard
+Helmet aus dem Klassenwahl-Beispielbild), damit die gerade gewählte Frisur
+sichtbar bleibt.
+
 **Asset-Pipeline / Lizenz-Grenze, wichtig:** die rohen GandalfHardcore-Zips
 liegen unter `Design/` (gitignored, siehe oben — Lizenz verbietet
 Weitergabe der Rohdaten). Die für den Aussehen-Screen tatsächlich
