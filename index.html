@@ -70,8 +70,29 @@
   .class-card.selected{border-color:var(--cc);background:color-mix(in srgb, var(--cc) 16%, var(--panel-2));box-shadow:0 0 0 1px var(--cc), 0 0 18px color-mix(in srgb, var(--cc) 40%, transparent);}
   .class-card .class-portrait{font-size:40px;line-height:1;}
   .class-card .class-portrait-img{height:64px;display:flex;align-items:center;justify-content:center;}
-  .class-card .class-portrait-img img{height:100%;image-rendering:pixelated;}
+  .class-card .class-portrait-img canvas{height:100%;width:auto;image-rendering:pixelated;}
   .class-card .class-name{font-family:'Cinzel',serif;font-weight:700;font-size:15px;color:var(--cc-glow);}
+
+  /* Aussehen-Screen: Hautfarbe + Frisur, nach der Klassenwahl */
+  .appearance-preview{width:100%;height:220px;position:relative;display:flex;align-items:center;justify-content:center;margin-bottom:18px;background:repeating-linear-gradient(135deg, rgba(139,92,246,0.05) 0 12px, transparent 12px 24px);border:1px solid var(--border);border-radius:var(--radius-lg);}
+  .appearance-preview canvas{position:absolute;height:200px;width:auto;image-rendering:pixelated;}
+  .appearance-section-label{font-size:11px;color:var(--muted-2);text-transform:uppercase;letter-spacing:.05em;margin:0 0 8px;font-family:'JetBrains Mono',monospace;}
+  .skin-row{display:flex;gap:8px;margin-bottom:20px;}
+  .skin-swatch{flex:1;padding:4px;background:var(--panel-2);border:2px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;display:flex;align-items:center;justify-content:center;height:56px;transition:all .15s;}
+  .skin-swatch img{height:100%;image-rendering:pixelated;}
+  .skin-swatch:hover{border-color:var(--arcane);}
+  .skin-swatch.selected{border-color:var(--arcane);background:rgba(139,92,246,0.15);box-shadow:0 0 0 1px var(--arcane);}
+  .hair-color-tabs{display:flex;gap:8px;margin-bottom:12px;}
+  .hair-color-tab{flex:1;background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px;color:var(--muted);cursor:pointer;font-family:'Inter',sans-serif;font-size:12.5px;font-weight:500;display:flex;align-items:center;justify-content:center;gap:6px;transition:all .15s;}
+  .hair-color-tab .dot{width:10px;height:10px;border-radius:50%;border:1px solid rgba(255,255,255,0.25);}
+  .hair-color-tab:hover{border-color:var(--arcane);color:var(--text);}
+  .hair-color-tab.active{border-color:var(--arcane);background:rgba(139,92,246,0.15);color:var(--text);}
+  .hair-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:22px;max-height:220px;overflow-y:auto;padding-right:2px;}
+  @media (max-width:560px){.hair-grid{grid-template-columns:repeat(4,1fr);}}
+  .hair-swatch{background:var(--panel-2);border:2px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;display:flex;align-items:center;justify-content:center;height:52px;transition:all .15s;}
+  .hair-swatch img{height:90%;image-rendering:pixelated;}
+  .hair-swatch:hover{border-color:var(--arcane);}
+  .hair-swatch.selected{border-color:var(--arcane);background:rgba(139,92,246,0.15);box-shadow:0 0 0 1px var(--arcane);}
   .class-card .class-desc{font-size:11px;color:var(--muted);line-height:1.4;}
 
   .header{background:linear-gradient(160deg, var(--panel-2), var(--panel));border:1px solid var(--border);border-radius:var(--radius-lg);padding:22px 26px;position:relative;overflow:hidden;margin-bottom:18px;box-shadow:var(--shadow-rest);}
@@ -467,17 +488,17 @@
 
   <div class="class-grid">
     <button class="class-card" data-class="hexer" style="--cc:#8b5cf6;--cc-glow:#a78bfa;">
-      <span class="class-portrait">🧙</span>
+      <span class="class-portrait class-portrait-img"><canvas id="portraitHexer"></canvas></span>
       <span class="class-name">Hexer</span>
       <span class="class-desc">Arkane Macht, Fernkampf durch Wissen</span>
     </button>
     <button class="class-card" data-class="krieger" style="--cc:#d1453d;--cc-glow:#f2726b;">
-      <span class="class-portrait class-portrait-img"><img src="img/characters/krieger.png" alt="Krieger"></span>
+      <span class="class-portrait class-portrait-img"><canvas id="portraitKrieger"></canvas></span>
       <span class="class-name">Krieger</span>
       <span class="class-desc">Nahkampf, Ausdauer, direkte Konfrontation</span>
     </button>
     <button class="class-card" data-class="schuetze" style="--cc:#3f9142;--cc-glow:#6bc26e;">
-      <span class="class-portrait">🏹</span>
+      <span class="class-portrait class-portrait-img"><canvas id="portraitSchuetze"></canvas></span>
       <span class="class-name">Schütze</span>
       <span class="class-desc">Präzision, Distanz, Geduld</span>
     </button>
@@ -485,6 +506,27 @@
 
   <button class="auth-btn btn-disabled" id="charCreateBtn">Charakter erschaffen</button>
   <div class="auth-error" id="charCreateError"></div>
+</div>
+
+<div class="charcreate-card" id="appearanceScreen">
+  <h1 class="display">Dein Aussehen</h1>
+  <p class="charcreate-sub">Hautfarbe und Frisur — später jederzeit über Ausrüstung erweiterbar.</p>
+
+  <div class="appearance-preview">
+    <canvas id="appearanceCanvas"></canvas>
+  </div>
+
+  <p class="appearance-section-label">Hautfarbe</p>
+  <div class="skin-row" id="skinRow"></div>
+
+  <p class="appearance-section-label">Haarfarbe</p>
+  <div class="hair-color-tabs" id="hairColorTabs"></div>
+
+  <p class="appearance-section-label">Frisur</p>
+  <div class="hair-grid" id="hairGrid"></div>
+
+  <button class="auth-btn btn-disabled" id="appearanceDoneBtn">Ins Programm</button>
+  <div class="auth-error" id="appearanceError"></div>
 </div>
 
 <div class="wrap" id="app">
@@ -1242,10 +1284,77 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('profileNextBtn').classList.toggle('btn-disabled', !ready);
   }
 
+  // Sprite-Animation: alle Ebenen (Haut, Kleidung, Haare, Waffen, ...) teilen
+  // sich dasselbe Raster (Reihe = Aktion, 64px hoch; Spalte = Frame, 100px breit).
+  // Reihe 2 ist der Laufzyklus (8 Frames) - der Charakter "laeuft auf der Stelle",
+  // weil immer derselbe 100x64-Ausschnitt gezeichnet wird, nur der Frame-Index
+  // wandert weiter. Volle Sheets (nicht nur ein zugeschnittener Ausschnitt) liegen
+  // dafuer unter img/characters/sheets/ (siehe Design/export_full_sheets.py).
+  const SHEETS_IMG_BASE = 'img/characters/sheets/';
+  // Wichtig: die Frames im Laufzyklus liegen NICHT im 100px-Raster der
+  // Item-Kacheln (siehe CROP_BOX unten), sondern enger bei ~80px Abstand
+  // (empirisch gemessen ueber Design/export_full_sheets.py-Analyse: 8 klar
+  // getrennte Blobs bei x=32,110,192,271,351,431,512,591 fuer die Koerper-
+  // Ebene). Mit 100px hat der Ausschnitt gelegentlich zwei Nachbar-Frames
+  // gleichzeitig erwischt ("Charakter laeuft aus dem Bild"/doppelt sichtbar).
+  const ANIM_ROW = 2, ANIM_FRAMES = 8, ANIM_FPS = 9, FRAME_W = 80, FRAME_H = 64;
+
+  function createSpriteRenderer(canvas, scale){
+    canvas.width = FRAME_W * scale;
+    canvas.height = FRAME_H * scale;
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    let images = [];
+    let frame = 0;
+
+    function draw(){
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for(const img of images){
+        if(!img.complete || !img.naturalWidth) continue;
+        ctx.drawImage(img, frame * FRAME_W, ANIM_ROW * FRAME_H, FRAME_W, FRAME_H, 0, 0, canvas.width, canvas.height);
+      }
+    }
+
+    function setLayers(fileNames){
+      images = fileNames.map(name=>{
+        const img = new Image();
+        img.onload = draw;
+        img.src = SHEETS_IMG_BASE + name;
+        return img;
+      });
+      draw();
+    }
+
+    setInterval(()=>{
+      frame = (frame + 1) % ANIM_FRAMES;
+      draw();
+    }, 1000 / ANIM_FPS);
+
+    return { setLayers };
+  }
+
   const CLASS_NAMES = {
     m: { hexer:'Hexer', krieger:'Krieger', schuetze:'Schütze' },
     w: { hexer:'Hexerin', krieger:'Kriegerin', schuetze:'Schützin' },
   };
+
+  // Beispielcharaktere auf der Klassenwahl: animiert, dieselbe Basis-Kleidung
+  // wie im Konzept (Design/compose_concept.py), aber jetzt live aus Ebenen
+  // zusammengesetzt statt als fertiges Einzelbild.
+  const portraitRenderers = {
+    hexer: createSpriteRenderer(document.getElementById('portraitHexer'), 2),
+    krieger: createSpriteRenderer(document.getElementById('portraitKrieger'), 2),
+    schuetze: createSpriteRenderer(document.getElementById('portraitSchuetze'), 2),
+  };
+  function layersForClassPortrait(cls, g){
+    const skin = `skin_${g}3.png`;
+    const body = `outfit_body_${g}.png`;
+    const gloves = `outfit_gloves_${g}.png`;
+    if(cls === 'hexer') return ['outfit_cape_blue.png', skin, body, gloves, `outfit_weapon_stick_${g}.png`];
+    if(cls === 'krieger') return [skin, body, gloves, 'outfit_hat_guardhelmet.png', `outfit_weapon_sword_${g}.png`];
+    if(cls === 'schuetze') return ['outfit_backpack_small.png', skin, body, gloves];
+    return [skin, body, gloves];
+  }
   document.getElementById('profileNextBtn').addEventListener('click', ()=>{
     const realNameInput = document.getElementById('realNameInput');
     const charNameInput = document.getElementById('charNameInput');
@@ -1259,6 +1368,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       const names = CLASS_NAMES[selectedGender] || CLASS_NAMES.m;
       card.querySelector('.class-name').textContent = names[card.dataset.class];
     });
+    // Beispielcharaktere passend zum gewählten Geschlecht (Basis-Kleidung, siehe Design/compose_concept.py)
+    const g = selectedGender || 'm';
+    portraitRenderers.hexer.setLayers(layersForClassPortrait('hexer', g));
+    portraitRenderers.krieger.setLayers(layersForClassPortrait('krieger', g));
+    portraitRenderers.schuetze.setLayers(layersForClassPortrait('schuetze', g));
     document.getElementById('profileScreen').style.display = 'none';
     document.getElementById('charCreateScreen').style.display = 'block';
   });
@@ -1276,22 +1390,215 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   function updateCharCreateBtn(){
     document.getElementById('charCreateBtn').classList.toggle('btn-disabled', !selectedClass);
   }
-  document.getElementById('charCreateBtn').addEventListener('click', async ()=>{
+  document.getElementById('charCreateBtn').addEventListener('click', ()=>{
     if(!selectedClass){
       document.querySelectorAll('.class-card').forEach(shakeEl);
       return;
     }
-    const errEl = document.getElementById('charCreateError');
+    document.getElementById('charCreateScreen').style.display = 'none';
+    document.getElementById('appearanceScreen').style.display = 'block';
+    initAppearanceScreen();
+  });
+
+  // ---- Aussehen-Screen: Hautfarbe + Frisur (letzter Onboarding-Schritt) ----
+  // Vorschau-Kacheln (Picker-Buttons) liegen klein zugeschnitten auf demselben
+  // Ausschnitt des Sprite-Grids vor (siehe Design/export_creator_assets.py) -
+  // reine Miniaturen, nicht animiert.
+  const CREATOR_IMG_BASE = 'img/characters/creator/';
+  const SKIN_CATALOG = [
+    {gender:"m", key:"m1"}, {gender:"m", key:"m2"}, {gender:"m", key:"m3"}, {gender:"m", key:"m4"}, {gender:"m", key:"m5"},
+    {gender:"w", key:"w1"}, {gender:"w", key:"w2"}, {gender:"w", key:"w3"}, {gender:"w", key:"w4"}, {gender:"w", key:"w5"}
+  ];
+  const HAIR_CATALOG = [
+    {gender:"m", key:"m_fancyhair", label:"Fancy Hair", color:"braun"},
+    {gender:"m", key:"m_malehair10", label:"Male Hair10", color:"schwarz"},
+    {gender:"m", key:"m_malehair11", label:"Male Hair11", color:"schwarz"},
+    {gender:"m", key:"m_malehair12", label:"Male Hair12", color:"schwarz"},
+    {gender:"m", key:"m_malehair13", label:"Male Hair13", color:"rot"},
+    {gender:"m", key:"m_malehair14", label:"Male Hair14", color:"braun"},
+    {gender:"m", key:"m_malehair15", label:"Male Hair15", color:"schwarz"},
+    {gender:"m", key:"m_malehair16", label:"Male Hair16", color:"braun"},
+    {gender:"m", key:"m_malehair17", label:"Male Hair17", color:"braun"},
+    {gender:"m", key:"m_malehair18", label:"Male Hair18", color:"rot"},
+    {gender:"m", key:"m_malehair19", label:"Male Hair19", color:"blond"},
+    {gender:"m", key:"m_malehair20", label:"Male Hair20", color:"schwarz"},
+    {gender:"m", key:"m_malehair21", label:"Male Hair21", color:"schwarz"},
+    {gender:"m", key:"m_malehair22", label:"Male Hair22", color:"braun"},
+    {gender:"m", key:"m_malehair23", label:"Male Hair23", color:"rot"},
+    {gender:"m", key:"m_malehair24", label:"Male Hair24", color:"blond"},
+    {gender:"m", key:"m_malehair25", label:"Male Hair25", color:"schwarz"},
+    {gender:"m", key:"m_malehair26", label:"Male Hair26", color:"braun"},
+    {gender:"m", key:"m_malehair27", label:"Male Hair27", color:"braun"},
+    {gender:"m", key:"m_malehair28", label:"Male Hair28", color:"rot"},
+    {gender:"m", key:"m_malehair29", label:"Male Hair29", color:"blond"},
+    {gender:"m", key:"m_malehair30", label:"Male Hair30", color:"schwarz"},
+    {gender:"m", key:"m_malehair6", label:"Male Hair6", color:"schwarz"},
+    {gender:"m", key:"m_malehair7", label:"Male Hair7", color:"braun"},
+    {gender:"m", key:"m_malehair8", label:"Male Hair8", color:"rot"},
+    {gender:"m", key:"m_malehair9", label:"Male Hair9", color:"blond"},
+    {gender:"m", key:"m_queenhair", label:"Queen hair", color:"braun"},
+    {gender:"m", key:"m_shieldmaidenhair", label:"Shield Maiden hair", color:"braun"},
+    {gender:"w", key:"w_femalehair10", label:"Female Hair10", color:"schwarz"},
+    {gender:"w", key:"w_femalehair11", label:"Female Hair11", color:"braun"},
+    {gender:"w", key:"w_femalehair12", label:"Female Hair12", color:"braun"},
+    {gender:"w", key:"w_femalehair13", label:"Female Hair13", color:"rot"},
+    {gender:"w", key:"w_femalehair14", label:"Female Hair14", color:"blond"},
+    {gender:"w", key:"w_femalehair15", label:"Female Hair15", color:"schwarz"},
+    {gender:"w", key:"w_femalehair16", label:"Female Hair16", color:"schwarz"},
+    {gender:"w", key:"w_femalehair17", label:"Female Hair17", color:"schwarz"},
+    {gender:"w", key:"w_femalehair18", label:"Female Hair18", color:"rot"},
+    {gender:"w", key:"w_femalehair19", label:"Female Hair19", color:"braun"},
+    {gender:"w", key:"w_femalehair20", label:"Female Hair20", color:"blond"},
+    {gender:"w", key:"w_femalehair21", label:"Female Hair21", color:"schwarz"},
+    {gender:"w", key:"w_femalehair22", label:"Female Hair22", color:"braun"},
+    {gender:"w", key:"w_femalehair23", label:"Female Hair23", color:"rot"},
+    {gender:"w", key:"w_femalehair24", label:"Female Hair24", color:"braun"},
+    {gender:"w", key:"w_femalehair25", label:"Female Hair25", color:"schwarz"},
+    {gender:"w", key:"w_femalehair26", label:"Female Hair26", color:"rot"},
+    {gender:"w", key:"w_femalehair27", label:"Female Hair27", color:"braun"},
+    {gender:"w", key:"w_femalehair28", label:"Female Hair28", color:"braun"},
+    {gender:"w", key:"w_femalehair29", label:"Female Hair29", color:"blond"},
+    {gender:"w", key:"w_femalehair30", label:"Female Hair30", color:"schwarz"},
+    {gender:"w", key:"w_femalehair31", label:"Female Hair31", color:"rot"},
+    {gender:"w", key:"w_femalehair32", label:"Female Hair32", color:"schwarz"},
+    {gender:"w", key:"w_femalehair33", label:"Female Hair33", color:"braun"},
+    {gender:"w", key:"w_femalehair34", label:"Female Hair34", color:"blond"},
+    {gender:"w", key:"w_femalehair35", label:"Female Hair35", color:"schwarz"},
+    {gender:"w", key:"w_femalehair6", label:"Female Hair6", color:"braun"},
+    {gender:"w", key:"w_femalehair7", label:"Female Hair7", color:"rot"},
+    {gender:"w", key:"w_femalehair8", label:"Female Hair8", color:"braun"},
+    {gender:"w", key:"w_femalehair9", label:"Female Hair9", color:"blond"}
+  ];
+  const HAIR_COLOR_SWATCH = { schwarz:'#2b2b2b', braun:'#7a4f2a', blond:'#e0c064', rot:'#a13b25' };
+  const BALD_KEY = '__bald__';
+
+  // Basis-Kleidung + Klassenitem fuer die Aussehen-Vorschau (dieselbe Wahl wie
+  // bei den Klassen-Beispielcharakteren, siehe Design/compose_concept.py) -
+  // bewusst OHNE Kopfbedeckung, damit man die gewaehlte Frisur sieht.
+  const CLASS_OUTFIT = {
+    hexer:    { back: 'outfit_cape_blue.png', weapon: g=>`outfit_weapon_stick_${g}.png` },
+    krieger:  { back: null, weapon: g=>`outfit_weapon_sword_${g}.png` },
+    schuetze: { back: 'outfit_backpack_small.png', weapon: null },
+  };
+
+  const appearanceRenderer = createSpriteRenderer(document.getElementById('appearanceCanvas'), 4);
+
+  function refreshAppearanceCanvas(){
+    const g = selectedGender || 'm';
+    const outfit = CLASS_OUTFIT[selectedClass] || CLASS_OUTFIT.krieger;
+    const layers = [];
+    if(outfit.back) layers.push(outfit.back);
+    if(selectedSkin) layers.push(`skin_${selectedSkin}.png`);
+    layers.push(`outfit_body_${g}.png`);
+    layers.push(`outfit_gloves_${g}.png`);
+    if(selectedHair && selectedHair !== BALD_KEY) layers.push(`hair_${selectedHair}.png`);
+    if(outfit.weapon) layers.push(outfit.weapon(g));
+    appearanceRenderer.setLayers(layers);
+  }
+
+  let selectedSkin = null;
+  let selectedHair = null;
+  let selectedHairColorTab = null;
+
+  function initAppearanceScreen(){
+    const g = selectedGender || 'm';
+
+    const skinRow = document.getElementById('skinRow');
+    skinRow.innerHTML = '';
+    const skinsForGender = SKIN_CATALOG.filter(s=>s.gender===g);
+    skinsForGender.forEach((s, i)=>{
+      const div = document.createElement('div');
+      div.className = 'skin-swatch' + (i===2 ? ' selected' : '');
+      div.innerHTML = `<img src="${CREATOR_IMG_BASE}skin_${s.key}.png" alt="">`;
+      div.addEventListener('click', ()=>{
+        selectedSkin = s.key;
+        skinRow.querySelectorAll('.skin-swatch').forEach(el=>el.classList.remove('selected'));
+        div.classList.add('selected');
+        refreshAppearanceCanvas();
+        updateAppearanceDoneBtn();
+      });
+      skinRow.appendChild(div);
+    });
+    selectedSkin = skinsForGender[2].key;
+
+    const tabsEl = document.getElementById('hairColorTabs');
+    tabsEl.innerHTML = '';
+    const colors = ['schwarz','braun','blond','rot','glatze'];
+    colors.forEach((c, i)=>{
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'hair-color-tab' + (i===0 ? ' active' : '');
+      btn.innerHTML = c === 'glatze'
+        ? `<span class="dot" style="background:transparent;border-style:dashed;"></span>Glatze`
+        : `<span class="dot" style="background:${HAIR_COLOR_SWATCH[c]}"></span>${c[0].toUpperCase()+c.slice(1)}`;
+      btn.addEventListener('click', ()=>{
+        selectedHairColorTab = c;
+        tabsEl.querySelectorAll('.hair-color-tab').forEach(el=>el.classList.remove('active'));
+        btn.classList.add('active');
+        renderHairGrid();
+        refreshAppearanceCanvas();
+        updateAppearanceDoneBtn();
+      });
+      tabsEl.appendChild(btn);
+    });
+    selectedHairColorTab = colors[0];
+
+    renderHairGrid();
+    refreshAppearanceCanvas();
+    updateAppearanceDoneBtn();
+  }
+
+  function renderHairGrid(){
+    const g = selectedGender || 'm';
+    const grid = document.getElementById('hairGrid');
+    grid.innerHTML = '';
+
+    if(selectedHairColorTab === 'glatze'){
+      selectedHair = BALD_KEY;
+      grid.innerHTML = '<div class="empty-page-hint" style="grid-column:1/-1;padding:14px 0;">Keine Frisur — Glatze</div>';
+      return;
+    }
+
+    const options = HAIR_CATALOG.filter(h=>h.gender===g && h.color===selectedHairColorTab);
+    options.forEach((h, i)=>{
+      const div = document.createElement('div');
+      const isSelected = selectedHair === h.key || (!selectedHair && i===0);
+      div.className = 'hair-swatch' + (isSelected ? ' selected' : '');
+      div.title = h.label;
+      div.innerHTML = `<img src="${CREATOR_IMG_BASE}hair_${h.key}.png" alt="${h.label}">`;
+      div.addEventListener('click', ()=>{
+        selectedHair = h.key;
+        grid.querySelectorAll('.hair-swatch').forEach(el=>el.classList.remove('selected'));
+        div.classList.add('selected');
+        refreshAppearanceCanvas();
+        updateAppearanceDoneBtn();
+      });
+      grid.appendChild(div);
+    });
+    if(options.length && !options.some(h=>h.key===selectedHair)){
+      selectedHair = options[0].key;
+    }
+  }
+
+  function updateAppearanceDoneBtn(){
+    const ready = !!(selectedSkin && selectedHair);
+    document.getElementById('appearanceDoneBtn').classList.toggle('btn-disabled', !ready);
+  }
+
+  document.getElementById('appearanceDoneBtn').addEventListener('click', async ()=>{
+    if(!selectedSkin || !selectedHair) return;
+    const errEl = document.getElementById('appearanceError');
     const realName = document.getElementById('realNameInput').value.trim();
     const company = document.getElementById('companyInput').value.trim();
     const charName = document.getElementById('charNameInput').value.trim();
     const { data: inserted, error } = await sb.from('profiles').insert({
       id: session.user.id, org_id: DEFAULT_ORG_ID, display_name:charName, role:'member', character_class:selectedClass,
-      real_name:realName, gender:selectedGender, company: company || null
+      real_name:realName, gender:selectedGender, company: company || null,
+      skin_tone: selectedSkin, hair_style: selectedHair === BALD_KEY ? null : selectedHair
     }).select().single();
     if(error){ reportError('Charakter erstellen', error, errEl); return; }
     profile = inserted;
-    document.getElementById('charCreateScreen').style.display='none';
+    document.getElementById('appearanceScreen').style.display='none';
     document.getElementById('loading').style.display='flex';
     await enterApp();
   });

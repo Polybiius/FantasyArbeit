@@ -377,10 +377,14 @@ Kontrolle beider Versionen.
 
 Vierter Onboarding-Schritt, direkt nach der Klassenwahl, vor dem Sprung ins
 Programm: `authScreen` → `profileScreen` → `charCreateScreen` → **`appearanceScreen`**
-→ App. Bisher **nur im Dummy** (`dummy-anmeldung.html`) gebaut, noch nicht ins
-echte `index.html` übertragen (siehe "Entstehungsweg" oben — gleiches Muster,
-gleicher Grund: der Nutzer hat schon ein Profil und kann diesen Screen live
-sonst nicht sehen).
+→ App. Zuerst im Dummy (`dummy-anmeldung.html`) gebaut und geprüft, seit
+2026-08-03 auch ins echte `index.html` übertragen (siehe "Entstehungsweg"
+oben zum generellen Muster) — der eigentliche `profiles`-Insert (inkl.
+`character_class`/`real_name`/`gender`/`company`, seit diesem Umbau auch
+`skin_tone`/`hair_style`) passiert jetzt ganz am Ende, im Klick-Handler von
+`appearanceDoneBtn` statt wie vorher in `charCreateBtn` — die Klassenwahl
+selbst löst keinen Insert mehr aus, sondern blättert nur weiter zum
+Aussehen-Screen.
 
 Zwei Auswahlen, wie in einem RPG-Charaktereditor:
 - **Hautfarbe**: 5 vorgefertigte Töne je Geschlecht (`Male Skin1-5`/`Female
@@ -771,27 +775,35 @@ irgendwo im System.
   Hochskalieren scharf bleibt statt zu verschwimmen.
 
   **Klassenwahl-Bildschirm auf 6 angezogene, animierte Beispielcharaktere
-  erweitert (2026-08-02/03, bisher nur im Dummy):** `#charCreateScreen`
-  zeigte anfangs nur für Krieger ein Bild (`img/characters/krieger.png`,
-  s.o.), Hexer/Schütze hatten Emoji. Nach zwei Überarbeitungen (erst
-  statische Einzelbilder pro Klasse+Geschlecht, dann — auf Wunsch des
-  Nutzers, der explizit ein **dynamisches**, nicht aus flachen Einzelbildern
-  bestehendes Charakterscreen wollte — durch `<canvas>`-Elemente ersetzt,
-  siehe "Aussehen-Screen" oben für die Technik) zeigt der Bildschirm jetzt
-  für alle drei Klassen ein animiertes, live aus Ebenen zusammengesetztes
-  Beispiel: einheitliche Basis-Kleidung (Hemd/Hose/Stiefel bzw.
-  Corset/Rock/Socken) + ein klassentypisches Item (Hexer: Stick + blaues
-  Cape, Krieger: Holzschwert + Guard Helmet, Schütze: Small Backpack —
-  Schütze/Hexer noch ohne Fernkampfwaffe, Bogen/Zauberstab-Asset fehlt
-  weiterhin), bewusst glatzköpfig (Frisur kommt ja erst im Aussehen-Screen
-  danach). `layersForClassPortrait(cls, gender)` + `portraitRenderers` in
-  `dummy-anmeldung.html`. **Das alte `img/characters/krieger.png` bleibt
-  unangetastet und im Repo** (weiter aktiv im `page-charakter`-
-  `CLASS_BASE_ART`-Fall oben) — nur an dieser einen Stelle (Klassenwahl)
-  nicht mehr benutzt; die sechs zwischenzeitlich erzeugten statischen
-  `hexer_m.png`/`hexer_w.png`/etc. wurden nach dem Umbau auf Canvas wieder
-  aus dem Repo entfernt (überflüssig geworden). Noch nicht ins echte
-  `index.html` übertragen.
+  erweitert (2026-08-02/03, seit 2026-08-03 auch im echten `index.html`):**
+  `#charCreateScreen` zeigte anfangs nur für Krieger ein Bild
+  (`img/characters/krieger.png`, s.o.), Hexer/Schütze hatten Emoji. Nach
+  zwei Überarbeitungen (erst statische Einzelbilder pro Klasse+Geschlecht,
+  dann — auf Wunsch des Nutzers, der explizit ein **dynamisches**, nicht
+  aus flachen Einzelbildern bestehendes Charakterscreen wollte — durch
+  `<canvas>`-Elemente ersetzt, siehe "Aussehen-Screen" oben für die
+  Technik) zeigt der Bildschirm jetzt für alle drei Klassen ein animiertes,
+  live aus Ebenen zusammengesetztes Beispiel: einheitliche Basis-Kleidung
+  (Hemd/Hose/Stiefel bzw. Corset/Rock/Socken) + ein klassentypisches Item
+  (Hexer: Stick + blaues Cape, Krieger: Holzschwert + Guard Helmet,
+  Schütze: Small Backpack — Schütze/Hexer noch ohne Fernkampfwaffe,
+  Bogen/Zauberstab-Asset fehlt weiterhin, siehe Wiedervorlage unten),
+  bewusst glatzköpfig (Frisur kommt ja erst im Aussehen-Screen danach).
+  `layersForClassPortrait(cls, gender)` + `portraitRenderers` in
+  `index.html` (identisch auch weiterhin in `dummy-anmeldung.html`
+  vorhanden, dort ohne echten Supabase-Insert). **Das alte
+  `img/characters/krieger.png` bleibt unangetastet und im Repo** (weiter
+  aktiv im `page-charakter`-`CLASS_BASE_ART`-Fall oben) — nur an dieser
+  einen Stelle (Klassenwahl) nicht mehr benutzt; die sechs
+  zwischenzeitlich erzeugten statischen `hexer_m.png`/`hexer_w.png`/etc.
+  wurden nach dem Umbau auf Canvas wieder aus dem Repo entfernt
+  (überflüssig geworden).
+
+  **Wiedervorlage (2026-08-03, vom Nutzer bewusst auf "morgen"
+  verschoben):** Hexer/Schütze haben weiterhin keine Fernkampfwaffe im
+  Klassen-Item-Set, weil kein Bogen/Zauberstab-Asset im GandalfHardcore-
+  Paket existiert. Nicht von selbst wieder aufgreifen, nur wenn der
+  Nutzer es anstößt.
 - **Multi-Org-Charakter-Portabilität**: die Idee, dass ein Nutzer den
   Charakter (Level/Skills/Tagebuch) über einen Arbeitgeberwechsel hinweg
   mitnehmen könnte, während Dungeons/Items/Quests bei der alten Organisation

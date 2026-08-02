@@ -30,6 +30,7 @@ export default [
         navigator: 'readonly',
         history: 'readonly',
         location: 'readonly',
+        Image: 'readonly',
         // von den zwei CDN-Skripten geladen (supabase-js, Leaflet)
         supabase: 'readonly',
         L: 'readonly',
