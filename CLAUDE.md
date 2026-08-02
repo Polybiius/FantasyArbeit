@@ -86,15 +86,23 @@ nicht per Code-Änderung.
   weiterhin manuell** über den Supabase SQL-Editor beim Nutzer — dafür hat
   Claude Code keinen Zugriff/Zugangsdaten.
 
-## Datenbank — aktueller Stand (Annahme: Patch 1–23 eingespielt, Patch 24 noch offen)
+## Datenbank — aktueller Stand (Annahme: Patch 1–25 eingespielt)
 
 **Wenn das nicht stimmt, sofort korrigieren, bevor irgendetwas gebaut wird** — sonst
 versucht Claude Code eventuell, Dinge doppelt anzulegen oder Migrationen in falscher
-Reihenfolge zu bauen. **Patch 24 (`patch24_profil_onboarding.sql`, siehe unten bei
-"Profil-Onboarding") wurde am 2026-08-02 neu erstellt und muss vom Nutzer noch
-manuell im Supabase SQL-Editor ausgeführt werden** — ohne ihn schlägt die
-Charaktererstellung fehl, weil das Frontend bereits `real_name`/`gender`/`company`
-mit ins `profiles`-Insert schreibt.
+Reihenfolge zu bauen. Patch 24 (`patch24_profil_onboarding.sql`,
+`real_name`/`gender`/`company`) und Patch 25 (`patch25_aussehen.sql`,
+`skin_tone`/`hair_style`) wurden vom Nutzer am 2026-08-02 im Supabase
+SQL-Editor ausgeführt.
+
+**Wichtig zu Patch 25:** die Datenbank-Spalten `profiles.skin_tone`/`hair_style`
+existieren zwar schon live, der zugehörige Screen ("Aussehen", siehe unten)
+existiert aber weiterhin NUR im Dummy (`dummy-anmeldung.html`) — noch nicht im
+echten `index.html` übertragen. Das echte Frontend schreibt diese beiden
+Spalten also noch nirgends, ist aber technisch kein Problem (nullable, kein
+Zeitdruck). **SQL-Patches werden künftig erst nach explizitem Go von Claude
+Code ausgeführt** (nicht mehr sobald die Datei existiert) — siehe Absprache
+vom 2026-08-02.
 
 Alle SQL-Patches liegen im Ordner `sql/` (chronologisch benannt, `schema.sql` +
 `patch.sql` sind die ursprüngliche Basis, danach `patch2_...` bis `patch24_...`).
@@ -365,6 +373,69 @@ der Nutzer direkt in der echten Anwendung ansehen kann. Playwright/Chromium
 (siehe oben) dient dabei der automatisierten
 Kontrolle beider Versionen.
 
+## Aussehen-Screen (Hautfarbe/Frisur), seit Patch 25 (2026-08-02)
+
+Vierter Onboarding-Schritt, direkt nach der Klassenwahl, vor dem Sprung ins
+Programm: `authScreen` → `profileScreen` → `charCreateScreen` → **`appearanceScreen`**
+→ App. Bisher **nur im Dummy** (`dummy-anmeldung.html`) gebaut, noch nicht ins
+echte `index.html` übertragen (siehe "Entstehungsweg" oben — gleiches Muster,
+gleicher Grund: der Nutzer hat schon ein Profil und kann diesen Screen live
+sonst nicht sehen).
+
+Zwei Auswahlen, wie in einem RPG-Charaktereditor:
+- **Hautfarbe**: 5 vorgefertigte Töne je Geschlecht (`Male Skin1-5`/`Female
+  Skin1-5` aus dem GandalfHardcore-Paket), einfache Klick-Auswahl.
+- **Frisur**: kein echter Farb-Regler (die Frisuren-Bilder kommen nur in
+  jeweils einer festen Farbe, keine tönbaren Ebenen). Stattdessen ein
+  **Farb-Reiter** (Schwarz/Braun/Blond/Rot) als Filter über einem
+  Frisuren-Raster — man wählt zuerst die Farbfamilie, dann die Form darin.
+  Die Farbzuordnung je Frisur wurde automatisch per dominanter Bildfarbe
+  bestimmt (`Design/export_creator_assets.py`, HSV-Klassifikation über die
+  helleren 25% der Pixel, um die schwarze Pixel-Art-Outline nicht den
+  Mittelwert verfälschen zu lassen) — bei Pixel-Art nicht hundertprozentig
+  zuverlässig, könnte einzelne Frisuren falsch einsortiert haben. Bei Bedarf
+  einfach die `color`-Zuordnung im `HAIR_CATALOG`-Array von Hand korrigieren,
+  keine strukturelle Änderung nötig.
+
+**Live-Vorschau durch Ebenen-Stapelung**: Haut- und Haar-Bild werden im
+Browser einfach übereinandergelegt (`position:absolute`, gleiche
+Bildgröße) statt für jede Kombination ein fertiges Bild vorzuhalten (5
+Hauttöne × 58 Frisuren wären 290 Stück gewesen). Damit das exakt aufgeht,
+sind ALLE Vorschau-Bilder (Haut wie Haar) auf **denselben festen
+Bildausschnitt** des Sprite-Grids zugeschnitten (`CROP_BOX = (26,12,57,64)`
+in `Design/export_creator_assets.py`, bewusst NICHT pro Bild eng
+zugeschnitten wie bei den Katalog-Vorschauen weiter unten) — dasselbe
+Grundprinzip, das später auch fürs echte Ausrüstungssystem
+(`equipped_weapon/armor/accessory`, siehe "Bewusst aufgeschobene Ideen")
+gebraucht wird.
+
+**Asset-Pipeline / Lizenz-Grenze, wichtig:** die rohen GandalfHardcore-Zips
+liegen unter `Design/` (gitignored, siehe oben — Lizenz verbietet
+Weitergabe der Rohdaten). Die für den Aussehen-Screen tatsächlich
+gebrauchten Bilder sind aber **abgeleitete, zugeschnittene Einzelbilder**
+(10 Hauttöne + 58 Frisuren, erzeugt von `Design/export_creator_assets.py`)
+und liegen — genau wie `img/characters/krieger.png` vorher schon — ganz
+regulär unter `img/characters/creator/` **im Repo, nicht gitignored**. Das
+ist laut Lizenz gedeckt ("modifying them as needed, and displaying work
+featuring the assets on designated websites") — verboten ist nur die
+Weitergabe der unveränderten Rohdaten selbst, nicht das Einbauen
+bearbeiteter Ausschnitte ins eigene Produkt.
+
+**Datenbank (Patch 25, `sql/patch25_aussehen.sql`, bereits ausgeführt):** zwei
+neue nullable Spalten `profiles.skin_tone`/`hair_style` — reine Schlüssel in
+den fest im Frontend hinterlegten Katalog (`SKIN_CATALOG`/`HAIR_CATALOG` in
+`dummy-anmeldung.html`, wandert beim Übertragen 1:1 nach `index.html`),
+keine eigene Farbspalte nötig (siehe oben, Farbe steckt schon in der
+gewählten Frisur). Die Spalten liegen live in der Datenbank, aber solange der
+Screen nicht ins echte `index.html` übertragen ist, schreibt niemand hinein.
+
+**Offen, vor der Übertragung ins echte `index.html` zu klären:** der
+Nutzer wollte zusätzlich möglichst schlichte Basis-Kleidung für alle drei
+Klassen (Ausrüstungs-Ebenen, nicht Aussehen) — dieser Strang läuft
+parallel dazu rein im `Design/gallery/`-Sandkasten (Konzept-Composites,
+noch nicht mit dem Ausrüstungssystem verdrahtet) und ist ein **separates**
+Thema von Hautfarbe/Frisur hier.
+
 ## Kanban (Questpfad / Gildenbrett / Feldzug), seit Patch 18
 
 Acht feste Spalten (Reihenfolge in `KANBAN_STAGES` in `index.html`): Neuer Lead
@@ -613,10 +684,12 @@ irgendwo im System.
   Projekt ist aktuell rein persönlich/intern (siehe auch
   "Bewusst aufgeschobene Ideen" unten, Verkauf ist noch weit weg) — erst
   klären, wenn ein tatsächlicher Verkauf an eine zweite Organisation
-  ansteht, nicht vorher. Bei der Outfit-Auswahl aus "Female Clothing"
-  trotzdem schon jetzt bewusst freizügige
-  Teile (Bikini/Unterwäsche) aussortieren — passt nicht zum B2B-Kontext
-  (Vertrieb an akademische Heilberufe).
+  ansteht, nicht vorher. **Korrektur (2026-08-02):** die anfängliche
+  Linie, freizügige Teile (Bikini/Unterwäsche) aus "Female Clothing"
+  grundsätzlich auszusortieren, wurde vom Nutzer wieder aufgehoben — ein
+  bisschen Auflockerung schadet dem B2B-Kontext nicht. Bikini/Unterwäsche
+  gehören also normal mit zur Outfit-Auswahl dazu, keine pauschale
+  Sonderbehandlung mehr nötig.
 
   **Zurückgestellte Alternative, falls mehrere Organisationen später einen
   jeweils eigenen Look brauchen:** ein riggtes 3D-Charaktermodell (z.B.

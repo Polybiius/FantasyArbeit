@@ -33,6 +33,7 @@ alle bis einschließlich Patch 15 im Supabase-Projekt eingespielt sind.
 | 22 | `patch22_manatrank_katalog.sql` | Manatrank-Item-Katalogeintrag idempotent (neu) gesetzt, `items` als Objekt abgesichert. Bewusst **ohne** `where org_id = ...`-Filter (Lehre aus dem Patch-20-Vorfall: hartkodierte ID kann still ins Leere laufen, ohne Fehlermeldung) |
 | 23 | `patch23_produktkatalog.sql` | Neue Tabelle `products` (Kategorie/Unterkategorie, admin-gepflegt, nur deaktivierbar statt löschbar). `sales.produkt` (Freitext) ersetzt durch `product_id` + neue Felder `bewertungssumme`, `laufender_beitrag`, `vertragsbeginn`, `vertragsende`. **Löscht vorher alle bestehenden `sales`-Zeilen** (waren laut Nutzer nur Testverkäufe) |
 | 24 | `patch24_profil_onboarding.sql` | `profiles.real_name`/`gender`/`company` (alle nullable) — neuer Zwischenschritt bei der Charaktererstellung vor der Klassenwahl, siehe CLAUDE.md |
+| 25 | `patch25_aussehen.sql` | `profiles.skin_tone`/`hair_style` (beide nullable) — neuer Aussehen-Screen nach der Klassenwahl (Hautfarbe, Frisur), siehe CLAUDE.md |
 
 ## Wichtiger Hinweis zu Patch 13
 
