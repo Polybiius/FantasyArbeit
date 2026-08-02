@@ -44,6 +44,17 @@ nicht per Code-Änderung.
   Prüfen, VS-Code-Erweiterung "ESLint" zeigt Warnungen live beim Tippen an.
   Absichtlich schlanker Regelsatz bisher (nur `no-unused-vars`/`no-undef`) —
   erst bei echtem Bedarf erweitern, nicht vorab.
+- **Visuelle Prüfung durch Claude Code** (seit 2026-08-02): Playwright +
+  Chromium liegen portabel unter `~/.local/share/playwright-portable`
+  (eigenes kleines `npm`-Projekt dort, nicht Teil des Repos/`package.json`
+  von FantasyArbeit — reines Werkzeug für Claude Code, kein Produkt-Code).
+  Kein Systemeingriff, kein `sudo`. Damit kann Claude Code bei
+  Frontend-Änderungen die Seite tatsächlich headless rendern und sich per
+  Screenshot selbst gegenprüfen (`node shot.mjs <pfad>` als Beispielskript,
+  startet vorher `python3 -m http.server` im Repo-Ordner) statt nur den
+  CSS-Code zu lesen und zu hoffen, dass es passt. Chromium ist technisch
+  derselbe Rendering-Kern (Blink) wie im vom Nutzer verwendeten Brave —
+  visuell identisch für CSS/Layout-Zwecke.
 - **Bisheriger Workflow**: Der Nutzer hat NICHT lokal mit Git gearbeitet, sondern
   jede neue `index.html`-Version über den GitHub-Web-Upload hochgeladen, und jeden
   SQL-Patch manuell im Supabase SQL-Editor ausgeführt. Das ändert sich jetzt mit
