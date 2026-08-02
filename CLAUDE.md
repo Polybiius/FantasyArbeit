@@ -471,25 +471,38 @@ weiterhin bestehen, aber nur noch für die **Auswahl-Kacheln** (Hautton-
 Buttons, Frisuren-Raster) — nicht mehr für die Vorschau selbst. Die
 frühere Zwischenstufe (`export_outfit_layers.py`, eng zugeschnittene
 Basis-Kleidung/Klassenitem-Bilder unter `creator/outfit_*`) ist mit
-diesem Umbau überflüssig geworden und wurde aus dem Repo entfernt,
-ebenso die sechs statischen `img/characters/{hexer,krieger,schuetze}_{m,w}.png`
-von der ersten Klassenwahl-Bildschirm-Version — beides durch die
-Canvas-Animation ersetzt.
+diesem Umbau überflüssig geworden — sowohl die erzeugten Bilder als auch
+das Skript selbst wurden entfernt, ebenso die sechs statischen
+`img/characters/{hexer,krieger,schuetze}_{m,w}.png` von der ersten
+Klassenwahl-Bildschirm-Version — beides durch die Canvas-Animation
+ersetzt.
 
 **Datenbank (Patch 25, `sql/patch25_aussehen.sql`, bereits ausgeführt):** zwei
 neue nullable Spalten `profiles.skin_tone`/`hair_style` — reine Schlüssel in
-den fest im Frontend hinterlegten Katalog (`SKIN_CATALOG`/`HAIR_CATALOG` in
-`dummy-anmeldung.html`, wandert beim Übertragen 1:1 nach `index.html`),
-keine eigene Farbspalte nötig (siehe oben, Farbe steckt schon in der
-gewählten Frisur). Die Spalten liegen live in der Datenbank, aber solange der
-Screen nicht ins echte `index.html` übertragen ist, schreibt niemand hinein.
+den fest im Frontend hinterlegten Katalog (`SKIN_CATALOG`/`HAIR_CATALOG`,
+identisch in `index.html` und `dummy-anmeldung.html` gepflegt), keine eigene
+Farbspalte nötig (siehe oben, Farbe steckt schon in der gewählten Frisur).
+Seit 2026-08-03 schreibt das echte Programm auch tatsächlich hinein (siehe
+`appearanceDoneBtn`-Handler oben).
 
-**Offen, vor der Übertragung ins echte `index.html` zu klären:** der
-Nutzer wollte zusätzlich möglichst schlichte Basis-Kleidung für alle drei
-Klassen (Ausrüstungs-Ebenen, nicht Aussehen) — dieser Strang läuft
-parallel dazu rein im `Design/gallery/`-Sandkasten (Konzept-Composites,
-noch nicht mit dem Ausrüstungssystem verdrahtet) und ist ein **separates**
-Thema von Hautfarbe/Frisur hier.
+**`Design/`-Sandkasten seit 2026-08-03 aufgeräumt:** alle Wegwerf-
+Vorschau-/Entscheidungswerkzeuge aus der Bau-Phase (`gallery.html` +
+`thumbs/` [Asset-Katalog], `concept.html` + `concept/` [Klassen-Outfit-
+Composites], `anim_demo.html` + `anim/` [erster, verworfener CSS-Animations-
+Versuch], `hair_review.html` + `hair_thumbs/` [Frisuren-Farbsichtung],
+`canvas_test.html` [Debug beim Animations-Bug], `creator_catalog.json`,
+sowie die Erzeuger-Skripte `compose_concept.py`/`export_outfit_layers.py`/
+`export_walk_anim.py`/`make_thumbs.py`) sind gelöscht, nachdem ihre
+Ergebnisse ins echte Produkt übernommen waren — sie hatten ihren Zweck
+erfüllt (Entscheidungen treffen, Technik austesten), ihre Ausgaben leben
+jetzt als Code/Assets im Produkt weiter. **Übrig in `Design/` (alle
+gitignored) bleiben bewusst:** die rohen GandalfHardcore-Zips + `extracted/`
+(Quellmaterial, falls später weitere Assets gebraucht werden, z.B. für die
+Schützen-Fernkampfwaffe) sowie die zwei weiterhin aktiv gebrauchten
+Erzeuger-Skripte `export_creator_assets.py` und `export_full_sheets.py`
+(erzeugen die tatsächlich im Produkt verwendeten `img/characters/creator/`-
+und `img/characters/sheets/`-Bilder — bei Bedarf erneut ausführbar, z.B.
+nach Ergänzung neuer Assets).
 
 ## Kanban (Questpfad / Gildenbrett / Feldzug), seit Patch 18
 
