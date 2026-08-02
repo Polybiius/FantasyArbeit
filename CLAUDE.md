@@ -387,8 +387,13 @@ Zwei Auswahlen, wie in einem RPG-Charaktereditor:
   Skin1-5` aus dem GandalfHardcore-Paket), einfache Klick-Auswahl.
 - **Frisur**: kein echter Farb-Regler (die Frisuren-Bilder kommen nur in
   jeweils einer festen Farbe, keine tönbaren Ebenen). Stattdessen ein
-  **Farb-Reiter** (Schwarz/Braun/Blond/Rot) als Filter über einem
-  Frisuren-Raster — man wählt zuerst die Farbfamilie, dann die Form darin.
+  **Farb-Reiter** (Schwarz/Braun/Blond/Rot **+ Glatze**) als Filter über
+  einem Frisuren-Raster — man wählt zuerst die Farbfamilie, dann die Form
+  darin. "Glatze" (seit 2026-08-02) ist ein fünfter, besonderer Reiter ohne
+  Raster dahinter — wählt ihn jemand, wird die Haar-Ebene in der
+  Vorschau ausgeblendet und `selectedHair` auf den Platzhalter `__bald__`
+  gesetzt (bleibt für `appearanceDoneBtn` trotzdem ein gültiger, "fertig
+  gewählter" Zustand — kein erzwungener Frisur-Zwang mehr).
   Die Farbzuordnung je Frisur wurde automatisch per dominanter Bildfarbe
   bestimmt (`Design/export_creator_assets.py`, HSV-Klassifikation über die
   helleren 25% der Pixel, um die schwarze Pixel-Art-Outline nicht den
@@ -710,20 +715,34 @@ irgendwo im System.
   noch an zweien — der Nutzer wollte es auf dem Login-Bildschirm nicht mehr
   sehen, `.auth-portrait` in `#authScreen` wurde wieder entfernt (erst im
   Dummy getestet, siehe "Profil-Onboarding" oben, dann übertragen).
-  Verbleibende Stellen:
-  - `#charCreateScreen`: Krieger-Klassenkarte, `.class-portrait-img`
-    ersetzt dort das ⚔️-Emoji (Hexer/Schütze behalten ihre Emoji, kein Bild
-    vorhanden).
   - `#page-charakter` (`charArtStack`): `renderCharacterEquipment()` hat
-    jetzt eine `CLASS_BASE_ART`-Map (aktuell nur `krieger` gefüllt) — zeigt
-    bei passender Klasse das Basisbild UNTER den bereits bestehenden
+    weiterhin eine `CLASS_BASE_ART`-Map (aktuell nur `krieger` gefüllt) —
+    zeigt bei passender Klasse das Basisbild UNTER den bereits bestehenden
     Ausrüstungs-Ebenen (siehe oben), andere Klassen fallen weiter auf den
-    Hinweistext zurück.
+    Hinweistext zurück. **Unverändert, nicht Teil der Aussehen/Basis-
+    Kleidung-Arbeit unten** — eigenständiger, noch offener Punkt.
   `image-rendering:pixelated` überall gesetzt, damit die Pixel-Art beim
-  Hochskalieren scharf bleibt statt zu verschwimmen. Schütze/Hexer bewusst
-  noch nicht gebaut (dem Nutzer gefielen die ersten Test-Kombinationen mit
-  dem "Stick"-Platzhalter-Item nicht) — fehlt aktuell vor allem ein
-  Bogen/Zauberstab-Asset, siehe oben.
+  Hochskalieren scharf bleibt statt zu verschwimmen.
+
+  **Klassenwahl-Bildschirm auf 6 angezogene Beispielcharaktere erweitert
+  (2026-08-02, bisher nur im Dummy):** `#charCreateScreen` zeigte bis dahin
+  nur für Krieger ein Bild (`img/characters/krieger.png`, s.o.), Hexer/
+  Schütze hatten Emoji. Jetzt gibt's für alle drei Klassen je ein
+  männliches und weibliches Beispielbild (`img/characters/hexer_m.png`,
+  `hexer_w.png`, `krieger_m.png`, `krieger_w.png`, `schuetze_m.png`,
+  `schuetze_w.png`) — abgeleitet aus dem `Design/gallery/concept/`-
+  Sandkasten (`Design/compose_concept.py`): einheitliche Basis-Kleidung
+  (Hemd/Hose/Stiefel bzw. Corset/Rock/Socken) + ein klassentypisches Item
+  (Hexer: Stick + blaues Cape, Krieger: Holzschwert + Guard Helmet, Schütze:
+  Small Backpack — Schütze/Hexer noch ohne Fernkampfwaffe, Bogen/
+  Zauberstab-Asset fehlt weiterhin). Bewusst glatzköpfig (Frisur kommt ja
+  erst im Aussehen-Screen danach). `profileNextBtn`-Handler in
+  `dummy-anmeldung.html` setzt beim Übergang zur Klassenwahl das passende
+  Geschlecht-Suffix (`_m`/`_w`) auf allen drei `<img>`-Tags — **das alte
+  `img/characters/krieger.png` bleibt unangetastet**, wird nur an dieser
+  einen Stelle nicht mehr benutzt (weiter aktiv im `page-charakter`-
+  `CLASS_BASE_ART`-Fall oben). Noch nicht ins echte `index.html`
+  übertragen.
 - **Multi-Org-Charakter-Portabilität**: die Idee, dass ein Nutzer den
   Charakter (Level/Skills/Tagebuch) über einen Arbeitgeberwechsel hinweg
   mitnehmen könnte, während Dungeons/Items/Quests bei der alten Organisation
