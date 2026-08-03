@@ -649,6 +649,52 @@ viel verkauft" ergibt bei einem verlorenen Deal keinen Sinn). Auch hier
 Pflicht, ein Katalog-Produkt zu wählen — kein Freitext-Fallback mehr,
 irgendwo im System.
 
+## Wiedervorlage: Asset-Erstellungs-Workflow für neue Items (nächste Session aktiv aufgreifen)
+
+Der Bogen (siehe "Schützen-Bogen" weiter oben) brauchte drei Runden Live-Testen
+im echten, deployten Programm, bis Größe/Spiegelung/Ankerpunkt stimmten —
+jedes Mal: Bild bauen, committen, pushen, Nutzer lädt neu (teils Hard-Reload
+wegen Browser-Bildercache), meldet zurück, was noch falsch aussieht. Zu
+langsam und zu viele Runden für ein rein visuelles Problem. Zwei konkrete
+Verbesserungen für den NÄCHSTEN handgezeichneten Pixel-Art-Gegenstand
+(explizit gewünscht, nicht erst auf Anstoß warten):
+
+**1. Richtige Proportionen von Anfang an berechnen, nicht nachträglich korrigieren.**
+Vorgehen, das sich beim Bogen (nach zwei Fehlversuchen) als richtig
+herausgestellt hat, künftig gleich beim ersten Entwurf anwenden:
+- Vor dem Zeichnen: `frame_bboxes()` (siehe `Design/export_full_sheets.py`)
+  auf das passende REFERENZ-Item derselben Kategorie anwenden (z.B. Schwert/
+  Stab für ein neues Waffen-Slot-Item) — liefert Breiten-/Höhen-Spannweite
+  über alle 8 Laufzyklus-Frames. Das neue Item so groß zeichnen, dass seine
+  eigene Bounding Box in diese Spannweite passt, nicht schätzen.
+- Ankerpunkt ist NICHT die Bounding-Box-Mitte der gesamten Form (kann je
+  nach Form deutlich neben dem tatsächlichen Handgriff liegen — beim Bogen
+  lag sie sichtbar näher an der Sehne als am Holz). Stattdessen: den
+  Griff-Bereich beim Zeichnen bewusst in einer eigenen, eindeutigen Farbe
+  anlegen (wie `WOOD_DARK` beim Bogen) und den Ankerpunkt aus dem
+  Pixel-Schwerpunkt dieser Farbe berechnen (siehe `make_bow_sprite()`,
+  gibt Bild + Ankerpunkt zurück; `build_bow_sheet()` nutzt genau diesen
+  Punkt statt der Bounding-Box-Mitte).
+- Mirror-Frage (welche Seite ist "vorne"/Richtung Laufbewegung) VOR dem
+  finalen Zusammensetzen an einem einzelnen Frame gegenprüfen, nicht erst
+  am fertigen 8-Frame-Sheet im echten Programm.
+
+**2. Animiertes Test-Artifact bauen, BEVOR ein neues Item ins Spiel eingebaut wird.**
+Vom Nutzer explizit gewünscht: eine eigenständige, veröffentlichte
+Vorschau-Seite (in Claude Code "Artifact" genannt — dasselbe Werkzeug, mit
+dem die Bogen-Vorschau am 2026-08-03 gezeigt wurde), auf der der Charakter
+tatsächlich animiert läuft (gleiche Technik wie `createSpriteRenderer()` in
+`index.html`/`dummy-anmeldung.html` — Sprite-Sheets laden, Frame-Ausschnitt
+`(frame*80, 128, 80, 64)` im Loop zeichnen) und auf der ein NEUES
+Kandidaten-Item probeweise übergelegt werden kann, samt sichtbarer
+Zahlen (Bounding Box, Ankerpunkt-Koordinaten pro Frame) — erst wenn es dort
+sauber sitzt, wird es tatsächlich als `outfit_*`-Sheet erzeugt und ins
+Regelwerk/SQL-Patch übernommen. Ziel: die Feedback-Schleife von "push →
+Nutzer lädt echtes Programm neu → meldet zurück" auf "beide sehen es sofort
+in einem Artifact-Link" verkürzen, bevor überhaupt etwas committet wird.
+**Noch nicht gebaut — nächste Session direkt damit anfangen, wenn wieder ein
+neues Item ansteht, nicht erst nachfragen.**
+
 ## Bewusst aufgeschobene Ideen (NICHT vergessen, aber NICHT von selbst bauen)
 - **Manatrank-Vergabe an Quests knüpfen** (statt/zusätzlich zum täglichen
   Gratis-Trank aus `grantDailyManatrank()`, siehe oben bei `user_inventory`):
