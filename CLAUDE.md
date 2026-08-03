@@ -161,7 +161,8 @@ Funktionen benutzen statt eigene Fehlerbehandlung zu erfinden.**
 - `organizations` — eine Zeile pro Kunde/Vertriebsorganisation, inkl. `timezone`
   (Vorkehrung für internationale Skalierung, aktuell fix `Europe/Berlin`).
 - `profiles` — ein Nutzer-Account, 1:1 mit Supabase Auth. Felder u.a.
-  `character_class` ('hexer'|'krieger'|'schuetze'), `role` ('admin'|'member'),
+  `character_class` ('zauberer'|'krieger'|'schuetze', seit Patch 29 — hieß
+  vorher 'hexer', siehe "Charakterklassen" unten), `role` ('admin'|'member'),
   `total_xp`/`level` (**Cache!** — wird bei jedem Render clientseitig
   nachgezogen, damit Gildenmitglieder das Level sehen können, ohne Zugriff auf
   fremde private Logs zu brauchen). Seit Patch 24 zusätzlich `real_name`
@@ -315,7 +316,7 @@ soll sichtbare Stärken/Schwächen zeigen, kein "fertig"-Gefühl vermitteln.
 
 ## Charakterklassen
 
-Drei Klassen: Hexer (blau-violett), Krieger (rot/Ember), Schütze (grün/Gold).
+Drei Klassen: Zauberer (blau-violett), Krieger (rot/Ember), Schütze (grün/Gold).
 Klassenwahl ist **einmalig, dauerhaft** (kein Umskillen), aber ein Admin kann
 über einen versteckten Klassenschalter im Header testweise wechseln.
 Farbthema ist NICHT nur ein Akzent, sondern durchdringt die ganze Optik
@@ -323,13 +324,34 @@ Farbthema ist NICHT nur ein Akzent, sondern durchdringt die ganze Optik
 Regelwerk ist über alle Klassen hinweg **identisch** (nur Optik/Begriffe
 unterscheiden sich) — bewusste Design-Entscheidung, keine Einschränkung.
 
+**Umbenannt von "Hexer" zu "Zauberer" (Patch 29, 2026-08-03):** es gibt keine
+"Hexerin" — die einzige echte weibliche Form wäre "Hexe", und die ist negativ
+konnotiert. Deshalb komplett auf Zauberer/Zauberin umbenannt, nicht nur der
+Anzeige-Text, sondern auch der interne Schlüssel (`profiles.character_class`,
+Item-Keys `hexer_stab`/`hexer_cape` → `zauberer_stab`/`zauberer_cape` samt
+Bilddateien) — siehe `sql/patch29_zauberer_umbenennung.sql`. Historische
+Verweise auf den alten Namen (z.B. längst gelöschte Dateien wie
+`hexer_m.png`) weiter unten in diesem Dokument sind bewusst unverändert
+gelassen, sie beschreiben, wie etwas zum jeweiligen Zeitpunkt hieß.
+
 Klassenabhängige Begriffe für dieselbe Funktion:
-| Funktion | Hexer | Krieger | Schütze |
+| Funktion | Zauberer | Krieger | Schütze |
 |---|---|---|---|
 | Gilde | Orden | Legion | Bund |
 | Mitglied hinzufügen | Arkanisten hinzufügen | Legionäre hinzufügen | Bundesbrüder hinzufügen |
 | Kundendatenbank | Arkanes Register | Kriegsarchiv | Jägerchronik |
 | Kanban | Questpfad | Gildenbrett | Feldzug |
+| Verkaufsstatistik | Arkanes Kompendium | Kriegskasse | Trophäenkammer |
+
+**Verkaufsstatistik-Seite (`#page-statistik`, Nav-Reiter "Kompendium"/
+"Kriegskasse"/"Trophäenkammer" je Klasse), seit 2026-08-03:** bisher nur ein
+leerer Seiten-Rahmen (`updateStatistikLabels()` in `index.html`, gleiches
+Muster wie `updateKanbanLabels()`/`updateContactLabels()` — Nav-Button-Text
+UND Seiten-Überschrift ändern sich mit der Klasse). In der Navigation direkt
+unter "Abenteuerlog" einsortiert — für ein normales Mitglied damit der
+letzte sichtbare Reiter, bei einem Admin kommen wie gehabt noch "Produkte"
+und "Fehlerprotokoll" danach. Die eigentlichen Verkaufsstatistiken (Inhalt)
+sind ein separater, noch offener Bauschritt.
 
 ## Profil-Onboarding, seit Patch 24 (2026-08-02)
 
@@ -366,12 +388,12 @@ kurz rot (`.shake`-Klasse, `@keyframes wobble`, per `shakeEl()`-Helfer in
 
 **Geschlechtsabhängige Klassenbezeichnung**: Beim Wechsel auf den
 Klassenwahl-Screen setzt `CLASS_NAMES[gender]` die Beschriftung der drei
-Klassenkarten auf Hexer/Krieger/Schütze (männlich) oder
-Hexerin/Kriegerin/Schützin (weiblich). Das betrifft **nur** die Karten-Texte
+Klassenkarten auf Zauberer/Krieger/Schütze (männlich) oder
+Zauberin/Kriegerin/Schützin (weiblich). Das betrifft **nur** die Karten-Texte
 in diesem einen Screen — `CLASS_LABELS` (Klassenanzeige im Header nach dem
-Einloggen, "Klasse: Hexer") und alle klassenabhängigen Begriffe oben in
+Einloggen, "Klasse: Zauberer") und alle klassenabhängigen Begriffe oben in
 dieser Tabelle (Gilde/Kanban/Kundendatenbank) enthalten das Wort
-Hexer/Krieger/Schütze selbst nicht und brauchten deshalb keine Anpassung.
+Zauberer/Krieger/Schütze selbst nicht und brauchten deshalb keine Anpassung.
 Falls die Kopfzeilen-Anzeige nach dem Einloggen künftig auch geschlechtsabhängig
 sein soll, ist das ein separater, noch nicht gebauter Schritt.
 
@@ -766,6 +788,14 @@ prüfen statt erst am fertigen Sheet — beides jetzt interaktiv im Sprite-Labor
 prüfbar statt im Kopf vorausgeplant werden zu müssen.
 
 ## Bewusst aufgeschobene Ideen (NICHT vergessen, aber NICHT von selbst bauen)
+- **Lern-/Zertifikatsystem für den Zauberer** — vom Nutzer am 2026-08-03 nur
+  als Name angekündigt, noch ohne jegliche inhaltliche Details. **Wichtig:
+  der Name "Grimoire" ist dafür reserviert** — deshalb heißt die
+  Verkaufsstatistik-Seite beim Zauberer "Arkanes Kompendium" und NICHT
+  "Grimoire", obwohl Letzteres thematisch nähergelegen hätte. Falls der
+  Nutzer künftig von einem Lern-/Zertifikatsystem spricht, ist das dieses
+  hier gemeinte Vorhaben. Nicht von selbst anfangen, nur wenn der Nutzer es
+  explizit anstößt.
 - **Manatrank-Vergabe an Quests knüpfen** (statt/zusätzlich zum täglichen
   Gratis-Trank aus `grantDailyManatrank()`, siehe oben bei `user_inventory`):
   vom Nutzer am 2026-07-31 als "wird sich noch ändern" angekündigt, noch ohne
@@ -806,7 +836,7 @@ prüfbar statt im Kopf vorausgeplant werden zu müssen.
   Heldenreise-Erzählung verdichtet. Braucht eine Supabase Edge Function
   (Anthropic-API-Key darf nicht im Client landen). Bewusst NICHT laufend pro
   Eintrag, sondern **einmal am Jahresende** — hält Kosten niedrig.
-- **KI-Bildumwandlung von Tagebuch-Fotos** — z.B. "Hexer im Rat der Weißen".
+- **KI-Bildumwandlung von Tagebuch-Fotos** — z.B. "Zauberer im Rat der Weißen".
   `journal_photos.transformed_path` ist als Platzhalter schon da. Selbes
   Kostenprinzip: on-demand statt pro Foto.
 - **Ausrüstungs-Charakterbilder / echter Charakterscreen** (wie in einem
@@ -848,7 +878,7 @@ prüfbar statt im Kopf vorausgeplant werden zu müssen.
   (siehe Memory). Das alte `items.image`-Feld/die zugehörige
   `<img>`-Overlay-Logik wurde ersatzlos entfernt, da inzwischen unbenutzt.
 
-  Die bisherigen CLASS_OUTFIT-Klassenitems (Hexer: Zauberstab + blaues
+  Die bisherigen CLASS_OUTFIT-Klassenitems (Zauberer: Zauberstab + blaues
   Cape, Krieger: Holzschwert + Guard Helmet, Schütze: kleiner Rucksack)
   sind jetzt echte Katalog-Items (`sql/patch26_klassenitems.sql`). Neue
   Charaktere bekommen sie automatisch bei der Erschaffung ins Inventar
@@ -895,7 +925,7 @@ prüfbar statt im Kopf vorausgeplant werden zu müssen.
   und die 8 Frames eigenständig nachjustieren.
 
   **`layersForClassPortrait('schuetze', g)` zeigt jetzt auch den Bogen**
-  (`outfit_weapon_bow_${g}.png` als letzte/oberste Ebene, wie bei Hexer/
+  (`outfit_weapon_bow_${g}.png` als letzte/oberste Ebene, wie bei Zauberer/
   Krieger) — behebt den zuvor offenen Kosmetik-Punkt (siehe unten, jetzt
   entfernt), dass der Schütze auf dem Klassenwahl-Bildschirm bisher
   unbewaffnet aussah.
@@ -906,7 +936,7 @@ prüfbar statt im Kopf vorausgeplant werden zu müssen.
   Elfenohren, Rücken-Layer, u.a.), liegen lokal unter
   `~/Schreibtisch/GandalfHardcore *.zip` (wird laufend um weitere
   Zusatzpakete ergänzt, noch kein Bogen/Zauberstab dabei — fehlt für
-  Schütze/Hexer). Verifiziert (Python/Pillow-
+  Schütze/Zauberer). Verifiziert (Python/Pillow-
   Komposit): Ebenen liegen pixelgenau übereinander, keine Ausrichtungs-
   probleme. Sheets sind Animations-Spritesheets mit mehreren Reihen
   unterschiedlicher Frame-Anzahl je Aktion (Idle/Laufen/Angriff/...) — für
@@ -957,7 +987,7 @@ prüfbar statt im Kopf vorausgeplant werden zu müssen.
   **Klassenwahl-Bildschirm auf 6 angezogene, animierte Beispielcharaktere
   erweitert (2026-08-02/03, seit 2026-08-03 auch im echten `index.html`):**
   `#charCreateScreen` zeigte anfangs nur für Krieger ein Bild
-  (`img/characters/krieger.png`, s.o.), Hexer/Schütze hatten Emoji. Nach
+  (`img/characters/krieger.png`, s.o.), Zauberer/Schütze hatten Emoji. Nach
   zwei Überarbeitungen (erst statische Einzelbilder pro Klasse+Geschlecht,
   dann — auf Wunsch des Nutzers, der explizit ein **dynamisches**, nicht
   aus flachen Einzelbildern bestehendes Charakterscreen wollte — durch
@@ -965,7 +995,7 @@ prüfbar statt im Kopf vorausgeplant werden zu müssen.
   Technik) zeigt der Bildschirm jetzt für alle drei Klassen ein animiertes,
   live aus Ebenen zusammengesetztes Beispiel: einheitliche Basis-Kleidung
   (Hemd/Hose/Stiefel bzw. Corset/Rock/Socken) + ein klassentypisches Item
-  (Hexer: Stick + blaues Cape, Krieger: Holzschwert + Guard Helmet,
+  (Zauberer: Stick + blaues Cape, Krieger: Holzschwert + Guard Helmet,
   Schütze: Small Backpack, bewusst glatzköpfig (Frisur kommt ja erst im
   Aussehen-Screen danach). `layersForClassPortrait(cls, gender)` +
   `portraitRenderers` in `index.html` (identisch auch weiterhin in

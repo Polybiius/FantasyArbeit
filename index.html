@@ -485,9 +485,9 @@
   <p class="charcreate-sub">Diese Wahl ist dauerhaft.</p>
 
   <div class="class-grid">
-    <button class="class-card" data-class="hexer" style="--cc:#8b5cf6;--cc-glow:#a78bfa;">
-      <span class="class-portrait class-portrait-img"><canvas id="portraitHexer"></canvas></span>
-      <span class="class-name">Hexer</span>
+    <button class="class-card" data-class="zauberer" style="--cc:#8b5cf6;--cc-glow:#a78bfa;">
+      <span class="class-portrait class-portrait-img"><canvas id="portraitZauberer"></canvas></span>
+      <span class="class-name">Zauberer</span>
       <span class="class-desc">Arkane Macht, Fernkampf durch Wissen</span>
     </button>
     <button class="class-card" data-class="krieger" style="--cc:#d1453d;--cc-glow:#f2726b;">
@@ -533,7 +533,7 @@
     <div class="header-top">
       <div class="name-row">
         <input id="nameInput" class="display" value="Namenloser Held" maxlength="30">
-        <div class="subtitle" id="orgSubtitle">Klasse: Hexer</div>
+        <div class="subtitle" id="orgSubtitle">Klasse: Zauberer</div>
       </div>
       <div class="header-right">
         <div class="level-badge">
@@ -541,7 +541,7 @@
           <div class="lbl">Level</div>
         </div>
         <div class="class-switcher" id="classSwitcher" style="display:none;">
-          <button class="cs-btn" data-class="hexer" title="Hexer">🧙</button>
+          <button class="cs-btn" data-class="zauberer" title="Zauberer">🧙</button>
           <button class="cs-btn" data-class="krieger" title="Krieger">⚔️</button>
           <button class="cs-btn" data-class="schuetze" title="Schütze">🏹</button>
         </div>
@@ -583,6 +583,7 @@
       <button class="nav-btn" data-page="inventar">🎒 Inventar</button>
       <button class="nav-btn" data-page="gilde" id="navGildeBtn">🛡 Gilde</button>
       <button class="nav-btn" data-page="tagebuch">📖 Abenteuerlog</button>
+      <button class="nav-btn" data-page="statistik" id="navStatistikBtn">📊 Kompendium</button>
       <button class="nav-btn" data-page="produkte" id="navProdukteBtn" style="display:none;">📦 Produkte</button>
       <button class="nav-btn" data-page="fehlerprotokoll" id="navFehlerprotokollBtn" style="display:none;">🛠 Fehlerprotokoll</button>
     </nav>
@@ -957,6 +958,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         </div>
       </div>
 
+      <!-- SEITE: VERKAUFSSTATISTIK (Kompendium/Kriegskasse/Trophäenkammer je Klasse) -->
+      <div class="page" id="page-statistik" style="display:none;">
+        <div class="card">
+          <h2 id="statistikHeaderTitle">Kompendium</h2>
+          <div class="empty-page-hint">Hier entstehen eure Verkaufsstatistiken.</div>
+        </div>
+      </div>
+
       <!-- SEITE: PRODUKTE (nur Admins) -->
       <div class="page" id="page-produkte" style="display:none;">
         <div class="card">
@@ -1242,7 +1251,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   });
 
   const CLASS_THEMES = {
-    hexer: {
+    zauberer: {
       void:'#0b0a12', panel:'#151220', panel2:'#1c1830', border:'#2c2540',
       arcane:'#8b5cf6', glow:'#a78bfa', mana:'#22d3c8',
       bgGlow1:'rgba(139,92,246,0.16)', bgGlow2:'rgba(34,211,200,0.11)'
@@ -1258,9 +1267,9 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       bgGlow1:'rgba(63,145,66,0.17)', bgGlow2:'rgba(201,161,60,0.11)'
     },
   };
-  const CLASS_LABELS = { hexer:'Hexer', krieger:'Krieger', schuetze:'Schütze' };
+  const CLASS_LABELS = { zauberer:'Zauberer', krieger:'Krieger', schuetze:'Schütze' };
   function applyClassTheme(cls){
-    const t = CLASS_THEMES[cls] || CLASS_THEMES.hexer;
+    const t = CLASS_THEMES[cls] || CLASS_THEMES.zauberer;
     const root = document.documentElement.style;
     root.setProperty('--void', t.void);
     root.setProperty('--panel', t.panel);
@@ -1358,15 +1367,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   const CLASS_NAMES = {
-    m: { hexer:'Hexer', krieger:'Krieger', schuetze:'Schütze' },
-    w: { hexer:'Hexerin', krieger:'Kriegerin', schuetze:'Schützin' },
+    m: { zauberer:'Zauberer', krieger:'Krieger', schuetze:'Schütze' },
+    w: { zauberer:'Zauberin', krieger:'Kriegerin', schuetze:'Schützin' },
   };
 
   // Beispielcharaktere auf der Klassenwahl: animiert, dieselbe Basis-Kleidung
   // wie im Konzept (Design/compose_concept.py), aber jetzt live aus Ebenen
   // zusammengesetzt statt als fertiges Einzelbild.
   const portraitRenderers = {
-    hexer: createSpriteRenderer(document.getElementById('portraitHexer'), 2),
+    zauberer: createSpriteRenderer(document.getElementById('portraitZauberer'), 2),
     krieger: createSpriteRenderer(document.getElementById('portraitKrieger'), 2),
     schuetze: createSpriteRenderer(document.getElementById('portraitSchuetze'), 2),
   };
@@ -1374,7 +1383,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const skin = `skin_${g}3.png`;
     const body = `outfit_body_${g}.png`;
     const gloves = `outfit_gloves_${g}.png`;
-    if(cls === 'hexer') return ['outfit_cape_blue.png', skin, body, gloves, `outfit_weapon_stick_${g}.png`];
+    if(cls === 'zauberer') return ['outfit_cape_blue.png', skin, body, gloves, `outfit_weapon_stick_${g}.png`];
     if(cls === 'krieger') return [skin, body, gloves, 'outfit_hat_guardhelmet.png', `outfit_weapon_sword_${g}.png`];
     if(cls === 'schuetze') return ['outfit_backpack_small.png', skin, body, gloves, `outfit_weapon_bow_${g}.png`];
     return [skin, body, gloves];
@@ -1394,7 +1403,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     });
     // Beispielcharaktere passend zum gewählten Geschlecht (Basis-Kleidung, siehe Design/compose_concept.py)
     const g = selectedGender || 'm';
-    portraitRenderers.hexer.setLayers(layersForClassPortrait('hexer', g));
+    portraitRenderers.zauberer.setLayers(layersForClassPortrait('zauberer', g));
     portraitRenderers.krieger.setLayers(layersForClassPortrait('krieger', g));
     portraitRenderers.schuetze.setLayers(layersForClassPortrait('schuetze', g));
     document.getElementById('profileScreen').style.display = 'none';
@@ -1500,7 +1509,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // bei den Klassen-Beispielcharakteren, siehe Design/compose_concept.py) -
   // bewusst OHNE Kopfbedeckung, damit man die gewaehlte Frisur sieht.
   const CLASS_OUTFIT = {
-    hexer:    { back: 'outfit_cape_blue.png', weapon: g=>`outfit_weapon_stick_${g}.png` },
+    zauberer: { back: 'outfit_cape_blue.png', weapon: g=>`outfit_weapon_stick_${g}.png` },
     krieger:  { back: null, weapon: g=>`outfit_weapon_sword_${g}.png` },
     schuetze: { back: 'outfit_backpack_small.png', weapon: null },
   };
@@ -1741,7 +1750,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // patch28_schuetze_bogen.sql), sonst passiert hier nichts (kein Fehler,
   // einfach kein Start-Item).
   const CLASS_STARTER_ITEMS = {
-    hexer: ['hexer_stab', 'hexer_cape'],
+    zauberer: ['zauberer_stab', 'zauberer_cape'],
     krieger: ['krieger_schwert', 'krieger_helm'],
     schuetze: ['schuetze_rucksack', 'schuetze_bogen'],
   };
@@ -1798,6 +1807,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     initFriends();
     initContacts();
     updateKanbanLabels();
+    updateStatistikLabels();
     restoreLastPage();
   }
 
@@ -2457,6 +2467,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       document.getElementById('orgSubtitle').textContent = `Klasse: ${CLASS_LABELS[newClass]||newClass} · Organisation: ${org ? org.name : ''}`;
       updateGuildLabels();
       updateContactLabels();
+      updateStatistikLabels();
       renderCharacterEquipment();
     });
   });
@@ -2581,15 +2592,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   // ---- Gilde / Orden / Legion / Bund ----
-  const CLASS_ICONS = { hexer:'🧙', krieger:'⚔️', schuetze:'🏹' };
+  const CLASS_ICONS = { zauberer:'🧙', krieger:'⚔️', schuetze:'🏹' };
   const CLASS_GUILD_LABELS = {
-    hexer:    { navLabel:'Orden', addBtn:'Arkanisten hinzufügen' },
+    zauberer: { navLabel:'Orden', addBtn:'Arkanisten hinzufügen' },
     krieger:  { navLabel:'Legion', addBtn:'Legionäre hinzufügen' },
     schuetze: { navLabel:'Bund', addBtn:'Bundesbrüder hinzufügen' },
   };
-  const CLASS_KANBAN_LABELS = { hexer:'Questpfad', krieger:'Gildenbrett', schuetze:'Feldzug' };
+  const CLASS_KANBAN_LABELS = { zauberer:'Questpfad', krieger:'Gildenbrett', schuetze:'Feldzug' };
   function updateKanbanLabels(){
-    const label = CLASS_KANBAN_LABELS[profile.character_class] || CLASS_KANBAN_LABELS.hexer;
+    const label = CLASS_KANBAN_LABELS[profile.character_class] || CLASS_KANBAN_LABELS.zauberer;
     document.getElementById('navKanbanBtn').textContent = '🗂 ' + label;
     document.getElementById('kanbanHeaderTitle').textContent = label;
   }
@@ -2608,13 +2619,21 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   // ---- Kontakte (Arkanes Register / Kriegsarchiv / Jägerchronik) ----
-  const CLASS_CONTACT_LABELS = { hexer:'Arkanes Register', krieger:'Kriegsarchiv', schuetze:'Jägerchronik' };
+  const CLASS_CONTACT_LABELS = { zauberer:'Arkanes Register', krieger:'Kriegsarchiv', schuetze:'Jägerchronik' };
   let editingContactId = null;
 
   function updateContactLabels(){
-    const label = CLASS_CONTACT_LABELS[profile.character_class] || CLASS_CONTACT_LABELS.hexer;
+    const label = CLASS_CONTACT_LABELS[profile.character_class] || CLASS_CONTACT_LABELS.zauberer;
     document.getElementById('navKontakteBtn').textContent = '📇 ' + label;
     document.getElementById('contactsHeaderTitle').textContent = label;
+  }
+
+  // ---- Verkaufsstatistik (Kompendium / Kriegskasse / Trophäenkammer) ----
+  const CLASS_STATISTIK_LABELS = { zauberer:'Arkanes Kompendium', krieger:'Kriegskasse', schuetze:'Trophäenkammer' };
+  function updateStatistikLabels(){
+    const label = CLASS_STATISTIK_LABELS[profile.character_class] || CLASS_STATISTIK_LABELS.zauberer;
+    document.getElementById('navStatistikBtn').textContent = '📊 ' + label;
+    document.getElementById('statistikHeaderTitle').textContent = label;
   }
 
   async function initContacts(){
@@ -3106,7 +3125,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   function updateGuildLabels(){
-    const labels = CLASS_GUILD_LABELS[profile.character_class] || CLASS_GUILD_LABELS.hexer;
+    const labels = CLASS_GUILD_LABELS[profile.character_class] || CLASS_GUILD_LABELS.zauberer;
     document.getElementById('navGildeBtn').textContent = '🛡 ' + labels.navLabel;
     document.getElementById('guildHeaderTitle').textContent = labels.navLabel;
     document.getElementById('guildAddBtn').textContent = '+ ' + labels.addBtn;
@@ -3844,7 +3863,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   // ---- Seitennavigation ----
-  const VALID_PAGES = ['charakter','handlungen','inventar','gilde','dungeons','kontakte','tagebuch','kanban','fehlerprotokoll','produkte'];
+  const VALID_PAGES = ['charakter','handlungen','inventar','gilde','dungeons','kontakte','tagebuch','kanban','statistik','fehlerprotokoll','produkte'];
 
   function showPage(pageName, updateHash){
     if(!VALID_PAGES.includes(pageName)) pageName = 'charakter';
