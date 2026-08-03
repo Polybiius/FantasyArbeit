@@ -265,6 +265,32 @@
   .contact-form-toggle.open #contactFormToggleIcon{transform:rotate(90deg);}
   #contactFormToggleIcon{display:inline-block;transition:transform .15s;}
 
+  /* ---- Kompendium/Kriegskasse/Trophäenkammer: Verkaufsstatistik-Dashboard ---- */
+  .stat-tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;margin-bottom:16px;border-bottom:1px solid var(--border);}
+  .stat-tab{flex:none;background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius-pill);padding:7px 16px;font-size:12.5px;color:var(--muted);cursor:pointer;white-space:nowrap;transition:all .15s;}
+  .stat-tab:hover{color:var(--text);border-color:var(--arcane);}
+  .stat-tab.active{background:var(--arcane);border-color:var(--arcane);color:#fff;font-weight:600;box-shadow:0 0 14px var(--bg-glow-1);}
+  .stat-hero-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:22px;}
+  .stat-card{position:relative;background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px 14px;box-shadow:var(--shadow-rest);display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;}
+  .stat-card .stat-label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
+  .stat-card .stat-value{font-family:'Cinzel',serif;font-weight:700;font-size:18px;color:var(--text);}
+  .stat-card .stat-sub{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted-2);}
+  .stat-ring{width:84px;height:84px;}
+  .stat-ring text{font-family:'JetBrains Mono',monospace;}
+  .stat-chart-card{background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;margin-bottom:22px;box-shadow:var(--shadow-rest);}
+  .stat-legend{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;}
+  .stat-legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);}
+  .stat-legend-swatch{width:9px;height:9px;border-radius:2px;flex:none;}
+  .stat-bar-row{display:grid;grid-template-columns:110px 1fr 70px;align-items:center;gap:10px;margin-bottom:9px;font-size:11.5px;}
+  .stat-bar-row .sbr-label{color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .stat-bar-track{background:var(--void);border-radius:var(--radius-xs);height:14px;overflow:hidden;position:relative;}
+  .stat-bar-fill{height:100%;border-radius:var(--radius-xs);transition:width .4s ease;position:relative;cursor:default;}
+  .stat-bar-row .sbr-value{font-family:'JetBrains Mono',monospace;color:var(--text);text-align:right;}
+  .stat-numbers-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;}
+  .stat-num-card{background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius-md);padding:12px 14px;box-shadow:var(--shadow-rest);}
+  .stat-num-card .snc-name{font-size:12px;color:var(--text);font-weight:600;margin-bottom:4px;}
+  .stat-num-card .snc-line{font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;}
+
   .dungeon-tile-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;}
   .dungeon-tile{
     position:relative;overflow:hidden;background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius-lg);
@@ -964,7 +990,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       <div class="page" id="page-statistik" style="display:none;">
         <div class="card">
           <h2 id="statistikHeaderTitle">Kompendium</h2>
-          <div class="empty-page-hint">Hier entstehen eure Verkaufsstatistiken.</div>
+          <div class="stat-tabs" id="statTabs"></div>
+          <div class="stat-hero-grid" id="statHeroGrid"></div>
+          <div class="stat-chart-card" id="statChartCard" style="display:none;">
+            <div class="stat-legend" id="statLegend"></div>
+            <div id="statBarRows"></div>
+          </div>
+          <div class="empty-page-hint" id="statEmptyHint" style="display:none;">Noch keine gewonnenen Verkäufe in diesem Zeitraum.</div>
+          <div class="stat-numbers-grid" id="statNumbersGrid"></div>
         </div>
       </div>
 
@@ -1159,6 +1192,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 </div>
 
 <script>
+
 (function(){
   // ---- Verbindung zur Datenbank ----
   const SUPABASE_URL = 'https://aaqbbkcghxldsbhqwcyh.supabase.co';
@@ -2698,6 +2732,163 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('statistikHeaderTitle').textContent = label;
   }
 
+  // BWS-Verrechnung: aus einem gewonnenen Verkauf + seinem Produkt werden
+  // Bewertungspunkte/Provision/Differenzprovision berechnet, nie gespeichert
+  // (wie XP/Level: bei jedem Aufruf frisch aus sales+products+profile
+  // zusammengerechnet). Annahme, die noch gegenzuprüfen ist: der Eingabewert
+  // je Verkauf ist "bewertungssumme" für Leben (provision_mode='individuell_lv'),
+  // sonst "laufender_beitrag" - beide Felder existieren bereits am Verkauf
+  // (Patch 23), "menge" wird NICHT nochmal multipliziert (Annahme: die
+  // eingetragene Summe ist bereits der Gesamtwert der Zeile).
+  const STAT_MONTH_NAMES = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+  const STAT_CATEGORICAL = ['#3987e5','#d95926','#199e70','#c98500','#d55181','#008300','#9085e9','#e66767'];
+  let statSelectedPeriod = 'jahr';
+  let mySalesCache = null;
+
+  async function loadMySales(){
+    const { data, error } = await sb.from('sales').select('*').eq('created_by', profile.id).eq('status','gewonnen');
+    if(error){ logSilentError('Verkäufe für Kompendium laden', error); mySalesCache = []; return; }
+    mySalesCache = data || [];
+  }
+
+  function saleDate(s){ return s.vertragsbeginn || s.datum; }
+  function salesForPeriod(period){
+    const year = String(new Date().getFullYear());
+    return (mySalesCache||[]).filter(s=>{
+      const d = saleDate(s);
+      if(!d || d.slice(0,4)!==year) return false;
+      if(period==='jahr') return true;
+      return String(parseInt(d.slice(5,7),10)-1)===period;
+    });
+  }
+  function saleBasisValue(s,p){ return p.provision_mode==='individuell_lv' ? (s.bewertungssumme||0) : (s.laufender_beitrag||0); }
+  function saleBwp(s,p){ return p.bwp_faktor==null ? 0 : saleBasisValue(s,p)*p.bwp_faktor; }
+  function saleProvision(s,p){
+    const basis = saleBasisValue(s,p);
+    if(p.provision_mode==='individuell_lv') return basis * ((profile.lv_promille_satz||0)/1000);
+    if(p.provision_mode==='individuell_kv') return basis * (profile.kv_mb_satz||0);
+    return basis * (p.provision_faktor||0);
+  }
+  function saleDiffProvision(s,p){
+    const basis = saleBasisValue(s,p);
+    if(p.provision_mode==='individuell_lv') return basis * (((config.diffProvLvPromille||0)-(profile.lv_promille_satz||0))/1000);
+    if(p.provision_mode==='individuell_kv') return basis * ((config.diffProvKvMb||0)-(profile.kv_mb_satz||0));
+    return 0;
+  }
+  function aggregateStats(salesList){
+    let bwsLeben=0, beitragSonstige=0, bwp=0, provision=0, diffProvision=0;
+    const byCategory = {};
+    salesList.forEach(s=>{
+      const p = productById(s.product_id);
+      if(!p) return;
+      const basis = saleBasisValue(s,p);
+      if(p.provision_mode==='individuell_lv') bwsLeben += basis; else beitragSonstige += basis;
+      bwp += saleBwp(s,p);
+      provision += saleProvision(s,p);
+      diffProvision += saleDiffProvision(s,p);
+      if(!byCategory[p.category]) byCategory[p.category] = { sum:0, stueck:0, products:{} };
+      byCategory[p.category].sum += basis;
+      byCategory[p.category].stueck += (s.menge||1);
+      if(!byCategory[p.category].products[p.name]) byCategory[p.category].products[p.name] = { sum:0, stueck:0 };
+      byCategory[p.category].products[p.name].sum += basis;
+      byCategory[p.category].products[p.name].stueck += (s.menge||1);
+    });
+    return { bwsLeben, beitragSonstige, bwp, provision, diffProvision, byCategory };
+  }
+
+  function statCategoryColorMap(){
+    const cats = [...new Set(products.map(p=>p.category))].sort();
+    const map = {};
+    cats.forEach((c,i)=>{ map[c] = i < STAT_CATEGORICAL.length ? STAT_CATEGORICAL[i] : 'var(--muted-2)'; });
+    return map;
+  }
+
+  function statRingSvg(percent){
+    const pct = Math.max(0, Math.min(percent, 100));
+    const r = 34, circumference = 2*Math.PI*r;
+    const offset = circumference * (1 - pct/100);
+    return `<svg class="stat-ring" viewBox="0 0 84 84">
+      <circle cx="42" cy="42" r="${r}" fill="none" stroke="var(--border)" stroke-width="8"/>
+      <circle cx="42" cy="42" r="${r}" fill="none" stroke="var(--arcane)" stroke-width="8" stroke-linecap="round"
+        stroke-dasharray="${circumference}" stroke-dashoffset="${offset}" transform="rotate(-90 42 42)" style="transition:stroke-dashoffset .5s ease;"/>
+      <text x="42" y="47" text-anchor="middle" font-size="15" fill="var(--text)" font-weight="700">${Math.round(percent)}%</text>
+    </svg>`;
+  }
+
+  function statHeroCard(label, value, target, fmt){
+    if(target){
+      const pct = (value/target)*100;
+      return `<div class="stat-card">${statRingSvg(pct)}<span class="stat-label">${label}</span><span class="stat-sub">${fmt(value)} / ${fmt(target)}</span></div>`;
+    }
+    return `<div class="stat-card"><span class="stat-value">${fmt(value)}</span><span class="stat-label">${label}</span><span class="stat-sub">kein Ziel gesetzt</span></div>`;
+  }
+
+  function renderStatCategoryChart(byCategory){
+    const catColors = statCategoryColorMap();
+    const chartCard = document.getElementById('statChartCard');
+    const legendEl = document.getElementById('statLegend');
+    const rowsEl = document.getElementById('statBarRows');
+    const cats = Object.keys(byCategory).filter(c=>byCategory[c].sum>0).sort((a,b)=>byCategory[b].sum-byCategory[a].sum);
+    if(cats.length===0){ chartCard.style.display='none'; return; }
+    chartCard.style.display='block';
+    const maxSum = Math.max(...cats.map(c=>byCategory[c].sum));
+    legendEl.innerHTML = cats.map(c=>`<span class="stat-legend-item"><span class="stat-legend-swatch" style="background:${catColors[c]||'var(--muted-2)'}"></span>${c}</span>`).join('');
+    rowsEl.innerHTML = cats.map(c=>{
+      const d = byCategory[c];
+      const pct = maxSum>0 ? (d.sum/maxSum*100) : 0;
+      return `<div class="stat-bar-row">
+        <span class="sbr-label">${c}</span>
+        <div class="stat-bar-track"><div class="stat-bar-fill" style="width:${pct}%;background:${catColors[c]||'var(--muted-2)'}" title="${c}: ${fmtEuro(d.sum)} · ${d.stueck} Stück"></div></div>
+        <span class="sbr-value">${fmtEuro(d.sum)}</span>
+      </div>`;
+    }).join('');
+  }
+
+  function renderStatNumberCards(byCategory){
+    const el = document.getElementById('statNumbersGrid');
+    const cards = [];
+    Object.keys(byCategory).forEach(cat=>{
+      Object.entries(byCategory[cat].products).forEach(([name,d])=> cards.push({ name, ...d }));
+    });
+    el.innerHTML = cards.map(c=>`
+      <div class="stat-num-card">
+        <div class="snc-name">${c.name}</div>
+        <div class="snc-line">${c.stueck} Stück</div>
+        <div class="snc-line">${fmtEuro(c.sum)}</div>
+      </div>`).join('');
+  }
+
+  async function renderStatistikPage(){
+    if(mySalesCache===null) await loadMySales();
+    const salesList = salesForPeriod(statSelectedPeriod);
+    const agg = aggregateStats(salesList);
+    document.getElementById('statEmptyHint').style.display = salesList.length===0 ? 'block' : 'none';
+    const fmtNum = (n)=>n.toLocaleString('de-DE',{maximumFractionDigits:1});
+    document.getElementById('statHeroGrid').innerHTML = [
+      statHeroCard('Bewertungssumme Leben', agg.bwsLeben, profile.planung_lv_bws, fmtEuro),
+      statHeroCard('Bewertungsbeitrag sonstige', agg.beitragSonstige, profile.planung_kv_mb, fmtEuro),
+      statHeroCard('Bewertungspunkte', agg.bwp, profile.planung_bwp, fmtNum),
+      statHeroCard('Provision', agg.provision, null, fmtEuro),
+      statHeroCard('Differenzprovision', agg.diffProvision, null, fmtEuro),
+    ].join('');
+    renderStatCategoryChart(agg.byCategory);
+    renderStatNumberCards(agg.byCategory);
+  }
+
+  function renderStatTabs(){
+    const el = document.getElementById('statTabs');
+    const year = new Date().getFullYear();
+    const tabs = [{key:'jahr', label:`Jahr ${year}`}, ...STAT_MONTH_NAMES.map((m,i)=>({key:String(i), label:m}))];
+    el.innerHTML = tabs.map(t=>`<button class="stat-tab ${statSelectedPeriod===t.key?'active':''}" data-stattab="${t.key}">${t.label}</button>`).join('');
+    el.querySelectorAll('[data-stattab]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        statSelectedPeriod = btn.dataset.stattab;
+        renderStatTabs();
+        renderStatistikPage();
+      });
+    });
+  }
+
   async function initContacts(){
     updateContactLabels();
     const roles = config.contactRoles || {};
@@ -3725,6 +3916,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
           status: 'gewonnen', created_by: profile.id
         });
         if(error){ reportError('Verkauf eintragen', error, statusEl); return; }
+        mySalesCache = null;
         added.push(`${product.name} × ${menge}`);
         listEl.innerHTML = added.map(x=>'✓ '+x).join('<br>');
         mengeEl.value = '1'; beitragEl.value = ''; beginnEl.value = ''; bwsEl.value = ''; statusEl.textContent = '';
@@ -4023,6 +4215,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(pageName==='fehlerprotokoll') renderErrorLog();
     if(pageName==='produkte') renderProductsPage();
     if(pageName==='einstellungen') renderEinstellungenPage();
+    if(pageName==='statistik'){ renderStatTabs(); renderStatistikPage(); }
     if(pageName==='kanban') renderKanbanBoard();
   }
 

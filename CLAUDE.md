@@ -900,11 +900,66 @@ prüfbar statt im Kopf vorausgeplant werden zu müssen.
   "Grundlage", aus der das Kompendium später den Zielerreichungsgrad
   berechnet (siehe nächster Schritt).
 
-  **Nächster offener Schritt:** die eigentliche Berechnung (BWP/Provision/
-  Diff-Provision aus `sales.bewertungssumme` + `products`-Faktoren +
-  den jetzt vorhandenen individuellen Sätzen/Zielen) und ihre Anzeige auf
-  der Verkaufsstatistik-Seite (Kompendium/Kriegskasse/Trophäenkammer,
-  aktuell nur ein leerer Rahmen) — noch nicht gebaut.
+  **Dashboard fertig gebaut, seit 2026-08-03** (kein leerer Rahmen mehr):
+  Berechnung UND Anzeige leben jetzt zusammen auf der Verkaufsstatistik-
+  Seite. Wie bei XP/Level (`computeTotals()`) wird **nichts gespeichert**,
+  alles wird bei jedem Seitenaufruf frisch aus `sales` + `products` +
+  `profile` + `rule_configs` zusammengerechnet (`aggregateStats()` in
+  `index.html`, Kern-Helfer `saleBasisValue()`/`saleBwp()`/
+  `saleProvision()`/`saleDiffProvision()`).
+
+  **Noch ungeprüfte Annahme, unbedingt beim ersten Test mit echten
+  Verkäufen gegenchecken:** welcher Eingabewert pro Verkauf als "E" in die
+  Formel eingeht. Aktuell: `sales.bewertungssumme` bei Leben
+  (`provision_mode==='individuell_lv'`), sonst `sales.laufender_beitrag`
+  — UND `sales.menge` wird NICHT nochmal draufmultipliziert (Annahme: der
+  eingetragene Betrag ist bereits die Summe für die ganze Zeile, nicht
+  ein Pro-Stück-Wert). Falls das nicht stimmt, ist nur `saleBasisValue()`
+  zu korrigieren.
+
+  **Bedienung:** Reiter-Leiste oben (Power-BI-Stil, "Jahr" + 12 Monate,
+  `renderStatTabs()`) wählt den Zeitraum, damit die Seite bei
+  Monatsdaten nicht aufbläht — genau der Nutzerwunsch. Fünf KPI-Kacheln
+  oben (`statHeroCard()`): drei mit Fortschritts-Ring (Bewertungssumme
+  Leben, Bewertungsbeitrag sonstige, Bewertungspunkte — je gegen das
+  persönliche Planungsziel aus der Einstellungen-Seite, Ring-Füllstand
+  optisch bei 100% gedeckelt, die Prozentzahl daneben aber ungedeckelt),
+  zwei ohne Ring (Provision, Differenzprovision — dafür gibt es
+  konzeptionell kein Planungsziel). Darunter ein horizontales
+  Balkendiagramm der Bewertungssumme/-beitrag je Produktkategorie
+  (`renderStatCategoryChart()`) mit Legende + Hover-Tooltip + Werten
+  direkt am Balken. Ganz unten reine Zahlen-Kacheln je Produkt
+  (`renderStatNumberCards()`, Stück + Summe) — der vom Nutzer
+  ausdrücklich gewünschte zweite Schritt "danach natürlich Zahlenkarten".
+
+  **Farben** (dataviz-Skill befolgt, nicht nach Auge geraten): die
+  Fortschritts-Ringe nutzen `var(--arcane)` — die ohnehin schon pro
+  Klasse dynamische Akzentfarbe (`CLASS_THEMES`), dadurch automatisch
+  lila/rot/grün je nach Zauberer/Krieger/Schütze, ohne eigenen Code. Das
+  Kategorie-Balkendiagramm nutzt eine **validierte** 8-Farben-Palette
+  (`STAT_CATEGORICAL`, feste Reihenfolge nach alphabetisch sortierten
+  Produktkategorien, nicht nach Wert — Farbe folgt der Kategorie, nicht
+  ihrem Rang) — geprüft mit dem dataviz-Skill-Validator gegen die
+  tatsächliche Panel-Oberfläche der App (`#1c1830`), alle Checks
+  bestanden. Mehr als 8 gleichzeitig aktive Kategorien fallen auf
+  `var(--muted-2)` zurück statt eine neue Farbe zu erzeugen.
+
+  **Datenbasis:** nur die **eigenen** gewonnenen Verkäufe des
+  eingeloggten Nutzers (`created_by = profile.id`, `status = 'gewonnen'`),
+  gruppiert nach `vertragsbeginn` (Fallback `datum`, falls kein
+  Vertragsbeginn gesetzt ist). Passt zur Grundidee: Provision/Ziele sind
+  persönlich, nicht organisationsweit.
+
+  **Noch nicht angegangen:** Zielerreichungsgrad für Verkaufsgespräche
+  (`planung_vks`) und Fachkontakte (`planung_fa`) — die Planungsfelder
+  existieren bereits (Patch 31), aber es gibt noch keine Zählquelle dafür
+  im Aktions-Log (die FA→T1-Wochenquote-Idee aus der Excel, siehe oben,
+  ist dafür der wahrscheinliche Anknüpfungspunkt, aber bewusst noch nicht
+  gebaut). Visuelle Prüfung durch Claude Code war für diese Seite nicht
+  möglich (das ganze Skript liegt in einer IIFE, keine echten Supabase-
+  Zugangsdaten vorhanden) — nur Lint + Code-Review, kein Live-Screenshot
+  mit echten Daten. Bitte beim ersten echten Test besonders auf die oben
+  genannte Annahme (BWS vs. Beitrag, keine Menge-Multiplikation) achten.
 - **Vertragsnummer-Feld an `sales`** — vom Nutzer am 2026-07-31 fürs
   zukünftige B2B-CRM-Geschäft angekündigt (andere Vertriebsorganisationen
   brauchen das vermutlich), aktuell aber noch nicht gebraucht — bewusst noch
