@@ -999,6 +999,22 @@ prüfbar statt im Kopf vorausgeplant werden zu müssen.
   Heldenreise-Erzählung verdichtet. Braucht eine Supabase Edge Function
   (Anthropic-API-Key darf nicht im Client landen). Bewusst NICHT laufend pro
   Eintrag, sondern **einmal am Jahresende** — hält Kosten niedrig.
+  **Verkaufserfolge fließen mit ein, geklärt am 2026-08-03:** die Erzählung
+  soll nicht nur aus dem Tagebuch, sondern auch aus echten Verkaufsabschlüssen
+  (`sales`) gespeist werden. **Kein expliziter Verknüpfungs-Zwang** — der
+  Nutzer stellte klar, dass `journal_entry_mentions` (@mention im Tagebuch)
+  bewusst nur ein optionaler Bonus fürs persönliche Ausschütten ist ("sein
+  eigenes Innenleben"), kein Pflichtfeld, um einen Verkauf mit einem
+  Tagebucheintrag zu verknüpfen. Verkäufe werden vom System ohnehin
+  automatisch getrackt (Datum via `vertragsbeginn`) — **die Edge Function
+  zieht beide Zeitreihen (Tagebucheinträge + gewonnene Verkäufe desselben
+  Jahres) unabhängig voneinander** und überlässt der KI, zeitliche
+  Zusammenhänge selbst herzustellen (z.B. ein schwieriger Tagebucheintrag,
+  zwei Wochen später ein Abschluss beim selben Kontakt, erkennbar über
+  `sales.contact_id` = per `journal_entry_mentions` erwähnter Kontakt).
+  Ein expliziter Link lohnt sich erst, falls sich beim ersten echten
+  Durchlauf zeigt, dass die KI Verkäufe falschen Tagen zuordnet — vorher
+  nicht von selbst bauen.
 - **KI-Bildumwandlung von Tagebuch-Fotos** — z.B. "Zauberer im Rat der Weißen".
   `journal_photos.transformed_path` ist als Platzhalter schon da. Selbes
   Kostenprinzip: on-demand statt pro Foto.
