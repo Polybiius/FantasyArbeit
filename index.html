@@ -1713,12 +1713,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   // Dieselben Klassenitems, die vorher als CLASS_OUTFIT fest im Look
   // eingebrannt waren, jetzt als echte, ausziehbare Katalog-Items - müssen
-  // im Regelwerk existieren (siehe sql/patch26_klassenitems.sql), sonst
-  // passiert hier nichts (kein Fehler, einfach kein Start-Item).
+  // im Regelwerk existieren (siehe sql/patch26_klassenitems.sql bzw.
+  // patch28_schuetze_bogen.sql), sonst passiert hier nichts (kein Fehler,
+  // einfach kein Start-Item).
   const CLASS_STARTER_ITEMS = {
     hexer: ['hexer_stab', 'hexer_cape'],
     krieger: ['krieger_schwert', 'krieger_helm'],
-    schuetze: ['schuetze_rucksack'],
+    schuetze: ['schuetze_rucksack', 'schuetze_bogen'],
   };
   async function grantClassStarterEquipment(){
     const keys = CLASS_STARTER_ITEMS[profile.character_class] || [];

@@ -36,6 +36,7 @@ alle bis einschließlich Patch 15 im Supabase-Projekt eingespielt sind.
 | 25 | `patch25_aussehen.sql` | `profiles.skin_tone`/`hair_style` (beide nullable) — neuer Aussehen-Screen nach der Klassenwahl (Hautfarbe, Frisur), siehe CLAUDE.md |
 | 26 | `patch26_klassenitems.sql` | Klassenitems (Zauberstab, blaues Cape, Holzschwert, Guard Helmet, kleiner Rucksack) neu im `items`-Katalog, jetzt als echte, ausziehbare Ausrüstung statt fest im Code verdrahtet. Bestehende Profile bekommen ihr Klassenitem einmalig nachträglich ins Inventar + angezogen, neue Charaktere ab jetzt automatisch bei der Erschaffung (`grantClassStarterEquipment()` in index.html) |
 | 27 | `patch27_item_icons.sql` | `icon_img` bei den 5 Klassenitems ergänzt (echte, freigestellte Bild-Ausschnitte aus den Sprite-Sheets statt generischer Emojis, die bei wachsendem Katalog nicht mehr unterscheidbar wären) — Bilder liegen unter `img/characters/creator/item_*.png` |
+| 28 | `patch28_schuetze_bogen.sql` | Bogen als Waffen-Item für den Schützen (`schuetze_bogen`) — handgezeichnetes Pixel-Sprite (kein GandalfHardcore-Asset), Positions-Spur pro Laufzyklus-Frame von Schwert/Stab übernommen. Bestehende Schützen bekommen ihn einmalig nachträglich ins Inventar + angezogen |
 
 ## Wichtiger Hinweis zu Patch 13
 

@@ -748,9 +748,25 @@ irgendwo im System.
 
   **Weiterhin offen:** das `reward_item_key`+`qty`-Feld für Quests (Items
   als Quest-Belohnung gewinnen, über das bestehende generische `grantItem()`
-  — technisch trivial, aber noch nicht verdrahtet). Schütze hat weiterhin
-  keine Fernkampfwaffe im Klassenitem-Set (Bogen/Zauberstab-Asset fehlt,
-  siehe Wiedervorlage weiter unten).
+  — technisch trivial, aber noch nicht verdrahtet).
+
+  **Schützen-Bogen, seit 2026-08-03 gelöst (`schuetze_bogen`,
+  `sql/patch28_schuetze_bogen.sql`):** kein GandalfHardcore-Asset (im Paket
+  nicht enthalten), sondern ein handgezeichnetes Pixel-Sprite
+  (`make_bow_sprite()` in `Design/export_full_sheets.py`) — nach Vorschlag
+  des Nutzers dafür die Positions-Spur des Schwerts wiederverwendet: Schwert
+  und Stab bewegen sich über die 8 Laufzyklus-Frames hinweg identisch
+  (Bounding-Box-Zentrum pro Frame gemessen), offenbar die feste Hand-Spur
+  des Charakter-Rigs, unabhängig von der Waffenform. `build_bow_sheet()`
+  setzt den Bogen entlang genau dieser Spur in alle 8 Frames ein (nur
+  Verschiebung, keine Rotation) — sitzt dadurch beim Laufen an derselben
+  Stelle wie Schwert/Stab, statt nur als Standbild zu kleben. Vor dem
+  finalen Einbau per Artifact-Vorschau mit dem Nutzer abgestimmt (Freigabe
+  ohne weitere Anpassung). Gleiches Prinzip wie bei den anderen Klassenitems:
+  echtes Bild-Icon (`img/characters/creator/item_schuetze_bogen.png`,
+  nicht-geschlechtsabhängig, da die Bogenform für m/w identisch ist — nur
+  die Sheet-Position unterscheidet sich leicht), automatische
+  Start-Ausrüstung bei neuen Schützen, einmaliger Nachtrag für bestehende.
 
   **Asset-Quelle, seit 2026-08-01 im Testeinsatz:** heruntergeladene
   GandalfHardcore-Pakete (Basis-Körper, Arm-/Handschuh-Ebenen, Hand-Items/
@@ -818,24 +834,24 @@ irgendwo im System.
   live aus Ebenen zusammengesetztes Beispiel: einheitliche Basis-Kleidung
   (Hemd/Hose/Stiefel bzw. Corset/Rock/Socken) + ein klassentypisches Item
   (Hexer: Stick + blaues Cape, Krieger: Holzschwert + Guard Helmet,
-  Schütze: Small Backpack — Schütze/Hexer noch ohne Fernkampfwaffe,
-  Bogen/Zauberstab-Asset fehlt weiterhin, siehe Wiedervorlage unten),
-  bewusst glatzköpfig (Frisur kommt ja erst im Aussehen-Screen danach).
-  `layersForClassPortrait(cls, gender)` + `portraitRenderers` in
-  `index.html` (identisch auch weiterhin in `dummy-anmeldung.html`
-  vorhanden, dort ohne echten Supabase-Insert). **Das alte
-  `img/characters/krieger.png` bleibt unangetastet und im Repo** (weiter
-  aktiv im `page-charakter`-`CLASS_BASE_ART`-Fall oben) — nur an dieser
-  einen Stelle (Klassenwahl) nicht mehr benutzt; die sechs
-  zwischenzeitlich erzeugten statischen `hexer_m.png`/`hexer_w.png`/etc.
-  wurden nach dem Umbau auf Canvas wieder aus dem Repo entfernt
-  (überflüssig geworden).
+  Schütze: Small Backpack, bewusst glatzköpfig (Frisur kommt ja erst im
+  Aussehen-Screen danach). `layersForClassPortrait(cls, gender)` +
+  `portraitRenderers` in `index.html` (identisch auch weiterhin in
+  `dummy-anmeldung.html` vorhanden, dort ohne echten Supabase-Insert). Das
+  alte `img/characters/krieger.png` wurde inzwischen (2026-08-03, siehe
+  unten bei "Anziehen/Ausziehen") komplett aus dem Repo entfernt —
+  überflüssig geworden, seit die Charakterseite denselben Canvas-Renderer
+  wie hier nutzt; die sechs zwischenzeitlich erzeugten statischen
+  `hexer_m.png`/`hexer_w.png`/etc. waren schon vorher aus demselben Grund
+  entfernt worden.
 
-  **Wiedervorlage (2026-08-03, vom Nutzer bewusst auf "morgen"
-  verschoben):** Hexer/Schütze haben weiterhin keine Fernkampfwaffe im
-  Klassen-Item-Set, weil kein Bogen/Zauberstab-Asset im GandalfHardcore-
-  Paket existiert. Nicht von selbst wieder aufgreifen, nur wenn der
-  Nutzer es anstößt.
+  **Offener Kosmetik-Punkt:** `layersForClassPortrait` zeigt für Schütze
+  bewusst keine Waffe in dieser Vorschau (anders als Hexer mit Stick,
+  Krieger mit Schwert) — seit Patch 28 gibt es mit `schuetze_bogen` zwar
+  ein echtes Bogen-Asset, es wurde aber noch nicht in diese eine
+  Onboarding-Vorschau eingebaut (rein kosmetisch, betrifft nur den
+  Klassenwahl-Screen, nicht die echte Ausrüstung). Nicht von selbst
+  aufgreifen, nur wenn der Nutzer es anstößt.
 - **Multi-Org-Charakter-Portabilität**: die Idee, dass ein Nutzer den
   Charakter (Level/Skills/Tagebuch) über einen Arbeitgeberwechsel hinweg
   mitnehmen könnte, während Dungeons/Items/Quests bei der alten Organisation
