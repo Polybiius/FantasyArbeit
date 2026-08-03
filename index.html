@@ -1359,7 +1359,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const gloves = `outfit_gloves_${g}.png`;
     if(cls === 'hexer') return ['outfit_cape_blue.png', skin, body, gloves, `outfit_weapon_stick_${g}.png`];
     if(cls === 'krieger') return [skin, body, gloves, 'outfit_hat_guardhelmet.png', `outfit_weapon_sword_${g}.png`];
-    if(cls === 'schuetze') return ['outfit_backpack_small.png', skin, body, gloves];
+    if(cls === 'schuetze') return ['outfit_backpack_small.png', skin, body, gloves, `outfit_weapon_bow_${g}.png`];
     return [skin, body, gloves];
   }
   document.getElementById('profileNextBtn').addEventListener('click', ()=>{

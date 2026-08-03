@@ -649,51 +649,67 @@ viel verkauft" ergibt bei einem verlorenen Deal keinen Sinn). Auch hier
 Pflicht, ein Katalog-Produkt zu wählen — kein Freitext-Fallback mehr,
 irgendwo im System.
 
-## Wiedervorlage: Asset-Erstellungs-Workflow für neue Items (nächste Session aktiv aufgreifen)
+## Sprite-Labor: Asset-Erstellungs-Werkzeug für neue Items (seit 2026-08-03 gebaut)
 
-Der Bogen (siehe "Schützen-Bogen" weiter oben) brauchte drei Runden Live-Testen
-im echten, deployten Programm, bis Größe/Spiegelung/Ankerpunkt stimmten —
-jedes Mal: Bild bauen, committen, pushen, Nutzer lädt neu (teils Hard-Reload
-wegen Browser-Bildercache), meldet zurück, was noch falsch aussieht. Zu
-langsam und zu viele Runden für ein rein visuelles Problem. Zwei konkrete
-Verbesserungen für den NÄCHSTEN handgezeichneten Pixel-Art-Gegenstand
-(explizit gewünscht, nicht erst auf Anstoß warten):
+Der Bogen (siehe "Schützen-Bogen" weiter oben) brauchte in einer früheren
+Session drei Runden Live-Testen im echten, deployten Programm, bis Größe/
+Spiegelung/Ankerpunkt stimmten — jedes Mal: Bild bauen, committen, pushen,
+Nutzer lädt neu, meldet zurück, was noch falsch aussieht. Zu langsam für ein
+rein visuelles Problem. Als Lösung dafür existiert jetzt **`Design/
+sprite_lab.html`** — ein lokales, nicht versioniertes Werkzeug (liegt im
+gitignoreten `Design/`-Ordner, wie die Export-Skripte), über Live Server
+geöffnet (wie die Dummy-Dateien). Ursprünglich war dafür ein Claude-Code-
+"Artifact" angedacht (siehe Git-Historie) — verworfen, weil Artifacts keinen
+Schreibzugriff auf lokale Ordner haben und Bild-Assets nicht extern nachladen
+dürfen (strikte CSP); ein lokales Live-Server-Tool kann beides.
 
-**1. Richtige Proportionen von Anfang an berechnen, nicht nachträglich korrigieren.**
-Vorgehen, das sich beim Bogen (nach zwei Fehlversuchen) als richtig
-herausgestellt hat, künftig gleich beim ersten Entwurf anwenden:
-- Vor dem Zeichnen: `frame_bboxes()` (siehe `Design/export_full_sheets.py`)
-  auf das passende REFERENZ-Item derselben Kategorie anwenden (z.B. Schwert/
-  Stab für ein neues Waffen-Slot-Item) — liefert Breiten-/Höhen-Spannweite
-  über alle 8 Laufzyklus-Frames. Das neue Item so groß zeichnen, dass seine
-  eigene Bounding Box in diese Spannweite passt, nicht schätzen.
-- Ankerpunkt ist NICHT die Bounding-Box-Mitte der gesamten Form (kann je
-  nach Form deutlich neben dem tatsächlichen Handgriff liegen — beim Bogen
-  lag sie sichtbar näher an der Sehne als am Holz). Stattdessen: den
-  Griff-Bereich beim Zeichnen bewusst in einer eigenen, eindeutigen Farbe
-  anlegen (wie `WOOD_DARK` beim Bogen) und den Ankerpunkt aus dem
-  Pixel-Schwerpunkt dieser Farbe berechnen (siehe `make_bow_sprite()`,
-  gibt Bild + Ankerpunkt zurück; `build_bow_sheet()` nutzt genau diesen
-  Punkt statt der Bounding-Box-Mitte).
-- Mirror-Frage (welche Seite ist "vorne"/Richtung Laufbewegung) VOR dem
-  finalen Zusammensetzen an einem einzelnen Frame gegenprüfen, nicht erst
-  am fertigen 8-Frame-Sheet im echten Programm.
+**Funktionsweise:** zeigt den echten, animierten Laufzyklus (gleiche Technik
+wie `createSpriteRenderer()` in `index.html`) mit wählbarem Referenz-Item
+(Schwert/Stab/Bogen/Helm/Cape/Rucksack) zum optischen Vergleich, plus dessen
+Bounding-Box-Spannweite über alle 8 Frames (Ersatz für einen manuellen
+`frame_bboxes()`-Python-Aufruf). Ein neues Kandidaten-PNG wird per
+Datei-Auswahl geladen; Ankerpunkt wird **per Klick** auf das Bild gesetzt
+(nicht automatisch aus der Bounding-Box-Mitte — genau der Fehler, der den
+allerersten Bogen falsch sitzen ließ). Größen-Regler (Maßstab, Seiten-
+verhältnis bleibt erhalten), Spiegeln-Checkbox, Animationstempo einstellbar
+(1–9 fps, 9 = echtes Spieltempo). **Frame-Feinjustierung**: pro einzelnem
+Frame (Slider anhalten) lassen sich Position (⬅➡⬆⬇) und Rotation (⟲⟳, um den
+Ankerpunkt) unabhängig voneinander setzen — wirkt jeweils NUR auf den
+gerade gewählten Frame, alle 8 Frames werden so nacheinander von Hand
+durchgestimmt, globaler Anker-Nudge bleibt separat für die einmalige
+Grobkorrektur des Griffpunkts.
 
-**2. Animiertes Test-Artifact bauen, BEVOR ein neues Item ins Spiel eingebaut wird.**
-Vom Nutzer explizit gewünscht: eine eigenständige, veröffentlichte
-Vorschau-Seite (in Claude Code "Artifact" genannt — dasselbe Werkzeug, mit
-dem die Bogen-Vorschau am 2026-08-03 gezeigt wurde), auf der der Charakter
-tatsächlich animiert läuft (gleiche Technik wie `createSpriteRenderer()` in
-`index.html`/`dummy-anmeldung.html` — Sprite-Sheets laden, Frame-Ausschnitt
-`(frame*80, 128, 80, 64)` im Loop zeichnen) und auf der ein NEUES
-Kandidaten-Item probeweise übergelegt werden kann, samt sichtbarer
-Zahlen (Bounding Box, Ankerpunkt-Koordinaten pro Frame) — erst wenn es dort
-sauber sitzt, wird es tatsächlich als `outfit_*`-Sheet erzeugt und ins
-Regelwerk/SQL-Patch übernommen. Ziel: die Feedback-Schleife von "push →
-Nutzer lädt echtes Programm neu → meldet zurück" auf "beide sehen es sofort
-in einem Artifact-Link" verkürzen, bevor überhaupt etwas committet wird.
-**Noch nicht gebaut — nächste Session direkt damit anfangen, wenn wieder ein
-neues Item ansteht, nicht erst nachfragen.**
+**Übertragungs-Pipe:** ein "✓ Fertig"-Knopf schreibt die abgestimmten Werte
+(Anker, Maßstab, Spiegelung, Position+Rotation pro Frame) als
+`sprite_lab_export.json` **direkt in einen vom Nutzer einmalig gewählten
+Ordner** (File System Access API, `showDirectoryPicker()`, Berechtigung wird
+in IndexedDB gemerkt und übersteht auch ein Live-Server-Neuladen) — kein
+Downloads-Ordner-Raten, kein Copy-Paste nötig, Claude Code liest die Datei
+direkt von der Platte. Zwischenablage-Kopie bleibt als Rückfalloption für
+Browser ohne File-System-Access-Unterstützung.
+
+**Vom Export zum echten Sheet:** `Design/bake_sprite_lab_export.py` (neu,
+2026-08-03) nimmt `sprite_lab_export.json` + das Kandidaten-PNG und backt
+daraus das echte 800×448-`outfit_*`-Sheet — ersetzt die frühere, nur für den
+Bogen passende formelbasierte `make_bow_sprite()`/`build_bow_sheet()`-
+Erzeugung in `export_full_sheets.py` (jetzt deaktiviert, siehe dort) durch
+einen item-unabhängigen, wiederverwendbaren Weg. **Wichtiger technischer
+Stolperstein:** PIL's `Image.rotate(winkel)` dreht im bildschirmtypischen
+y-nach-unten-Koordinatensystem optisch GEGENLÄUFIG zu Canvas'
+`ctx.rotate()` (dieselbe Konvention, die das Sprite-Labor und `index.html`
+verwenden) — im Skript deshalb bewusst mit umgedrehtem Vorzeichen
+(`rotate(-winkel)`), gegen einen Canvas-Referenzlauf abgeglichen. Beim
+allerersten Bogen-Bake (siehe unten) wurde zusätzlich sicherheitshalber
+direkt per Canvas (Playwright-Skript, nicht Python) gebacken, um jedes
+Risiko einer Python/Canvas-Konventions-Abweichung für das erste echte
+Ergebnis auszuschließen — das Python-Skript wurde daran kalibriert/verifiziert
+und ist jetzt der Standardweg für zukünftige Items.
+
+**Vor dem Zeichnen eines neuen Kandidaten weiterhin gültig:** Ankerpunkt
+NICHT die Bounding-Box-Mitte der gesamten Form (kann deutlich neben dem
+tatsächlichen Handgriff liegen), Mirror-Frage früh an einem einzelnen Frame
+prüfen statt erst am fertigen Sheet — beides jetzt interaktiv im Sprite-Labor
+prüfbar statt im Kopf vorausgeplant werden zu müssen.
 
 ## Bewusst aufgeschobene Ideen (NICHT vergessen, aber NICHT von selbst bauen)
 - **Manatrank-Vergabe an Quests knüpfen** (statt/zusätzlich zum täglichen
@@ -798,21 +814,37 @@ neues Item ansteht, nicht erst nachfragen.**
 
   **Schützen-Bogen, seit 2026-08-03 gelöst (`schuetze_bogen`,
   `sql/patch28_schuetze_bogen.sql`):** kein GandalfHardcore-Asset (im Paket
-  nicht enthalten), sondern ein handgezeichnetes Pixel-Sprite
-  (`make_bow_sprite()` in `Design/export_full_sheets.py`) — nach Vorschlag
-  des Nutzers dafür die Positions-Spur des Schwerts wiederverwendet: Schwert
-  und Stab bewegen sich über die 8 Laufzyklus-Frames hinweg identisch
-  (Bounding-Box-Zentrum pro Frame gemessen), offenbar die feste Hand-Spur
-  des Charakter-Rigs, unabhängig von der Waffenform. `build_bow_sheet()`
-  setzt den Bogen entlang genau dieser Spur in alle 8 Frames ein (nur
-  Verschiebung, keine Rotation) — sitzt dadurch beim Laufen an derselben
-  Stelle wie Schwert/Stab, statt nur als Standbild zu kleben. Vor dem
-  finalen Einbau per Artifact-Vorschau mit dem Nutzer abgestimmt (Freigabe
-  ohne weitere Anpassung). Gleiches Prinzip wie bei den anderen Klassenitems:
-  echtes Bild-Icon (`img/characters/creator/item_schuetze_bogen.png`,
-  nicht-geschlechtsabhängig, da die Bogenform für m/w identisch ist — nur
-  die Sheet-Position unterscheidet sich leicht), automatische
+  nicht enthalten), sondern ein handgezeichnetes Pixel-Sprite. Gleiches
+  Prinzip wie bei den anderen Klassenitems: echtes Bild-Icon
+  (`img/characters/creator/item_schuetze_bogen.png`), automatische
   Start-Ausrüstung bei neuen Schützen, einmaliger Nachtrag für bestehende.
+
+  **Zweite Überarbeitung, noch am selben Tag:** die erste, formelbasierte
+  Version (`make_bow_sprite()`, Sinus-Kurve, Positions-Spur 1:1 vom Schwert
+  übernommen, siehe Git-Historie von `Design/export_full_sheets.py`) wurde
+  vom Nutzer als zu klobig/hässlich empfunden. Ersetzt durch eine von Hand
+  gezeichnete, deutlich schlankere Silhouette (erster Entwurf, archiviert
+  unter `Design/ItemKonzept/bogen_konzept_v1.png` — laut Nutzer die schönste
+  der drei ursprünglichen Entwurfsgrößen). Position UND Rotation wurden pro
+  einzelnem Laufzyklus-Frame von Hand im neuen Sprite-Labor (siehe eigener
+  Abschnitt oben) abgestimmt — anders als beim ersten Versuch (nur
+  Verschiebung entlang der Schwert-Spur, keine Rotation) schwingt der Bogen
+  jetzt sichtbar mit der Laufbewegung mit (Rotation von 0° bis −75° und
+  zurück über die 8 Frames). Abgestimmte Werte liegen dauerhaft in
+  `Design/ItemKonzept/bogen_export.json`, gebackt über
+  `Design/bake_sprite_lab_export.py`. **Weiblicher Bogen ist nur eine
+  Näherung:** dieselben Werte (Anker/Maßstab/Position/Rotation) wurden 1:1
+  auf `outfit_weapon_bow_w.png` übernommen, ohne eigene Abstimmung für den
+  weiblichen Körper (bewusste Nutzer-Entscheidung, "näherungsweise
+  übernehmen") — sitzt an der Hand nicht ganz so exakt wie beim männlichen
+  Schützen. Bei Bedarf: im Sprite-Labor auf Geschlecht "Weiblich" wechseln
+  und die 8 Frames eigenständig nachjustieren.
+
+  **`layersForClassPortrait('schuetze', g)` zeigt jetzt auch den Bogen**
+  (`outfit_weapon_bow_${g}.png` als letzte/oberste Ebene, wie bei Hexer/
+  Krieger) — behebt den zuvor offenen Kosmetik-Punkt (siehe unten, jetzt
+  entfernt), dass der Schütze auf dem Klassenwahl-Bildschirm bisher
+  unbewaffnet aussah.
 
   **Asset-Quelle, seit 2026-08-01 im Testeinsatz:** heruntergeladene
   GandalfHardcore-Pakete (Basis-Körper, Arm-/Handschuh-Ebenen, Hand-Items/
@@ -891,13 +923,6 @@ neues Item ansteht, nicht erst nachfragen.**
   `hexer_m.png`/`hexer_w.png`/etc. waren schon vorher aus demselben Grund
   entfernt worden.
 
-  **Offener Kosmetik-Punkt:** `layersForClassPortrait` zeigt für Schütze
-  bewusst keine Waffe in dieser Vorschau (anders als Hexer mit Stick,
-  Krieger mit Schwert) — seit Patch 28 gibt es mit `schuetze_bogen` zwar
-  ein echtes Bogen-Asset, es wurde aber noch nicht in diese eine
-  Onboarding-Vorschau eingebaut (rein kosmetisch, betrifft nur den
-  Klassenwahl-Screen, nicht die echte Ausrüstung). Nicht von selbst
-  aufgreifen, nur wenn der Nutzer es anstößt.
 - **Multi-Org-Charakter-Portabilität**: die Idee, dass ein Nutzer den
   Charakter (Level/Skills/Tagebuch) über einen Arbeitgeberwechsel hinweg
   mitnehmen könnte, während Dungeons/Items/Quests bei der alten Organisation
