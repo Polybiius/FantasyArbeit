@@ -173,6 +173,7 @@
     padding:10px 14px;margin-bottom:8px;font-size:13px;
   }
   .account-row select{background:#0e0c17;border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;color:var(--text);font-size:12.5px;}
+  .account-row input[type="number"]{background:#0e0c17;border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;color:var(--text);font-size:12.5px;width:110px;}
   .account-row .ar-owner{font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;}
   .guild-join-row .gname{font-weight:600;}
   .guild-join-row .gmeta{color:var(--muted);font-size:11.5px;font-family:'JetBrains Mono',monospace;}
@@ -584,6 +585,7 @@
       <button class="nav-btn" data-page="gilde" id="navGildeBtn">🛡 Gilde</button>
       <button class="nav-btn" data-page="tagebuch">📖 Abenteuerlog</button>
       <button class="nav-btn" data-page="statistik" id="navStatistikBtn">📊 Kompendium</button>
+      <button class="nav-btn" data-page="einstellungen">⚙️ Einstellungen</button>
       <button class="nav-btn" data-page="produkte" id="navProdukteBtn" style="display:none;">📦 Produkte</button>
       <button class="nav-btn" data-page="fehlerprotokoll" id="navFehlerprotokollBtn" style="display:none;">🛠 Fehlerprotokoll</button>
     </nav>
@@ -966,6 +968,41 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         </div>
       </div>
 
+      <!-- SEITE: EINSTELLUNGEN (jeder für sich selbst) -->
+      <div class="page" id="page-einstellungen" style="display:none;">
+        <div class="card">
+          <h2>Individuelle Provision</h2>
+          <div class="empty-page-hint" style="margin-bottom:8px;">Nur bei Leben/Kranken relevant — andere Sparten nutzen den festen Faktor am Produkt.</div>
+          <div class="kanban-newlead-form">
+            <label class="cdl" style="display:block;">Leben-Satz (‰)</label>
+            <input type="number" id="settingsLvSatzInput" step="0.01" placeholder="z.B. 32">
+            <label class="cdl" style="display:block;margin-top:4px;">Kranken-MB-Satz</label>
+            <input type="number" id="settingsKvSatzInput" step="0.001" placeholder="z.B. 6">
+            <button class="cal-nav-btn" id="settingsProvisionSaveBtn" style="width:100%;margin-top:8px;">Speichern</button>
+            <div class="empty-page-hint" id="settingsProvisionStatus"></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:18px;">
+          <h2>Persönliche Planungsziele <span class="tag">Zielerreichungsgrad</span></h2>
+          <div class="empty-page-hint" style="margin-bottom:8px;">Deine eigenen Jahresziele — daraus berechnet das Kompendium später deinen Zielerreichungsgrad.</div>
+          <div class="kanban-newlead-form">
+            <label class="cdl" style="display:block;">Planung Leben-BWS</label>
+            <input type="number" id="settingsPlanLvBwsInput" step="0.01" placeholder="Ziel-Bewertungssumme Leben">
+            <label class="cdl" style="display:block;margin-top:4px;">Planung Kranken-Beitrag</label>
+            <input type="number" id="settingsPlanKvMbInput" step="0.01" placeholder="Ziel-Bewertungsbeitrag Kranken">
+            <label class="cdl" style="display:block;margin-top:4px;">Planung Bewertungspunkte</label>
+            <input type="number" id="settingsPlanBwpInput" step="0.01" placeholder="Ziel-Bewertungspunkte">
+            <label class="cdl" style="display:block;margin-top:4px;">Planung Verkaufsgespräche</label>
+            <input type="number" id="settingsPlanVksInput" step="1" placeholder="Ziel-Anzahl Verkaufsgespräche">
+            <label class="cdl" style="display:block;margin-top:4px;">Planung Fachkontakte (FA)</label>
+            <input type="number" id="settingsPlanFaInput" step="1" placeholder="Ziel-Anzahl Fachkontakte">
+            <button class="cal-nav-btn" id="settingsZieleSaveBtn" style="width:100%;margin-top:8px;">Speichern</button>
+            <div class="empty-page-hint" id="settingsZieleStatus"></div>
+          </div>
+        </div>
+      </div>
+
       <!-- SEITE: PRODUKTE (nur Admins) -->
       <div class="page" id="page-produkte" style="display:none;">
         <div class="card">
@@ -978,6 +1015,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
             <button class="cal-nav-btn" id="prodAddBtn">+ Produkt anlegen</button>
             <div class="empty-page-hint" id="prodAddStatus"></div>
           </div>
+          <div class="empty-page-hint" style="margin-bottom:8px;">Auf eine Kachel klicken, um Bewertungspunkte-/Provisions-Faktor einzustellen oder zu (de)aktivieren.</div>
           <div id="productsList"></div>
         </div>
       </div>
@@ -1076,6 +1114,30 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       <div class="empty-page-hint" id="terminLeadStatus"></div>
     </div>
     <button class="cal-nav-btn" id="terminLeadSaveBtn" style="width:100%;margin-top:8px;">Anlegen</button>
+  </div>
+</div>
+
+<div class="loc-modal" id="productDetailModal" style="display:none;">
+  <div class="loc-modal-inner">
+    <div class="loc-modal-header">
+      <span id="productDetailName">Produkt</span>
+      <button id="productDetailClose">✕</button>
+    </div>
+    <div class="kanban-newlead-form">
+      <label class="cdl" style="display:block;">Provisions-Modus</label>
+      <select id="productDetailModeInput">
+        <option value="fest">Fester Faktor</option>
+        <option value="individuell_lv">Individuelle Leben-Rate (je Mitarbeiter)</option>
+        <option value="individuell_kv">Individuelle Kranken-Rate (je Mitarbeiter)</option>
+      </select>
+      <label class="cdl" style="display:block;margin-top:4px;">Bewertungspunkte-Faktor</label>
+      <input type="number" id="productDetailBwpInput" step="0.001" placeholder="z.B. 0.05">
+      <label class="cdl" style="display:block;margin-top:4px;">Provisions-Faktor <span id="productDetailProvHint" style="font-weight:normal;"></span></label>
+      <input type="number" id="productDetailProvInput" step="0.001" placeholder="z.B. 0.1">
+      <div class="empty-page-hint" id="productDetailStatus"></div>
+    </div>
+    <button class="cal-nav-btn" id="productDetailSaveBtn" style="width:100%;margin-top:8px;">Speichern</button>
+    <button class="cal-nav-btn" id="productDetailToggleBtn" style="width:100%;margin-top:8px;"></button>
   </div>
 </div>
 
@@ -3792,6 +3854,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       .replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
   }
 
+  const PROVISION_MODE_LABELS = { fest:'Fester Faktor', individuell_lv:'Individuelle Leben-Rate', individuell_kv:'Individuelle Kranken-Rate' };
+
   async function renderProductsPage(){
     const listEl = document.getElementById('productsList');
     if(profile.role!=='admin') return;
@@ -3803,24 +3867,66 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       groups[g].push(p);
     });
     listEl.innerHTML = Object.keys(groups).sort().map(g=>`
-      <div class="cc-sales-block" style="margin-bottom:10px;">
-        <span class="cdl">${g}</span>
-        ${groups[g].map(p=>`
-          <div class="cc-notes" data-prod="${p.id}">
-            ${p.active ? '' : '<s>'}${p.name}${p.active ? '' : '</s> (deaktiviert)'}
-            <button class="cal-nav-btn" data-toggleprod="${p.id}" style="margin-left:8px;">${p.active ? 'Deaktivieren' : 'Reaktivieren'}</button>
-          </div>`).join('')}
+      <div style="margin-bottom:14px;">
+        <span class="cdl" style="display:block;margin-bottom:6px;">${g}</span>
+        <div class="dungeon-tile-grid">
+          ${groups[g].map(p=>`
+            <div class="dungeon-tile" data-prodtile="${p.id}" style="${p.active ? '' : 'opacity:0.5;'}">
+              <span class="dt-icon">${p.active ? '📦' : '🚫'}</span>
+              <span class="dt-name">${p.name}</span>
+              <span class="dt-count">${PROVISION_MODE_LABELS[p.provision_mode] || p.provision_mode}</span>
+            </div>`).join('')}
+        </div>
       </div>`).join('');
-    listEl.querySelectorAll('[data-toggleprod]').forEach(btn=>{
-      btn.addEventListener('click', async ()=>{
-        const p = productById(btn.dataset.toggleprod);
-        const { error } = await sb.from('products').update({ active: !p.active }).eq('id', p.id);
-        if(error){ reportError('Produkt-Status ändern', error); return; }
-        await loadProducts();
-        await renderProductsPage();
-      });
+    listEl.querySelectorAll('[data-prodtile]').forEach(tile=>{
+      tile.addEventListener('click', ()=> openProductDetailModal(productById(tile.dataset.prodtile)));
     });
   }
+
+  function openProductDetailModal(p){
+    document.getElementById('productDetailName').textContent = p.name;
+    const modeEl = document.getElementById('productDetailModeInput');
+    const bwpEl = document.getElementById('productDetailBwpInput');
+    const provEl = document.getElementById('productDetailProvInput');
+    const hintEl = document.getElementById('productDetailProvHint');
+    const statusEl = document.getElementById('productDetailStatus');
+    const toggleBtn = document.getElementById('productDetailToggleBtn');
+    modeEl.value = p.provision_mode;
+    bwpEl.value = p.bwp_faktor ?? '';
+    provEl.value = p.provision_faktor ?? '';
+    provEl.disabled = modeEl.value !== 'fest';
+    hintEl.textContent = modeEl.value !== 'fest' ? '(ignoriert bei individuellem Modus)' : '';
+    statusEl.textContent = '';
+    toggleBtn.textContent = p.active ? 'Deaktivieren' : 'Reaktivieren';
+
+    modeEl.onchange = ()=>{
+      provEl.disabled = modeEl.value !== 'fest';
+      hintEl.textContent = modeEl.value !== 'fest' ? '(ignoriert bei individuellem Modus)' : '';
+    };
+    document.getElementById('productDetailSaveBtn').onclick = async ()=>{
+      const mode = modeEl.value;
+      const { error } = await sb.from('products').update({
+        provision_mode: mode,
+        bwp_faktor: bwpEl.value ? parseFloat(bwpEl.value) : null,
+        provision_faktor: (mode==='fest' && provEl.value) ? parseFloat(provEl.value) : null
+      }).eq('id', p.id);
+      if(error){ reportError('Produkt-Faktoren speichern', error, statusEl); return; }
+      await loadProducts();
+      await renderProductsPage();
+      document.getElementById('productDetailModal').style.display = 'none';
+    };
+    toggleBtn.onclick = async ()=>{
+      const { error } = await sb.from('products').update({ active: !p.active }).eq('id', p.id);
+      if(error){ reportError('Produkt-Status ändern', error, statusEl); return; }
+      await loadProducts();
+      await renderProductsPage();
+      document.getElementById('productDetailModal').style.display = 'none';
+    };
+    document.getElementById('productDetailModal').style.display = 'flex';
+  }
+  document.getElementById('productDetailClose').addEventListener('click', ()=>{
+    document.getElementById('productDetailModal').style.display = 'none';
+  });
 
   document.getElementById('prodAddBtn').addEventListener('click', async ()=>{
     const name = document.getElementById('prodNameInput').value.trim();
@@ -3839,6 +3945,46 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     statusEl.textContent = '';
     await loadProducts();
     await renderProductsPage();
+  });
+
+  // ---- Einstellungen (jeder für sich selbst — individuelle Provision + Planungsziele) ----
+  function renderEinstellungenPage(){
+    document.getElementById('settingsLvSatzInput').value = profile.lv_promille_satz ?? '';
+    document.getElementById('settingsKvSatzInput').value = profile.kv_mb_satz ?? '';
+    document.getElementById('settingsPlanLvBwsInput').value = profile.planung_lv_bws ?? '';
+    document.getElementById('settingsPlanKvMbInput').value = profile.planung_kv_mb ?? '';
+    document.getElementById('settingsPlanBwpInput').value = profile.planung_bwp ?? '';
+    document.getElementById('settingsPlanVksInput').value = profile.planung_vks ?? '';
+    document.getElementById('settingsPlanFaInput').value = profile.planung_fa ?? '';
+    document.getElementById('settingsProvisionStatus').textContent = '';
+    document.getElementById('settingsZieleStatus').textContent = '';
+  }
+
+  document.getElementById('settingsProvisionSaveBtn').addEventListener('click', async ()=>{
+    const statusEl = document.getElementById('settingsProvisionStatus');
+    const lvSatz = document.getElementById('settingsLvSatzInput').value;
+    const kvSatz = document.getElementById('settingsKvSatzInput').value;
+    const update = { lv_promille_satz: lvSatz ? parseFloat(lvSatz) : null, kv_mb_satz: kvSatz ? parseFloat(kvSatz) : null };
+    const { error } = await sb.from('profiles').update(update).eq('id', profile.id);
+    if(error){ reportError('Provision speichern', error, statusEl); return; }
+    Object.assign(profile, update);
+    statusEl.textContent = 'Gespeichert.';
+  });
+
+  document.getElementById('settingsZieleSaveBtn').addEventListener('click', async ()=>{
+    const statusEl = document.getElementById('settingsZieleStatus');
+    const val = (id)=>{ const v = document.getElementById(id).value; return v ? parseFloat(v) : null; };
+    const update = {
+      planung_lv_bws: val('settingsPlanLvBwsInput'),
+      planung_kv_mb: val('settingsPlanKvMbInput'),
+      planung_bwp: val('settingsPlanBwpInput'),
+      planung_vks: val('settingsPlanVksInput'),
+      planung_fa: val('settingsPlanFaInput'),
+    };
+    const { error } = await sb.from('profiles').update(update).eq('id', profile.id);
+    if(error){ reportError('Planungsziele speichern', error, statusEl); return; }
+    Object.assign(profile, update);
+    statusEl.textContent = 'Gespeichert.';
   });
 
   // ---- Fehlerprotokoll-Seite (nur Admins) ----
@@ -3863,7 +4009,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   // ---- Seitennavigation ----
-  const VALID_PAGES = ['charakter','handlungen','inventar','gilde','dungeons','kontakte','tagebuch','kanban','statistik','fehlerprotokoll','produkte'];
+  const VALID_PAGES = ['charakter','handlungen','inventar','gilde','dungeons','kontakte','tagebuch','kanban','statistik','einstellungen','fehlerprotokoll','produkte'];
 
   function showPage(pageName, updateHash){
     if(!VALID_PAGES.includes(pageName)) pageName = 'charakter';
@@ -3876,6 +4022,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(pageName==='dungeons'){ ensureDungeonMap(); if(dungeonMap) setTimeout(()=>dungeonMap.invalidateSize(),150); }
     if(pageName==='fehlerprotokoll') renderErrorLog();
     if(pageName==='produkte') renderProductsPage();
+    if(pageName==='einstellungen') renderEinstellungenPage();
     if(pageName==='kanban') renderKanbanBoard();
   }
 

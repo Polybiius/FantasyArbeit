@@ -861,10 +861,50 @@ prüfbar statt im Kopf vorausgeplant werden zu müssen.
   Erstgespräch-Konversion) ist aber als mögliche spätere Kennzahl notiert,
   falls das Statistik-Modul das aufgreifen soll.
 
-  **Nächster offener Schritt:** konkretes Datenmodell für die Faktoren
-  selbst festlegen (je Produkt in `products`? fester Code-Lookup wie in
-  der Excel, mit `products.key` als Art-Code?) und dann SQL-Patch +
-  Berechnungscode bauen — noch nicht angegangen.
+  **Datenmodell (Patch 30, `sql/patch30_bws_verrechnung.sql`), seit
+  2026-08-03:** vierte Entscheidung — Faktoren leben als Felder direkt am
+  Produkt (`products.bwp_faktor`, `products.provision_faktor`,
+  `products.provision_mode` — 'fest'/'individuell_lv'/'individuell_kv'),
+  nicht als fester Code-Lookup wie in der Excel. Passt zum Leitsatz
+  "Organisationsspezifisches ist Daten, nicht Code" — eine neue Sparte
+  braucht nur eine neue Produktzeile mit eigenen Faktoren, keine
+  Code-Änderung. Individuelle Sätze (`profiles.lv_promille_satz`/
+  `kv_mb_satz`) und die Diff-Provisions-Referenzsätze (`rule_configs`
+  `diffProvLvPromille`/`diffProvKvMb`, Default 40/8) ebenfalls in Patch 30.
+  Keine Migration bestehender Produkte — neue Spalten bleiben NULL, bis
+  ein Admin sie einträgt.
+
+  **Bedienung im "Produkte"-Reiter:** Produkte erscheinen als klickbare
+  Kacheln (`.dungeon-tile`-Optik wiederverwendet, wie beim Dungeon-Klick
+  und der Kontakte-nach-Dungeon-Ansicht — "Kachel statt Liste" war
+  ausdrücklicher Nutzerwunsch, 2026-08-03) statt einer Liste mit inline
+  sichtbaren Eingabefeldern. Klick öffnet `productDetailModal`
+  (Provisions-Modus, Bewertungspunkte-/Provisions-Faktor, Aktivieren/
+  Deaktivieren) — das Anlegen-Formular selbst bleibt schlank (nur Name/
+  Kategorie/Unterkategorie), Faktoren werden ausschließlich über die
+  Kachel-Detailansicht eines bereits angelegten Produkts gepflegt.
+
+  **Neue Seite "Einstellungen" (Patch 31, `sql/patch31_planungsziele.sql`),
+  seit 2026-08-03 — bewusster Zwischenschritt vor der eigentlichen
+  Statistik-Anzeige:** individuelle Provisionssätze (LV ‰/KV-MB) UND die
+  persönlichen Planungsziele (`profiles.planung_lv_bws`/`planung_kv_mb`/
+  `planung_bwp`/`planung_vks`/`planung_fa`, aus der Excel "Planung ..."
+  in Datenblatt!B9-B13) trägt **jeder für sich selbst** ein, nicht der
+  Admin stellvertretend — bewusste Korrektur einer ersten, falschen
+  Annahme (Claude hatte die individuellen Sätze zunächst admin-exklusiv im
+  Produkte-Reiter gebaut, analog zur Account-Pool-Zuweisung; der Nutzer
+  wollte stattdessen Selbstbedienung). Neuer, für alle sichtbarer Nav-Reiter
+  "⚙️ Einstellungen" direkt nach dem Kompendium/Kriegskasse/Trophäenkammer-
+  Reiter. `renderEinstellungenPage()` lädt/speichert direkt auf
+  `profile`/`profiles`, kein Admin-Umweg. Diese Werte sind die
+  "Grundlage", aus der das Kompendium später den Zielerreichungsgrad
+  berechnet (siehe nächster Schritt).
+
+  **Nächster offener Schritt:** die eigentliche Berechnung (BWP/Provision/
+  Diff-Provision aus `sales.bewertungssumme` + `products`-Faktoren +
+  den jetzt vorhandenen individuellen Sätzen/Zielen) und ihre Anzeige auf
+  der Verkaufsstatistik-Seite (Kompendium/Kriegskasse/Trophäenkammer,
+  aktuell nur ein leerer Rahmen) — noch nicht gebaut.
 - **Vertragsnummer-Feld an `sales`** — vom Nutzer am 2026-07-31 fürs
   zukünftige B2B-CRM-Geschäft angekündigt (andere Vertriebsorganisationen
   brauchen das vermutlich), aktuell aber noch nicht gebraucht — bewusst noch
