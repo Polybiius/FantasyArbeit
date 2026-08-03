@@ -34,6 +34,7 @@ alle bis einschließlich Patch 15 im Supabase-Projekt eingespielt sind.
 | 23 | `patch23_produktkatalog.sql` | Neue Tabelle `products` (Kategorie/Unterkategorie, admin-gepflegt, nur deaktivierbar statt löschbar). `sales.produkt` (Freitext) ersetzt durch `product_id` + neue Felder `bewertungssumme`, `laufender_beitrag`, `vertragsbeginn`, `vertragsende`. **Löscht vorher alle bestehenden `sales`-Zeilen** (waren laut Nutzer nur Testverkäufe) |
 | 24 | `patch24_profil_onboarding.sql` | `profiles.real_name`/`gender`/`company` (alle nullable) — neuer Zwischenschritt bei der Charaktererstellung vor der Klassenwahl, siehe CLAUDE.md |
 | 25 | `patch25_aussehen.sql` | `profiles.skin_tone`/`hair_style` (beide nullable) — neuer Aussehen-Screen nach der Klassenwahl (Hautfarbe, Frisur), siehe CLAUDE.md |
+| 26 | `patch26_klassenitems.sql` | Klassenitems (Zauberstab, blaues Cape, Holzschwert, Guard Helmet, kleiner Rucksack) neu im `items`-Katalog, jetzt als echte, ausziehbare Ausrüstung statt fest im Code verdrahtet. Bestehende Profile bekommen ihr Klassenitem einmalig nachträglich ins Inventar + angezogen, neue Charaktere ab jetzt automatisch bei der Erschaffung (`grantClassStarterEquipment()` in index.html) |
 
 ## Wichtiger Hinweis zu Patch 13
 

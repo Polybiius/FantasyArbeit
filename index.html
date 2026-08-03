@@ -150,8 +150,6 @@
   }
   .char-art-stack{position:relative;width:100%;height:220px;display:flex;align-items:center;justify-content:center;}
   .char-art-stack canvas{height:200px;width:auto;image-rendering:pixelated;}
-  .char-art-stack #charEquipLayers{position:absolute;top:0;left:0;width:100%;height:100%;}
-  .char-art-stack #charEquipLayers img{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain;}
   .char-equip-badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;justify-content:center;}
   .char-badge{background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 12px;font-size:12px;color:var(--text);display:flex;align-items:center;gap:6px;}
 
@@ -596,7 +594,6 @@
         <div class="card char-art-placeholder">
           <div class="char-art-stack" id="charArtStack">
             <canvas id="charSpriteCanvas"></canvas>
-            <div id="charEquipLayers"></div>
           </div>
           <div class="char-equip-badges" id="charEquipBadges"></div>
         </div>
@@ -1274,6 +1271,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // Steuert in appearanceDoneBtn nur, ob update() statt insert() läuft - XP/Kontakte/
   // etc. bleiben unberührt, die hängen an derselben profiles.id.
   let resumingProfileId = null;
+  // Gesetzt in appearanceDoneBtn, gelesen einmalig in enterApp(): löst die
+  // Start-Ausrüstung aus (siehe grantClassStarterEquipment) - nur beim ersten
+  // Erscheinen im Programm nach Charaktererstellung, nicht bei jedem Login.
+  let justCreatedCharacter = false;
   document.querySelectorAll('.gender-btn').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       document.querySelectorAll('.gender-btn').forEach(b=>b.classList.remove('active'));
@@ -1492,16 +1493,32 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // Charakterseite (page-charakter): zeigt den echten, gespeicherten Look des
   // eingeloggten Nutzers - gleiche Technik wie appearanceRenderer, siehe renderCharacterEquipment().
   const charRenderer = createSpriteRenderer(document.getElementById('charSpriteCanvas'), 4);
+  // Zeigt die ECHTE angezogene Ausrüstung (profiles.equipped_*), im Unterschied
+  // zu CLASS_OUTFIT (fest verdrahtetes Klassenitem-Beispiel, nur für die
+  // Vorschauen im Onboarding, wo es noch kein Inventar gibt). "sheet" im
+  // Item-Katalog ist derselbe Dateiname wie bei Haut/Haaren/Kleidung unter
+  // img/characters/sheets/ - "{g}" wird durch "m"/"w" ersetzt, für Items ohne
+  // Geschlechtsvarianten (Cape, Rucksack, Helm) bleibt der Dateiname einfach fix.
+  function equippedSheet(p, field){
+    const key = p[field];
+    if(!key) return null;
+    const def = (config.items||{})[key];
+    if(!def || !def.sheet) return null;
+    return def.sheet.replace('{g}', p.gender || 'm');
+  }
   function layersForCharacterProfile(p){
     const gender = p.gender || 'm';
-    const outfit = CLASS_OUTFIT[p.character_class] || CLASS_OUTFIT.krieger;
+    const backLayer = equippedSheet(p, 'equipped_accessory');
+    const armorLayer = equippedSheet(p, 'equipped_armor');
+    const weaponLayer = equippedSheet(p, 'equipped_weapon');
     const layers = [];
-    if(outfit.back) layers.push(outfit.back);
+    if(backLayer) layers.push(backLayer);
     if(p.skin_tone) layers.push(`skin_${p.skin_tone}.png`);
     layers.push(`outfit_body_${gender}.png`);
     layers.push(`outfit_gloves_${gender}.png`);
     if(p.hair_style) layers.push(`hair_${p.hair_style}.png`);
-    if(outfit.weapon) layers.push(outfit.weapon(gender));
+    if(armorLayer) layers.push(armorLayer);
+    if(weaponLayer) layers.push(weaponLayer);
     return layers;
   }
 
@@ -1624,6 +1641,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(error){ reportError('Charakter erstellen', error, errEl); return; }
     profile = saved;
     resumingProfileId = null;
+    justCreatedCharacter = true;
     document.getElementById('appearanceScreen').style.display='none';
     document.getElementById('loading').style.display='flex';
     await enterApp();
@@ -1695,10 +1713,37 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     await enterApp();
   }
 
+  // Dieselben Klassenitems, die vorher als CLASS_OUTFIT fest im Look
+  // eingebrannt waren, jetzt als echte, ausziehbare Katalog-Items - müssen
+  // im Regelwerk existieren (siehe sql/patch26_klassenitems.sql), sonst
+  // passiert hier nichts (kein Fehler, einfach kein Start-Item).
+  const CLASS_STARTER_ITEMS = {
+    hexer: ['hexer_stab', 'hexer_cape'],
+    krieger: ['krieger_schwert', 'krieger_helm'],
+    schuetze: ['schuetze_rucksack'],
+  };
+  async function grantClassStarterEquipment(){
+    const keys = CLASS_STARTER_ITEMS[profile.character_class] || [];
+    const items = config.items || {};
+    const equipFields = {};
+    for(const key of keys){
+      const def = items[key];
+      if(!def) continue;
+      await grantItem(key, 1);
+      const slotField = EQUIP_SLOT_FIELD[def.category];
+      if(slotField) equipFields[slotField] = key;
+    }
+    if(Object.keys(equipFields).length === 0) return;
+    const { error } = await sb.from('profiles').update(equipFields).eq('id', profile.id);
+    if(error){ reportError('Start-Ausrüstung anziehen', error); return; }
+    Object.assign(profile, equipFields);
+  }
+
   async function enterApp(){
     applyClassTheme(profile.character_class);
     try{ await loadOrg(); await loadConfig(); await loadLog(); }
     catch{ document.getElementById('loading').style.display='none'; return; }
+    if(justCreatedCharacter){ await grantClassStarterEquipment(); justCreatedCharacter = false; }
     await loadProducts();
     phoneTally = Number(localStorage.getItem('phoneTally_'+profile.id) || 0);
     lastKnownLevel = levelInfo(computeTotals().totalXp).level;
@@ -2366,7 +2411,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   function renderCharacterEquipment(){
     const items = config.items || {};
-    const equipLayersEl = document.getElementById('charEquipLayers');
     const badges = document.getElementById('charEquipBadges');
     const slots = [
       { field:'equipped_weapon', label:'Waffe' },
@@ -2378,11 +2422,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       .filter(s => s.def);
 
     charRenderer.setLayers(layersForCharacterProfile(profile));
-
-    // Layer-Bilder: sobald ein Item ein "image"-Feld hat, wird es hier automatisch
-    // als Ebene über die animierte Basisfigur gelegt. Aktuell hat noch kein Item ein Bild.
-    const withImage = equippedDefs.filter(s => s.def.image);
-    equipLayersEl.innerHTML = withImage.map(s => `<img src="${s.def.image}" alt="${s.def.label}">`).join('');
 
     badges.innerHTML = equippedDefs.map(s =>
       `<div class="char-badge"><span>${s.def.icon||'❔'}</span><span>${s.def.label}</span></div>`

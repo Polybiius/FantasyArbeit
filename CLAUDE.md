@@ -706,32 +706,51 @@ irgendwo im System.
   Asset-Pakete (z.B. itch.io — Lizenz für spätere kommerzielle Nutzung des
   Produkts vorher prüfen).
 
-  **Design für Gewinnen/Anziehen, seit 2026-08-01 festgelegt (noch nicht
-  gebaut):**
-  - *Gewinnen*: über das bestehende `grantItem()` (bisher nur für
-    Quest-Belohnungen wie den täglichen Manatrank genutzt) — Quests
-    bekommen ein optionales `reward_item_key`+`qty`-Feld im Regelwerk, bei
-    Abschluss landet das Item wie gehabt in `user_inventory`. Keine neue
-    Infrastruktur nötig.
-  - *Anziehen/Ausziehen*: bewusst **keine geloggte Aktion** (kein XP, kein
-    `action_log`-Eintrag) — reine Kosmetik, kein Vertriebsverhalten. Neues,
-    einfaches `equipItem(slot, item_key)`/`unequipItem(slot)`, setzt nur
-    `profiles.equipped_<slot>`, beliebig oft wiederholbar, verbraucht das
-    Item in `user_inventory` NICHT (Unterschied zu Verbrauchsgütern wie dem
-    Manatrank, die beim Benutzen abgezogen werden).
-  - Dafür braucht der Item-Katalog (`rule_configs.config.items`) eine
-    Unterscheidung: `slot: 'weapon'|'armor'|'accessory'` für Ausrüstung
-    (nicht verbraucht) vs. das bestehende `effect`-Feld für Verbrauchsgüter
-    (wird verbraucht, siehe `useItem()`). Kein neues DB-Schema nötig — passt
-    komplett in die bestehenden Tabellen (`user_inventory`, `profiles.
-    equipped_*`, Regelwerk-JSON).
+  **Anziehen/Ausziehen: seit 2026-08-03 fertig gebaut** (Design dafür schon
+  seit 2026-08-01 festgelegt, aber erst jetzt mit echten Items verbunden).
+  `toggleEquip(itemKey, slotField)` in `index.html` existierte als
+  Code-Gerüst tatsächlich schon seit Patch 5, lief aber all die Zeit ins
+  Leere, weil kein einziges Ausrüstungs-Item im Katalog existierte (nur der
+  Manatrank). Bewusst **keine geloggte Aktion** (kein XP, kein
+  `action_log`-Eintrag) — reine Kosmetik, kein Vertriebsverhalten. Verbraucht
+  das Item in `user_inventory` NICHT (Unterschied zu Verbrauchsgütern wie dem
+  Manatrank, die beim Benutzen abgezogen werden) — Klamotten können nicht
+  verschwinden. Item-Katalog unterscheidet `category:
+  'waffen'|'ruestung'|'accessories'` (→ `EQUIP_SLOT_FIELD` mappt auf
+  `profiles.equipped_weapon/armor/accessory`) von Verbrauchsgütern mit
+  `effect`-Feld (siehe `useItem()`).
 
-  Technisches Fundament ist **fertig**: `profiles.
-  equipped_weapon/armor/accessory`, `items.image`-Feld (aktuell leer) —
-  sobald eine Bild-URL im Regelwerk hinterlegt wird, rendert die
-  Charakter-Seite sie automatisch als Ebene, ohne Code-Änderung. Fehlt noch:
-  das Asset-Paket selbst, `equipItem()`/`unequipItem()`, und das
-  Reward-Feld in Quests.
+  **Rendering-Ansatz geändert gegenüber dem ursprünglichen Plan:** statt des
+  anfangs geplanten flachen `items.image`-Felds (ein statisches PNG als
+  Ebene über der ganzen Figur) nutzt Ausrüstung jetzt dieselbe
+  Sprite-Sheet-Technik wie der Aussehen-Screen — `items.sheet` (Dateiname
+  unter `img/characters/sheets/`, `{g}`-Platzhalter für geschlechtsabhängige
+  Varianten wie Waffen). `layersForCharacterProfile()` baut daraus live die
+  Ebenen-Liste aus den tatsächlich angezogenen Items
+  (`profiles.equipped_*`), gerendert über denselben `createSpriteRenderer()`
+  wie überall sonst — konsistent mit der Linie "dynamisch statt statisch"
+  (siehe Memory). Das alte `items.image`-Feld/die zugehörige
+  `<img>`-Overlay-Logik wurde ersatzlos entfernt, da inzwischen unbenutzt.
+
+  Die bisherigen CLASS_OUTFIT-Klassenitems (Hexer: Zauberstab + blaues
+  Cape, Krieger: Holzschwert + Guard Helmet, Schütze: kleiner Rucksack)
+  sind jetzt echte Katalog-Items (`sql/patch26_klassenitems.sql`). Neue
+  Charaktere bekommen sie automatisch bei der Erschaffung ins Inventar
+  gelegt UND angezogen (`grantClassStarterEquipment()`, ausgelöst über ein
+  `justCreatedCharacter`-Flag einmalig in `enterApp()` — nicht bei jedem
+  Login), sehen also unverändert aus wie bisher, können die Teile aber ab
+  jetzt im Inventar ausziehen. Bestehende Profile (die es schon vor diesem
+  Patch gab) bekommen ihr Klassenitem einmalig per SQL nachträglich ins
+  Inventar + angezogen. `CLASS_OUTFIT`/`layersForClassPortrait` bleiben
+  unverändert bestehen — die brauchen weiterhin ein festes Beispiel-Outfit
+  für die Vorschauen im Onboarding (Klassenwahl, Aussehen-Screen), wo es ja
+  noch gar kein Inventar gibt.
+
+  **Weiterhin offen:** das `reward_item_key`+`qty`-Feld für Quests (Items
+  als Quest-Belohnung gewinnen, über das bestehende generische `grantItem()`
+  — technisch trivial, aber noch nicht verdrahtet). Schütze hat weiterhin
+  keine Fernkampfwaffe im Klassenitem-Set (Bogen/Zauberstab-Asset fehlt,
+  siehe Wiedervorlage weiter unten).
 
   **Asset-Quelle, seit 2026-08-01 im Testeinsatz:** heruntergeladene
   GandalfHardcore-Pakete (Basis-Körper, Arm-/Handschuh-Ebenen, Hand-Items/
