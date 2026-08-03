@@ -150,8 +150,6 @@
   }
   .char-art-stack{position:relative;width:100%;height:220px;display:flex;align-items:center;justify-content:center;}
   .char-art-stack canvas{height:200px;width:auto;image-rendering:pixelated;}
-  .char-equip-badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;justify-content:center;}
-  .char-badge{background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 12px;font-size:12px;color:var(--text);display:flex;align-items:center;gap:6px;}
 
   .guild-create-row{display:flex;gap:10px;margin-bottom:10px;}
   .friend-search-row{display:flex;gap:10px;margin-bottom:6px;}
@@ -595,7 +593,6 @@
           <div class="char-art-stack" id="charArtStack">
             <canvas id="charSpriteCanvas"></canvas>
           </div>
-          <div class="char-equip-badges" id="charEquipBadges"></div>
         </div>
 
         <div class="card" style="margin-top:18px;">
@@ -2410,22 +2407,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   });
 
   function renderCharacterEquipment(){
-    const items = config.items || {};
-    const badges = document.getElementById('charEquipBadges');
-    const slots = [
-      { field:'equipped_weapon', label:'Waffe' },
-      { field:'equipped_armor', label:'Rüstung' },
-      { field:'equipped_accessory', label:'Accessoire' },
-    ];
-    const equippedDefs = slots
-      .map(s => ({ ...s, key: profile[s.field], def: profile[s.field] ? items[profile[s.field]] : null }))
-      .filter(s => s.def);
-
     charRenderer.setLayers(layersForCharacterProfile(profile));
-
-    badges.innerHTML = equippedDefs.map(s =>
-      `<div class="char-badge"><span>${s.def.icon||'❔'}</span><span>${s.def.label}</span></div>`
-    ).join('');
   }
 
   // ---- Freunde (unabhängig von Gilden) ----
