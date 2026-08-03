@@ -96,13 +96,11 @@ Reihenfolge zu bauen. Patch 24 (`patch24_profil_onboarding.sql`,
 SQL-Editor ausgeführt.
 
 **Wichtig zu Patch 25:** die Datenbank-Spalten `profiles.skin_tone`/`hair_style`
-existieren zwar schon live, der zugehörige Screen ("Aussehen", siehe unten)
-existiert aber weiterhin NUR im Dummy (`dummy-anmeldung.html`) — noch nicht im
-echten `index.html` übertragen. Das echte Frontend schreibt diese beiden
-Spalten also noch nirgends, ist aber technisch kein Problem (nullable, kein
-Zeitdruck). **SQL-Patches werden künftig erst nach explizitem Go von Claude
-Code ausgeführt** (nicht mehr sobald die Datei existiert) — siehe Absprache
-vom 2026-08-02.
+existieren seit 2026-08-02 live; der zugehörige Screen ("Aussehen", siehe
+unten) wurde seit 2026-08-03 ins echte `index.html` übertragen und schreibt
+seitdem auch tatsächlich hinein. **SQL-Patches werden künftig erst nach
+explizitem Go von Claude Code ausgeführt** (nicht mehr sobald die Datei
+existiert) — siehe Absprache vom 2026-08-02.
 
 Alle SQL-Patches liegen im Ordner `sql/` (chronologisch benannt, `schema.sql` +
 `patch.sql` sind die ursprüngliche Basis, danach `patch2_...` bis `patch24_...`).
@@ -373,6 +371,23 @@ der Nutzer direkt in der echten Anwendung ansehen kann. Playwright/Chromium
 (siehe oben) dient dabei der automatisierten
 Kontrolle beider Versionen.
 
+**`dummy-anmeldung.html` seit 2026-08-03 gelöscht:** der Admin-Knopf "🎭 Neu
+erschaffen" (siehe Kanban-Abschnitt weiter unten bzw. Git-Commit
+`0a27220`) springt für Admins zurück auf `profileScreen` →
+`charCreateScreen` → `appearanceScreen` und aktualisiert am Ende das
+bestehende Profil statt eines neuen anzulegen. Damit ist die ursprüngliche
+Sichtbarkeits-Lücke, die die Dummy-Datei überhaupt nötig gemacht hatte,
+strukturell geschlossen — der Nutzer kann sich jede künftige Änderung an
+diesen drei Screens direkt im echten, laufenden Programm ansehen. Alle
+Code-Stellen unten, die noch von `dummy-anmeldung.html` sprechen, sind
+historisch gemeint (beschreiben, wo etwas ursprünglich gebaut/geprüft
+wurde) — aktuell lebt der gesamte Rendering-Code nur noch in `index.html`.
+**Lehre fürs nächste Mal:** bevor eine neue Dummy-Datei für ein
+"unerreichbar gewordenes" Onboarding-artiges Bildschirm gebaut wird, erst
+prüfen, ob ein kleiner, dauerhafter Admin-Debug-Zugang (wie dieser Knopf)
+die Sichtbarkeits-Lücke nicht direkter und dauerhaft schließt, statt eine
+Wegwerf-Kopie zu pflegen.
+
 ## Aussehen-Screen (Hautfarbe/Frisur), seit Patch 25 (2026-08-02)
 
 Vierter Onboarding-Schritt, direkt nach der Klassenwahl, vor dem Sprung ins
@@ -415,7 +430,9 @@ den Wechsel: der Nutzer wollte explizit **keine statischen Einzelbilder**
 sichtbar **auf der Stelle läuft** statt (wie bei einem ersten,
 verworfenen CSS-`steps()`-Versuch) unsauber zu wirken.
 
-Technik (`createSpriteRenderer(canvas, scale)` in `dummy-anmeldung.html`):
+Technik (`createSpriteRenderer(canvas, scale)`, heute nur noch in
+`index.html` — ursprünglich zuerst in `dummy-anmeldung.html` gebaut, siehe
+"Entstehungsweg" oben):
 - Jede Ebene (Haut, Kleidung, Handschuhe, Frisur, Waffe, Rücken-Item) ist
   ein volles, unbeschnittenes Sprite-Sheet (`img/characters/sheets/`,
   siehe unten) — **kein zugeschnittenes Vorschaubild**, sondern dieselbe
@@ -439,7 +456,7 @@ Technik (`createSpriteRenderer(canvas, scale)` in `dummy-anmeldung.html`):
   Hautfarben-/Frisur-Wechsel) und rendert sofort neu, ohne den
   Animations-Timer neu zu starten.
 
-Zwei Renderer-Instanzen im Dummy:
+Zwei Renderer-Instanzen (in `index.html`):
 - **Klassenwahl-Portraits** (`portraitRenderers`, drei `<canvas>` statt
   der früheren `<img>`): feste Basis-Kleidung + Klassenitem, bewusst
   glatzköpfig (Frisur kommt ja erst im nächsten Screen), Krieger inkl.
@@ -480,8 +497,9 @@ ersetzt.
 **Datenbank (Patch 25, `sql/patch25_aussehen.sql`, bereits ausgeführt):** zwei
 neue nullable Spalten `profiles.skin_tone`/`hair_style` — reine Schlüssel in
 den fest im Frontend hinterlegten Katalog (`SKIN_CATALOG`/`HAIR_CATALOG`,
-identisch in `index.html` und `dummy-anmeldung.html` gepflegt), keine eigene
-Farbspalte nötig (siehe oben, Farbe steckt schon in der gewählten Frisur).
+heute nur noch in `index.html` gepflegt, siehe "Entstehungsweg" oben),
+keine eigene Farbspalte nötig (siehe oben, Farbe steckt schon in der
+gewählten Frisur).
 Seit 2026-08-03 schreibt das echte Programm auch tatsächlich hinein (siehe
 `appearanceDoneBtn`-Handler oben).
 
