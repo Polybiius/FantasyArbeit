@@ -810,12 +810,61 @@ prüfbar statt im Kopf vorausgeplant werden zu müssen.
   falls der Chat-Verlauf vom 2026-07-30 verfügbar ist, dort nachlesen (Details
   wurden hier bewusst nicht mehr mitgeschleppt). Nicht von selbst wieder
   anfangen, nur wenn der Nutzer es explizit anstößt.
-- **BWS-Verrechnung (Phase 2 des Produktkatalogs)**: `sales.bewertungssumme`
-  wird seit Patch 23 erfasst, aber noch nicht zu Provision/Bewertungspunkten
-  verrechnet. Vor dem Bauen klären: ist die BWS ein fester Wert je Produkt
-  oder wird sie aus `laufender_beitrag` × einem produktabhängigen Faktor
-  berechnet, und wie genau werden daraus Provision und Bewertungspunkte
-  (feste Prozentsätze pro Produkt? organisationsweiter Faktor?).
+- **BWS-Verrechnung (Phase 2 des Produktkatalogs)** — Formel jetzt bekannt,
+  **noch nicht gebaut** (kein SQL/Code bisher). Am 2026-08-03 hat der Nutzer
+  seine bestehende Excel (`~/Schreibtisch/Projekt.xlsm`, 14 Blätter:
+  Datenblatt + 12 Monate + Summe, komplett leeres Formular ohne echte
+  historische Verträge) geliefert und Claude Code hat sie vollständig
+  ausgelesen (ZIP+XML, ohne Excel/openpyxl nötig). Drei **unabhängige**
+  Werte werden direkt aus dem eingetragenen Betrag pro Vertrag berechnet
+  (nicht verkettet, wie der Name "BWS→Provision→Bewertungspunkte" vermuten
+  ließe):
+
+  | Art-Code | Bedeutung | Bewertungspunkte-Faktor | Provisions-Faktor |
+  |---|---|---|---|
+  | LV | Lebensversicherung | ×0,05 | × (individuelle ‰-Rate ÷ 1000) |
+  | KV | Krankenversicherung | ×8 | × individuelle MB-Rate |
+  | SH | Sach/Hausrat (DÄV/AXA) | ×1 | ×0,1 |
+  | RS | Rechtsschutz (Roland) | ×0,75 | ×0,365 |
+  | KFZ | Kfz (AXA) | ×0,3 | ×0,08 |
+  | D | Darlehen APO (>5J) | ×0,02 | ×0,01 |
+  | DP | Darlehen Plattform | ×0,016 | ×0,008 |
+  | KAP | Kapitalanlage | ×0,03 | ×0,01 |
+  | pmaSUH | pma-Vermittlung SUH | ×1 | ×0,23 × 0,05 |
+  | pmaKV | pma-Vermittlung KV | ×0 | ×0,75 × 0,282 |
+  | KontoAPO / KontoStud | Kontoeröffnung | ×0 | 200€ / 100€ fest |
+
+  Zusätzlich **Differenzprovision** (nur LV/KV):
+  `Betrag × (Standard-Satz − individuelle Rate)` — Standard-Sätze org-weit
+  40‰ (LV) bzw. 8 (KV), individuelle Rate siehe unten.
+
+  **Drei Kernentscheidungen, mit dem Nutzer abgestimmt (2026-08-03):**
+  1. **LV/KV-Provisionssätze sind individuell pro Mitarbeiter**, nicht
+     organisationsweit — brauchen eigene Felder in `profiles` (z.B.
+     `lv_promille_satz`, `kv_mb_satz`), nicht in `rule_configs`.
+  2. **Bewertungssumme (nur LV) und Bewertungsbeitrag (alle anderen
+     Sparten) bleiben begrifflich getrennt**, genau wie in der Excel —
+     nicht zu einem generischen Feld zusammengelegt.
+  3. **Zwei Excel-eigene Bugs werden beim Übertragen korrigiert, nicht
+     nachgebaut**: pmaSUH-Provisionsfaktor korrekt auf 0,05 (die Excel-
+     Formel driftete ab der zweiten Vertragszeile durch einen nicht
+     fixierten Zellbezug auf falsche/leere Zellen); DP-Bewertungspunkte-
+     Faktor einheitlich ×0,8 (ein Tippfehler hatte in einer einzelnen
+     Zeile ×0,08 stehen).
+
+  **Bewusst NICHT übernommen:** das "Summe"-Blatt der Excel war laut
+  Nutzer nur der unfertige erste Anlauf zu einem eigenen Dashboard
+  (Zielerreichungsgrad-Balken, wöchentliche FA→T1-Konversionsquote) — wird
+  durch die gemeinsam gebaute Verkaufsstatistik-Seite (Kompendium/
+  Kriegskasse/Trophäenkammer, siehe "Charakterklassen") ersetzt, nicht
+  Zelle für Zelle nachgebaut. Die FA→T1-Wochenquote-Idee (Kaltakquise→
+  Erstgespräch-Konversion) ist aber als mögliche spätere Kennzahl notiert,
+  falls das Statistik-Modul das aufgreifen soll.
+
+  **Nächster offener Schritt:** konkretes Datenmodell für die Faktoren
+  selbst festlegen (je Produkt in `products`? fester Code-Lookup wie in
+  der Excel, mit `products.key` als Art-Code?) und dann SQL-Patch +
+  Berechnungscode bauen — noch nicht angegangen.
 - **Vertragsnummer-Feld an `sales`** — vom Nutzer am 2026-07-31 fürs
   zukünftige B2B-CRM-Geschäft angekündigt (andere Vertriebsorganisationen
   brauchen das vermutlich), aktuell aber noch nicht gebraucht — bewusst noch
