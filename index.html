@@ -546,6 +546,7 @@
           <button class="cs-btn" data-class="schuetze" title="Schütze">🏹</button>
         </div>
         <button class="admin-btn" id="adminToggleBtn" style="display:none;">⚙ Admin</button>
+        <button class="admin-btn" id="charRespawnBtn" style="display:none;" title="Name/Klasse/Aussehen erneut durchlaufen, zum Testen der Optik">🎭 Neu erschaffen</button>
         <button class="logout-btn" id="logoutBtn">Abmelden</button>
       </div>
     </div>
@@ -1678,6 +1679,23 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   function activeProducts(){ return products.filter(p=>p.active); }
   function productById(id){ return products.find(p=>p.id===id); }
 
+  // Springt zurück auf den Profil-Screen, um Name/Klasse/Aussehen für ein
+  // BESTEHENDES Profil erneut zu durchlaufen - appearanceDoneBtn macht am
+  // Ende ein update() statt insert() (resumingProfileId), XP/Kontakte/etc.
+  // bleiben unberührt. Zwei Aufrufer: afterLogin() (automatisch bei
+  // Alt-Accounts ohne gender/skin_tone) und charRespawnBtn (manuell, nur
+  // Admins, zum wiederholten Testen der Optik - siehe dort).
+  function enterProfileOnboarding(existingProfile){
+    resumingProfileId = existingProfile.id;
+    document.getElementById('realNameInput').value = existingProfile.real_name || '';
+    document.getElementById('charNameInput').value = existingProfile.display_name || '';
+    document.getElementById('companyInput').value = existingProfile.company || '';
+    document.querySelectorAll('.gender-btn').forEach(b=>b.classList.toggle('active', b.dataset.gender===existingProfile.gender));
+    selectedGender = existingProfile.gender || null;
+    updateProfileNextBtn();
+    document.getElementById('profileScreen').style.display='block';
+  }
+
   async function afterLogin(){
     document.getElementById('authScreen').style.display='none';
     document.getElementById('loading').style.display='flex';
@@ -1691,20 +1709,9 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     }
     if(!existing.gender || !existing.skin_tone){
       // Alt-Account von vor dem Profil-/Aussehen-Onboarding: fehlende Felder
-      // nachholen, bevor es in die App geht. Läuft über dieselben drei Screens
-      // wie bei der Neuanmeldung (profileScreen/charCreateScreen/appearanceScreen),
-      // appearanceDoneBtn macht am Ende ein update() statt insert() (resumingProfileId).
-      resumingProfileId = existing.id;
-      document.getElementById('realNameInput').value = existing.real_name || '';
-      document.getElementById('charNameInput').value = existing.display_name || '';
-      document.getElementById('companyInput').value = existing.company || '';
-      if(existing.gender){
-        selectedGender = existing.gender;
-        document.querySelectorAll('.gender-btn').forEach(b=>b.classList.toggle('active', b.dataset.gender===existing.gender));
-      }
-      updateProfileNextBtn();
+      // nachholen, bevor es in die App geht.
       document.getElementById('loading').style.display='none';
-      document.getElementById('profileScreen').style.display='block';
+      enterProfileOnboarding(existing);
       return;
     }
     profile = existing;
@@ -1728,7 +1735,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     for(const key of keys){
       const def = items[key];
       if(!def) continue;
-      await grantItem(key, 1);
+      // Direkt in der DB nachsehen statt dem (an dieser Stelle noch nicht
+      // frisch geladenen) inventory-Array zu vertrauen - wichtig, weil
+      // charRespawnBtn diese Funktion beliebig oft für denselben Spieler
+      // erneut auslösen kann. Ohne diesen Check würde grantItem() den
+      // Bestand bei jedem Testlauf weiter aufsummieren.
+      const { data: existingRow } = await sb.from('user_inventory').select('quantity').eq('user_id', profile.id).eq('item_key', key).maybeSingle();
+      if(!existingRow || existingRow.quantity <= 0) await grantItem(key, 1);
       const slotField = EQUIP_SLOT_FIELD[def.category];
       if(slotField) equipFields[slotField] = key;
     }
@@ -1751,6 +1764,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('nameInput').value = profile.display_name;
     document.getElementById('orgSubtitle').textContent = `Klasse: ${CLASS_LABELS[profile.character_class]||profile.character_class} · Organisation: ${org ? org.name : ''}`;
     document.getElementById('adminToggleBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
+    document.getElementById('charRespawnBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
     document.getElementById('navFehlerprotokollBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
     document.getElementById('navProdukteBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
     if(profile.role==='admin'){
@@ -1775,6 +1789,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     profile.display_name = name;
     const { error } = await sb.from('profiles').update({display_name:name}).eq('id', profile.id);
     if(error) reportError('Namen speichern', error);
+  });
+
+  // ---- Admin: Charakter zu Optik-Testzwecken erneut durchlaufen ----
+  // Springt zurück auf den Profil-Screen (Name/Klasse/Aussehen), appearanceDoneBtn
+  // aktualisiert danach dasselbe Profil statt eines neuen (resumingProfileId) -
+  // beliebig oft wiederholbar, XP/Kontakte/Inventar etc. bleiben unangetastet.
+  document.getElementById('charRespawnBtn').addEventListener('click', ()=>{
+    document.getElementById('app').style.display='none';
+    enterProfileOnboarding(profile);
   });
 
   // ---- Admin: Regelwerk bearbeiten ----
