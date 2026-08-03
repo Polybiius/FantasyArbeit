@@ -85,6 +85,42 @@ nicht per Code-Änderung.
   Nutzers, dadurch kein `ksshaskpass`-Problem mehr). **SQL-Patches laufen
   weiterhin manuell** über den Supabase SQL-Editor beim Nutzer — dafür hat
   Claude Code keinen Zugriff/Zugangsdaten.
+- **Frontend-Framework-Frage (React/Vue/etc.), geklärt am 2026-08-03:** die
+  "eine `index.html`, kein Framework"-Linie oben war ursprünglich eine
+  praktische Zwangslage aus der Zeit vor Claude Code (Copy-Paste in GitHubs
+  Web-Upload), keine Grundsatzentscheidung — aber auch nach dieser Erkenntnis
+  gilt weiterhin "nicht vorbeugend wechseln, erst bei echtem Auslöser"
+  (Rule-of-Three-Prinzip auf Tooling übertragen). Der Nutzer wollte dabei
+  ausdrücklich **groß denken**: viele B2B-Kunden werden künftig
+  unterschiedliche Bausteine brauchen (Kanban, Kundendatenbank, Gamification,
+  Statistik, Tagebuch, Dungeon, Questbaum — manche projektorientiert ohne
+  Dungeon, manche statistiklastig ohne Kanban). **Wichtige Klarstellung, die
+  an diesem Tag herausgearbeitet wurde:** das ist eine Frage der
+  **Konfigurierbarkeit** (welche Bausteine sind je Organisation aktiv — löst
+  sich über `rule_configs`, z.B. ein `enabledModules`-Schlüssel, unabhängig
+  vom Framework) und NICHT automatisch dasselbe wie die Frage "Framework
+  oder nicht" (die betrifft nur, wie wartbar/wiederverwendbar der Code
+  innerhalb eines Bausteins ist). Ein Framework schaltet keine Module für
+  Kunde A ab und für Kunde B an — das bleibt Config-Arbeit, so oder so.
+  Baseline-Messung an diesem Tag: `index.html` 3.845 Zeilen/208 KB,
+  139 benannte Funktionen, `.contact-card`-Markup real nur an EINER Stelle
+  verwendet (Kanban/Dungeon-Liste bauen ihre Kontakt-Darstellung noch
+  separat) — also aktuell noch kein echtes Duplikations-Problem, das für
+  React sprechen würde. **Konkrete Alarmglocken-Schwellen, ab denen das
+  Framework-Thema aktiv wieder aufgegriffen werden sollte** (nicht vorher,
+  nicht von selbst):
+  1. Der `<script>`-Block nähert sich **~8.000–10.000 Zeilen**.
+  2. Dieselbe Karten-/Listen-Darstellung (Kontakt-Karte, Dungeon-Karte, o.ä.)
+     wird über **3 oder mehr** `render*`-Funktionen hinweg kopiert statt an
+     einer Stelle definiert.
+  3. Der Nutzer meldet einen **echten** (nicht hypothetischen) Stale-UI-Bug,
+     der durch eine vergessene manuelle `render*()`-Nachbestellung entstanden
+     ist.
+  4. Mehrere Personen bearbeiten das Frontend gleichzeitig.
+  Tritt eine dieser vier Bedingungen ein, das Thema von selbst wieder
+  ansprechen — nicht erst auf Anstoß warten (Ausnahme zur sonstigen
+  Zurückhaltung bei Tech-Wechseln, siehe `feedback_tech_evolution_on_trigger`
+  in der Erinnerung).
 
 ## Datenbank — aktueller Stand (Annahme: Patch 1–25 eingespielt)
 
