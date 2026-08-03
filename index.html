@@ -277,6 +277,7 @@
   .stat-card .stat-sub{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted-2);}
   .stat-ring{width:84px;height:84px;}
   .stat-ring text{font-family:'JetBrains Mono',monospace;}
+  .stat-spark{width:100%;height:36px;display:block;margin-top:4px;}
   .stat-chart-card{background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;margin-bottom:22px;box-shadow:var(--shadow-rest);}
   .stat-legend{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:14px;}
   .stat-legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);}
@@ -2815,12 +2816,35 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     </svg>`;
   }
 
-  function statHeroCard(label, value, target, fmt){
+  // Kleiner Verlaufs-Chart (12 Monatswerte) unter jeder Kompendium-Kachel,
+  // nur in der Jahresansicht - Werte selbst bleiben über die Monats-Reiter
+  // exakt abrufbar, die Sparkline ist rein die Trend-Andeutung.
+  function sparklineSvg(values){
+    const w = 140, h = 36;
+    const max = Math.max(...values, 0.0001);
+    const pts = values.map((v,i)=> [ (i/(values.length-1))*w, h - (v/max)*(h-4) - 2 ]);
+    const line = pts.map((p,i)=> (i===0?'M':'L')+p[0].toFixed(1)+','+p[1].toFixed(1)).join(' ');
+    const area = line + ` L${w},${h} L0,${h} Z`;
+    const gid = 'sg'+Math.random().toString(36).slice(2,8);
+    const last = pts[pts.length-1];
+    return `<svg class="stat-spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+      <defs><linearGradient id="${gid}" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="var(--arcane)" stop-opacity="0.35"/>
+        <stop offset="100%" stop-color="var(--arcane)" stop-opacity="0"/>
+      </linearGradient></defs>
+      <path d="${area}" fill="url(#${gid})" stroke="none"/>
+      <path d="${line}" fill="none" stroke="var(--arcane)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="${last[0].toFixed(1)}" cy="${last[1].toFixed(1)}" r="3" fill="var(--arcane)"/>
+    </svg>`;
+  }
+
+  function statHeroCard(label, value, target, fmt, series){
+    const spark = (series && series.some(v=>v>0)) ? sparklineSvg(series) : '';
     if(target){
       const pct = (value/target)*100;
-      return `<div class="stat-card">${statRingSvg(pct)}<span class="stat-label">${label}</span><span class="stat-sub">${fmt(value)} / ${fmt(target)}</span></div>`;
+      return `<div class="stat-card">${statRingSvg(pct)}<span class="stat-label">${label}</span><span class="stat-sub">${fmt(value)} / ${fmt(target)}</span>${spark}</div>`;
     }
-    return `<div class="stat-card"><span class="stat-value">${fmt(value)}</span><span class="stat-label">${label}</span><span class="stat-sub">kein Ziel gesetzt</span></div>`;
+    return `<div class="stat-card"><span class="stat-value">${fmt(value)}</span><span class="stat-label">${label}</span><span class="stat-sub">kein Ziel gesetzt</span>${spark}</div>`;
   }
 
   function renderStatCategoryChart(byCategory){
@@ -2864,12 +2888,20 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const agg = aggregateStats(salesList);
     document.getElementById('statEmptyHint').style.display = salesList.length===0 ? 'block' : 'none';
     const fmtNum = (n)=>n.toLocaleString('de-DE',{maximumFractionDigits:1});
+
+    let monthly = null;
+    if(statSelectedPeriod==='jahr'){
+      monthly = [];
+      for(let m=0;m<12;m++) monthly.push(aggregateStats(salesForPeriod(String(m))));
+    }
+    const series = (key)=> monthly ? monthly.map(mo=>mo[key]) : null;
+
     document.getElementById('statHeroGrid').innerHTML = [
-      statHeroCard('Bewertungssumme Leben', agg.bwsLeben, profile.planung_lv_bws, fmtEuro),
-      statHeroCard('Bewertungsbeitrag sonstige', agg.beitragSonstige, profile.planung_kv_mb, fmtEuro),
-      statHeroCard('Bewertungspunkte', agg.bwp, profile.planung_bwp, fmtNum),
-      statHeroCard('Provision', agg.provision, null, fmtEuro),
-      statHeroCard('Differenzprovision', agg.diffProvision, null, fmtEuro),
+      statHeroCard('Bewertungssumme Leben', agg.bwsLeben, profile.planung_lv_bws, fmtEuro, series('bwsLeben')),
+      statHeroCard('Bewertungsbeitrag sonstige', agg.beitragSonstige, profile.planung_kv_mb, fmtEuro, series('beitragSonstige')),
+      statHeroCard('Bewertungspunkte', agg.bwp, profile.planung_bwp, fmtNum, series('bwp')),
+      statHeroCard('Provision', agg.provision, null, fmtEuro, series('provision')),
+      statHeroCard('Differenzprovision', agg.diffProvision, null, fmtEuro, series('diffProvision')),
     ].join('');
     renderStatCategoryChart(agg.byCategory);
     renderStatNumberCards(agg.byCategory);

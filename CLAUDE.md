@@ -955,11 +955,30 @@ prüfbar statt im Kopf vorausgeplant werden zu müssen.
   existieren bereits (Patch 31), aber es gibt noch keine Zählquelle dafür
   im Aktions-Log (die FA→T1-Wochenquote-Idee aus der Excel, siehe oben,
   ist dafür der wahrscheinliche Anknüpfungspunkt, aber bewusst noch nicht
-  gebaut). Visuelle Prüfung durch Claude Code war für diese Seite nicht
-  möglich (das ganze Skript liegt in einer IIFE, keine echten Supabase-
-  Zugangsdaten vorhanden) — nur Lint + Code-Review, kein Live-Screenshot
-  mit echten Daten. Bitte beim ersten echten Test besonders auf die oben
-  genannte Annahme (BWS vs. Beitrag, keine Menge-Multiplikation) achten.
+  gebaut).
+
+  **Echter Login für Claude Code, seit 2026-08-03:** der Nutzer hat seinen
+  echten App-Zugang (nicht sein persönliches Supabase-Dashboard-Konto,
+  das ist getrennt) geteilt, damit Claude Code künftig mit Playwright
+  echte Screenshots statt nur Code-Review machen kann. Liegt in
+  `~/.local/share/fantasyarbeit-claude-test/credentials.json` (außerhalb
+  des Repos, chmod 600, nie auf GitHub). Bei Passwort-Änderungen: Nutzer
+  meldet sich, Datei wird aktualisiert. Damit wurde diese Seite (leerer
+  Zustand, keine Verkäufe/Ziele bisher) bereits einmal live bestätigt —
+  echte Zahlen/Ring-Füllstand/Sparklines muss der Nutzer selbst gegenprüfen,
+  sobald er ein erstes Produkt + einen Testverkauf angelegt hat. Bitte
+  dabei besonders auf die oben genannte Annahme (BWS vs. Beitrag, keine
+  Menge-Multiplikation) achten.
+
+  **Verlaufs-Sparklines (2026-08-03):** jede der 5 KPI-Kacheln zeigt in
+  der Jahresansicht zusätzlich einen kleinen Flächen-Chart der 12
+  Monatswerte (`sparklineSvg()`) — bewusst als "small multiples" (eine
+  Mini-Kurve pro Kachel) statt eines gemeinsamen Charts mit mehreren
+  Metriken auf einer Achse (Skalen sind zu unterschiedlich: Euro vs.
+  Bewertungspunkte). Bleibt unsichtbar, wenn alle Monatswerte 0 sind,
+  statt eine bedeutungslose Nulllinie zu zeigen. Kein eigener Hover pro
+  Datenpunkt — die exakten Zahlen bleiben über die Monats-Reiter
+  abrufbar, das reicht als "Tabellen-Ansicht"-Äquivalent.
 - **Vertragsnummer-Feld an `sales`** — vom Nutzer am 2026-07-31 fürs
   zukünftige B2B-CRM-Geschäft angekündigt (andere Vertriebsorganisationen
   brauchen das vermutlich), aktuell aber noch nicht gebraucht — bewusst noch
