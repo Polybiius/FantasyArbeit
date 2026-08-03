@@ -148,10 +148,10 @@
     min-height:260px;display:flex;align-items:center;justify-content:center;
     border:1px dashed var(--border);background:repeating-linear-gradient(135deg, rgba(139,92,246,0.03) 0 12px, transparent 12px 24px);
   }
-  .char-art-hint{color:var(--muted-2);font-size:12.5px;font-family:'JetBrains Mono',monospace;text-align:center;max-width:300px;}
   .char-art-stack{position:relative;width:100%;height:220px;display:flex;align-items:center;justify-content:center;}
-  .char-art-stack img{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain;}
-  .char-art-stack img.char-art-base{image-rendering:pixelated;}
+  .char-art-stack canvas{height:200px;width:auto;image-rendering:pixelated;}
+  .char-art-stack #charEquipLayers{position:absolute;top:0;left:0;width:100%;height:100%;}
+  .char-art-stack #charEquipLayers img{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:contain;}
   .char-equip-badges{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;justify-content:center;}
   .char-badge{background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 12px;font-size:12px;color:var(--text);display:flex;align-items:center;gap:6px;}
 
@@ -594,7 +594,8 @@
       <div class="page" id="page-charakter">
         <div class="card char-art-placeholder">
           <div class="char-art-stack" id="charArtStack">
-            <div class="char-art-hint">Hier entsteht später die Charakterdarstellung — je nach Klasse und Level.</div>
+            <canvas id="charSpriteCanvas"></canvas>
+            <div id="charEquipLayers"></div>
           </div>
           <div class="char-equip-badges" id="charEquipBadges"></div>
         </div>
@@ -1267,6 +1268,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   // ---- Profil-Screen: echter Name, Geschlecht, Unternehmen (optional), Charaktername ----
   let selectedGender = null;
+  // Gesetzt in afterLogin(), wenn ein bestehendes Alt-Profil (vor Profil-/Aussehen-
+  // Onboarding angelegt) fehlende Felder (gender/skin_tone/hair_style) nachholen muss.
+  // Steuert in appearanceDoneBtn nur, ob update() statt insert() läuft - XP/Kontakte/
+  // etc. bleiben unberührt, die hängen an derselben profiles.id.
+  let resumingProfileId = null;
   document.querySelectorAll('.gender-btn').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       document.querySelectorAll('.gender-btn').forEach(b=>b.classList.remove('active'));
@@ -1482,6 +1488,21 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   };
 
   const appearanceRenderer = createSpriteRenderer(document.getElementById('appearanceCanvas'), 4);
+  // Charakterseite (page-charakter): zeigt den echten, gespeicherten Look des
+  // eingeloggten Nutzers - gleiche Technik wie appearanceRenderer, siehe renderCharacterEquipment().
+  const charRenderer = createSpriteRenderer(document.getElementById('charSpriteCanvas'), 4);
+  function layersForCharacterProfile(p){
+    const gender = p.gender || 'm';
+    const outfit = CLASS_OUTFIT[p.character_class] || CLASS_OUTFIT.krieger;
+    const layers = [];
+    if(outfit.back) layers.push(outfit.back);
+    if(p.skin_tone) layers.push(`skin_${p.skin_tone}.png`);
+    layers.push(`outfit_body_${gender}.png`);
+    layers.push(`outfit_gloves_${gender}.png`);
+    if(p.hair_style) layers.push(`hair_${p.hair_style}.png`);
+    if(outfit.weapon) layers.push(outfit.weapon(gender));
+    return layers;
+  }
 
   function refreshAppearanceCanvas(){
     const g = selectedGender || 'm';
@@ -1591,13 +1612,17 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const realName = document.getElementById('realNameInput').value.trim();
     const company = document.getElementById('companyInput').value.trim();
     const charName = document.getElementById('charNameInput').value.trim();
-    const { data: inserted, error } = await sb.from('profiles').insert({
-      id: session.user.id, org_id: DEFAULT_ORG_ID, display_name:charName, role:'member', character_class:selectedClass,
+    const fields = {
+      display_name:charName, character_class:selectedClass,
       real_name:realName, gender:selectedGender, company: company || null,
       skin_tone: selectedSkin, hair_style: selectedHair === BALD_KEY ? null : selectedHair
-    }).select().single();
+    };
+    const { data: saved, error } = resumingProfileId
+      ? await sb.from('profiles').update(fields).eq('id', resumingProfileId).select().single()
+      : await sb.from('profiles').insert({ id: session.user.id, org_id: DEFAULT_ORG_ID, role:'member', ...fields }).select().single();
     if(error){ reportError('Charakter erstellen', error, errEl); return; }
-    profile = inserted;
+    profile = saved;
+    resumingProfileId = null;
     document.getElementById('appearanceScreen').style.display='none';
     document.getElementById('loading').style.display='flex';
     await enterApp();
@@ -1646,6 +1671,24 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       document.getElementById('loading').style.display='none';
       document.getElementById('profileScreen').style.display='block';
       return; // wartet auf Profil + Charaktererstellung, siehe profileNextBtn/charCreateBtn-Listener
+    }
+    if(!existing.gender || !existing.skin_tone){
+      // Alt-Account von vor dem Profil-/Aussehen-Onboarding: fehlende Felder
+      // nachholen, bevor es in die App geht. Läuft über dieselben drei Screens
+      // wie bei der Neuanmeldung (profileScreen/charCreateScreen/appearanceScreen),
+      // appearanceDoneBtn macht am Ende ein update() statt insert() (resumingProfileId).
+      resumingProfileId = existing.id;
+      document.getElementById('realNameInput').value = existing.real_name || '';
+      document.getElementById('charNameInput').value = existing.display_name || '';
+      document.getElementById('companyInput').value = existing.company || '';
+      if(existing.gender){
+        selectedGender = existing.gender;
+        document.querySelectorAll('.gender-btn').forEach(b=>b.classList.toggle('active', b.dataset.gender===existing.gender));
+      }
+      updateProfileNextBtn();
+      document.getElementById('loading').style.display='none';
+      document.getElementById('profileScreen').style.display='block';
+      return;
     }
     profile = existing;
     await enterApp();
@@ -2322,7 +2365,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   function renderCharacterEquipment(){
     const items = config.items || {};
-    const stack = document.getElementById('charArtStack');
+    const equipLayersEl = document.getElementById('charEquipLayers');
     const badges = document.getElementById('charEquipBadges');
     const slots = [
       { field:'equipped_weapon', label:'Waffe' },
@@ -2333,23 +2376,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       .map(s => ({ ...s, key: profile[s.field], def: profile[s.field] ? items[profile[s.field]] : null }))
       .filter(s => s.def);
 
+    charRenderer.setLayers(layersForCharacterProfile(profile));
+
     // Layer-Bilder: sobald ein Item ein "image"-Feld hat, wird es hier automatisch
-    // als Ebene über die Basisfigur gelegt. Aktuell hat noch kein Item ein Bild.
+    // als Ebene über die animierte Basisfigur gelegt. Aktuell hat noch kein Item ein Bild.
     const withImage = equippedDefs.filter(s => s.def.image);
-    const equipLayers = withImage.map(s => `<img src="${s.def.image}" alt="${s.def.label}">`).join('');
-
-    // Basis-Charakterbild je Klasse — Testphase (siehe CLAUDE.md), aktuell nur für
-    // Krieger vorhanden. Andere Klassen fallen weiterhin auf den Hinweistext zurück.
-    const CLASS_BASE_ART = { krieger: 'img/characters/krieger.png' };
-    const baseArt = CLASS_BASE_ART[profile.character_class];
-
-    if(baseArt){
-      stack.innerHTML = `<img src="${baseArt}" alt="Charakter" class="char-art-base">` + equipLayers;
-    } else if(withImage.length > 0){
-      stack.innerHTML = equipLayers;
-    } else {
-      stack.innerHTML = '<div class="char-art-hint">Hier entsteht später die Charakterdarstellung — je nach Klasse und Level.</div>';
-    }
+    equipLayersEl.innerHTML = withImage.map(s => `<img src="${s.def.image}" alt="${s.def.label}">`).join('');
 
     badges.innerHTML = equippedDefs.map(s =>
       `<div class="char-badge"><span>${s.def.icon||'❔'}</span><span>${s.def.label}</span></div>`
