@@ -334,6 +334,7 @@
   .inv-item .inv-use:hover{opacity:.88;}
   .inv-item .inv-use:disabled{opacity:.4;cursor:not-allowed;}
   .inv-item .inv-use.equipped{background:var(--success);}
+  .inv-item .inv-equipped-tag{font-family:'JetBrains Mono',monospace;font-size:10px;font-weight:600;color:var(--success);text-transform:uppercase;letter-spacing:.03em;}
 
   .journal-hint{color:var(--muted);font-size:12.5px;margin-bottom:16px;line-height:1.6;font-family:'JetBrains Mono',monospace;}
   .journal-grid{display:grid;grid-template-columns:1fr;gap:12px;}
@@ -2292,11 +2293,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       }
       container.innerHTML = list.map(it=>{
         if(it.category==='consumables'){
-          return `<div class="inv-item"><span class="inv-icon">${it.icon||'❔'}</span><span class="inv-name">${it.label}</span><span class="inv-qty">×${it.quantity}</span><button class="inv-use" data-use="${it.key}">Benutzen</button></div>`;
+          const noEffect = it.effect==='full_energy_refill' && energyUsedToday()<=0;
+          return `<div class="inv-item"><span class="inv-icon">${it.icon||'❔'}</span><span class="inv-name">${it.label}</span><span class="inv-qty">×${it.quantity}</span><button class="inv-use" data-use="${it.key}" ${noEffect?'disabled title="Energie bereits voll"':''}>Benutzen</button></div>`;
         }
         const slotField = EQUIP_SLOT_FIELD[it.category];
         const isEquipped = profile[slotField] === it.key;
-        return `<div class="inv-item"><span class="inv-icon">${it.icon||'❔'}</span><span class="inv-name">${it.label}</span><span class="inv-qty">×${it.quantity}</span><button class="inv-use ${isEquipped?'equipped':''}" data-equip="${it.key}" data-slot="${slotField}">${isEquipped?'Ablegen':'Anlegen'}</button></div>`;
+        return `<div class="inv-item"><span class="inv-icon">${it.icon||'❔'}</span><span class="inv-name">${it.label}</span><span class="inv-qty">×${it.quantity}</span>${isEquipped?'<span class="inv-equipped-tag">Angezogen</span>':''}<button class="inv-use ${isEquipped?'equipped':''}" data-equip="${it.key}" data-slot="${slotField}">${isEquipped?'Ausziehen':'Anziehen'}</button></div>`;
       }).join('');
     });
 
@@ -2326,12 +2328,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     if(def.effect==='full_energy_refill'){
       const usedToday = energyUsedToday();
-      if(usedToday>0){
-        const row = { user_id:profile.id, org_id:profile.org_id, action_key:'item_use', label:'Benutzt: '+def.label, xp:0, energy:-usedToday, meta:{itemKey} };
-        const { data, error } = await sb.from('action_log').insert(row).select().single();
-        if(error){ reportError('Item-Effekt verbuchen', error); return; }
-        if(data) log.push(data);
-      }
+      if(usedToday<=0) return; // Energie schon voll - Trank wäre wirkungslos, nicht verbrauchen
+      const row = { user_id:profile.id, org_id:profile.org_id, action_key:'item_use', label:'Benutzt: '+def.label, xp:0, energy:-usedToday, meta:{itemKey} };
+      const { data, error } = await sb.from('action_log').insert(row).select().single();
+      if(error){ reportError('Item-Effekt verbuchen', error); return; }
+      if(data) log.push(data);
     }
 
     const newQty = invRow.quantity-1;
