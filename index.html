@@ -324,6 +324,7 @@
   .inv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;}
   .inv-item{background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius-md);padding:14px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:6px;box-shadow:var(--shadow-rest);}
   .inv-item .inv-icon{font-size:30px;}
+  img.inv-icon{width:40px;height:40px;object-fit:contain;image-rendering:pixelated;}
   .inv-item .inv-name{font-size:12.5px;font-weight:600;color:var(--text);}
   .inv-item .inv-qty{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);}
   .inv-item .inv-use{margin-top:4px;background:var(--arcane);color:#fff;border:none;border-radius:var(--radius-sm);padding:6px 12px;font-size:11.5px;cursor:pointer;font-weight:600;}
@@ -2316,6 +2317,19 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   const EQUIP_SLOT_FIELD = { waffen:'equipped_weapon', ruestung:'equipped_armor', accessories:'equipped_accessory' };
 
+  // Echtes Item-Bild statt generischem Emoji, sobald der Katalog-Eintrag ein
+  // "icon_img" hat (kleiner, freigestellter Ausschnitt aus dem echten
+  // Sprite-Sheet, siehe img/characters/creator/item_*.png) - "{g}" wird wie
+  // bei "sheet" durch das eigene Geschlecht ersetzt. Emoji ("icon") bleibt
+  // Fallback für Items ohne eigenes Bild (z.B. der Manatrank).
+  function invIconHtml(it){
+    if(it.icon_img){
+      const src = it.icon_img.replace('{g}', profile.gender || 'm');
+      return `<img class="inv-icon" src="${src}" alt="${it.label}">`;
+    }
+    return `<span class="inv-icon">${it.icon||'❔'}</span>`;
+  }
+
   function renderInventory(){
     const items = config.items || {};
     Object.values(INV_CATEGORY_TO_CONTAINER).forEach(id=>{ document.getElementById(id).innerHTML=''; });
@@ -2336,11 +2350,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       container.innerHTML = list.map(it=>{
         if(it.category==='consumables'){
           const noEffect = it.effect==='full_energy_refill' && energyUsedToday()<=0;
-          return `<div class="inv-item"><span class="inv-icon">${it.icon||'❔'}</span><span class="inv-name">${it.label}</span><span class="inv-qty">×${it.quantity}</span><button class="inv-use" data-use="${it.key}" ${noEffect?'disabled title="Energie bereits voll"':''}>Benutzen</button></div>`;
+          return `<div class="inv-item">${invIconHtml(it)}<span class="inv-name">${it.label}</span><span class="inv-qty">×${it.quantity}</span><button class="inv-use" data-use="${it.key}" ${noEffect?'disabled title="Energie bereits voll"':''}>Benutzen</button></div>`;
         }
         const slotField = EQUIP_SLOT_FIELD[it.category];
         const isEquipped = profile[slotField] === it.key;
-        return `<div class="inv-item"><span class="inv-icon">${it.icon||'❔'}</span><span class="inv-name">${it.label}</span><span class="inv-qty">×${it.quantity}</span>${isEquipped?'<span class="inv-equipped-tag">Angezogen</span>':''}<button class="inv-use ${isEquipped?'equipped':''}" data-equip="${it.key}" data-slot="${slotField}">${isEquipped?'Ausziehen':'Anziehen'}</button></div>`;
+        return `<div class="inv-item">${invIconHtml(it)}<span class="inv-name">${it.label}</span><span class="inv-qty">×${it.quantity}</span>${isEquipped?'<span class="inv-equipped-tag">Angezogen</span>':''}<button class="inv-use ${isEquipped?'equipped':''}" data-equip="${it.key}" data-slot="${slotField}">${isEquipped?'Ausziehen':'Anziehen'}</button></div>`;
       }).join('');
     });
 

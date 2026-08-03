@@ -35,6 +35,7 @@ alle bis einschließlich Patch 15 im Supabase-Projekt eingespielt sind.
 | 24 | `patch24_profil_onboarding.sql` | `profiles.real_name`/`gender`/`company` (alle nullable) — neuer Zwischenschritt bei der Charaktererstellung vor der Klassenwahl, siehe CLAUDE.md |
 | 25 | `patch25_aussehen.sql` | `profiles.skin_tone`/`hair_style` (beide nullable) — neuer Aussehen-Screen nach der Klassenwahl (Hautfarbe, Frisur), siehe CLAUDE.md |
 | 26 | `patch26_klassenitems.sql` | Klassenitems (Zauberstab, blaues Cape, Holzschwert, Guard Helmet, kleiner Rucksack) neu im `items`-Katalog, jetzt als echte, ausziehbare Ausrüstung statt fest im Code verdrahtet. Bestehende Profile bekommen ihr Klassenitem einmalig nachträglich ins Inventar + angezogen, neue Charaktere ab jetzt automatisch bei der Erschaffung (`grantClassStarterEquipment()` in index.html) |
+| 27 | `patch27_item_icons.sql` | `icon_img` bei den 5 Klassenitems ergänzt (echte, freigestellte Bild-Ausschnitte aus den Sprite-Sheets statt generischer Emojis, die bei wachsendem Katalog nicht mehr unterscheidbar wären) — Bilder liegen unter `img/characters/creator/item_*.png` |
 
 ## Wichtiger Hinweis zu Patch 13
 
