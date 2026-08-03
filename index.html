@@ -1053,6 +1053,23 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   </div>
 </div>
 
+<div class="loc-modal" id="terminLeadModal" style="display:none;">
+  <div class="loc-modal-inner">
+    <div class="loc-modal-header">
+      <span>Termin vereinbart bei <span id="terminLeadLocName"></span></span>
+      <button id="terminLeadClose">✕</button>
+    </div>
+    <div class="kanban-newlead-form">
+      <input type="text" id="terminLeadVorname" placeholder="Vorname">
+      <input type="text" id="terminLeadNachname" placeholder="Nachname">
+      <label class="cdl" style="display:block;margin-top:4px;">Datum des Ersttermins</label>
+      <input type="date" id="terminLeadDatum">
+      <div class="empty-page-hint" id="terminLeadStatus"></div>
+    </div>
+    <button class="cal-nav-btn" id="terminLeadSaveBtn" style="width:100%;margin-top:8px;">Anlegen</button>
+  </div>
+</div>
+
 <div class="loc-modal" id="contactDetailModal" style="display:none;">
   <div class="loc-modal-inner" style="max-width:560px;">
     <div class="loc-modal-header">
@@ -3319,10 +3336,17 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     }
   });
 
+  // Bewusst schmale Auswahl: nur Handlungen, die direkt AM Dungeon (ohne
+  // bereits bestehenden Kontakt-Kontext) Sinn ergeben. Kontakt-spezifische
+  // Aktionen (Bedarfsanalyse, Abschluss, Kundenausbau, Empfehlung) laufen
+  // über den Kontakt-Aktionsdialog (CONTACT_RELEVANT_ACTIONS) bzw. das
+  // Kanban, nicht mehr hier.
+  const DUNGEON_RELEVANT_ACTIONS = ['ansprache','termin_vereinbart','gruppentermin','boss'];
+
   function openLocationActionModal(loc){
     document.getElementById('locModalTitle').textContent = loc.name;
     const grid = document.getElementById('locActionGrid');
-    const entries = Object.entries(config.actions).filter(([key])=>!QUICKBAR_KEYS.includes(key));
+    const entries = Object.entries(config.actions).filter(([key])=>DUNGEON_RELEVANT_ACTIONS.includes(key));
     entries.sort((a,b)=>a[1].xp-b[1].xp);
     grid.innerHTML = entries.map(([key,a])=>{
       const bossClass = key==='boss' ? ' boss' : '';
@@ -3363,21 +3387,48 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   // Neuen Lead direkt am Dungeon anlegen: "Termin vereinbart" fragt nach
-  // Vorname/Nachname statt anonym ohne Kontakt-Verknüpfung zu loggen — der
-  // Kontakt landet automatisch in der Kanban-Spalte "Ersttermin vereinbart".
-  async function createLeadAndLogTerminVereinbart(loc){
-    const vorname = prompt('Vorname des Kontakts?');
-    if(vorname===null) return;
-    const nachname = prompt('Nachname des Kontakts?');
-    if(nachname===null) return;
-    if(!vorname.trim() && !nachname.trim()) return;
-    const { data: contact, error: cErr } = await sb.from('contacts').insert({
-      org_id:profile.org_id, owner_id:profile.id, vorname:vorname.trim(), nachname:nachname.trim(),
-      location_id: loc.id, kanban_stage:'ersttermin_vereinbart'
-    }).select().single();
-    if(cErr){ reportError('Kontakt anlegen', cErr); return; }
-    await logKanbanAction(contact, 'termin_vereinbart');
-    await renderContactsPage();
+  // Vorname/Nachname + Datum des Ersttermins (Maske statt Browser-Prompts,
+  // wie recordWonSalesLoop) — der Kontakt landet automatisch in der
+  // Kanban-Spalte "Ersttermin vereinbart", das Datum wird als
+  // naechster_kontakt (Wiedervorlage) gespeichert. Der spätere
+  // Konversions-Malus (termin_nicht_wahrgenommen, −2 XP), falls der Termin
+  // nicht wahrgenommen wurde, läuft unverändert über den Kanban-Übergang
+  // "Ersttermin vereinbart" → "Nicht erschienen".
+  function createLeadAndLogTerminVereinbart(loc){
+    return new Promise(resolve=>{
+      const vornameEl = document.getElementById('terminLeadVorname');
+      const nachnameEl = document.getElementById('terminLeadNachname');
+      const datumEl = document.getElementById('terminLeadDatum');
+      const statusEl = document.getElementById('terminLeadStatus');
+      const modal = document.getElementById('terminLeadModal');
+      const saveBtn = document.getElementById('terminLeadSaveBtn');
+      const closeBtn = document.getElementById('terminLeadClose');
+      document.getElementById('terminLeadLocName').textContent = loc.name;
+      vornameEl.value = ''; nachnameEl.value = ''; datumEl.value = ''; statusEl.textContent = '';
+      modal.style.display = 'flex';
+
+      function finish(){
+        modal.style.display = 'none';
+        saveBtn.onclick = null; closeBtn.onclick = null;
+        resolve();
+      }
+      saveBtn.onclick = async ()=>{
+        const vorname = vornameEl.value.trim();
+        const nachname = nachnameEl.value.trim();
+        const datum = datumEl.value;
+        if(!vorname && !nachname){ statusEl.textContent = 'Bitte Vor- oder Nachname eingeben.'; return; }
+        if(!datum){ statusEl.textContent = 'Bitte Datum des Ersttermins eingeben.'; return; }
+        const { data: contact, error: cErr } = await sb.from('contacts').insert({
+          org_id:profile.org_id, owner_id:profile.id, vorname, nachname,
+          location_id: loc.id, kanban_stage:'ersttermin_vereinbart', naechster_kontakt: datum
+        }).select().single();
+        if(cErr){ reportError('Kontakt anlegen', cErr, statusEl); return; }
+        await logKanbanAction(contact, 'termin_vereinbart');
+        await renderContactsPage();
+        finish();
+      };
+      closeBtn.onclick = finish;
+    });
   }
 
   // ---- Kanban (Questpfad / Gildenbrett / Feldzug) ----
