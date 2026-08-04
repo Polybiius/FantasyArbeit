@@ -852,12 +852,36 @@ neues Datenmodell für "Termine" nötig — eigene Tabelle? Wiederholungsregeln?
 Verknüpfung zu Kontakten/Dungeons?) statt direkt loszulegen, gleiches Prinzip
 wie beim Kanban/Produktkatalog seinerzeit.
 
-**Offen, vom Nutzer als Zukunftsidee genannt (2026-08-04):** das Tagebuch
-könnte perspektivisch selbst zu einer eigenen Kachel werden, mit
-klassenabhängiger Umbenennung analog zur Tabelle bei "Charakterklassen"
-oben — Zauberer: **Zauberbuch**, Krieger: **Kriegsjournal**, Schütze:
-vermutlich **Rolle** (noch nicht endgültig benannt). Reine Design-/
-Struktur-Idee, noch nicht gebaut, nicht von selbst anfangen.
+**Buch-/Rollen-Kachel: seit 2026-08-04 live gebaut** (setzt die oben
+ursprünglich nur als Zukunftsidee notierte Umbenennung um, mit leicht
+anderen finalen Namen als zuerst angedacht): unter dem Kalender ersetzt
+jetzt eine einzelne, klassenabhängige Kachel (`.journal-book-tile` in
+`index.html`) die vorher immer sichtbaren 5 Tagebuch-Fragen — **Zauberbuch**
+(Zauberer), **Kriegsbuch** (Krieger), **Schützenrolle** (Schütze, bewusst
+eine Pergamentrolle statt eines Buchs). Klick auf die Kachel klappt einen
+Wrapper (`#journalEntryWrap`) mit den 5 Fragen + dem Foto-Feld darunter
+auf/zu (`setJournalEntryOpen()`) — **kein Modal**, ausdrücklicher
+Nutzerwunsch: der Kalender soll beim Schreiben sichtbar bleiben, anders als
+die bestehenden Popups im Programm (Verkaufsabschluss etc.). Die
+Tagebuch-Serie (`journalStreakTag`/`journalStreakHint`, siehe oben) sitzt
+weiterhin an derselben Stelle/mit denselben IDs, nur räumlich auf der Kachel
+statt in einer eigenen Karte — `loadJournalStreak()`/`renderJournalStreak()`
+unverändert. Klassenzuordnung über `CLASS_JOURNAL` + `updateJournalBookTile()`,
+aufgerufen in `initJournal()` und im Admin-Klassenschalter (gleiches Muster
+wie `updateContactLabels()`/`updateStatistikLabels()`).
+
+Die drei Icons sind handgezeichnete Pixel-Art (kein GandalfHardcore-Asset —
+Bücher/Rollen kommen im Paket nicht vor), zweite Überarbeitung nach
+Vorlage von vier vom Nutzer geschickten Referenz-Screenshots (runde Ecken,
+Rücken-Farbstreifen, Titel-Plakette, Seitenkante unten, Lesezeichen-Fahne,
+klassentypisches Emblem — Stern fürs Zauberbuch, Schwert fürs Kriegsbuch).
+Liegen unter `img/characters/creator/journal_{zauberer,krieger,schuetze}.png`
+(96×96, wie die übrigen `item_*`-Icons dort). Erzeugt über ein Python/Pillow-
+Skript (Pixel-für-Pixel auf einem 24×24-Raster, per Nearest-Neighbor auf
+96×96 hochskaliert) statt gezeichneter SVGs — die erste Fassung ohne
+Referenzbilder wirkte laut Nutzer "nicht ganz rund", danach erst die vier
+Screenshots angefordert und die Formensprache (nicht die Bilder selbst)
+übernommen.
 
 ## Changelog-Popup für angewendete SQL-Patches (Patch 32, 2026-08-04)
 
