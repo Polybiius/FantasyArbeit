@@ -2407,6 +2407,39 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(mentionErr) logSilentError('Markierung speichern', mentionErr);
   }
 
+  // Löscht eine @-Markierung erst dann, wenn der Text, der sie ausgelöst
+  // hat, wirklich weg ist — auf ausdrücklichen Nutzerwunsch (2026-08-04):
+  // "wenn ich den Text lösche, ist es gelöscht, dann gibt es keine
+  // Erwähnung mehr". Prüft dafür pro gespeichertem Tag, ob das exakte
+  // "@Name"-Kürzel (gleiche Zusammensetzung wie beim Einfügen in
+  // confirmMention(), Leerzeichen aus dem Namen entfernt) noch irgendwo im
+  // Text der 5 Felder vorkommt — fehlt es, wird nur DIESE eine Markierung
+  // gelöscht, alle anderen Markierungen des Tages bleiben unberührt.
+  async function pruneRemovedMentions(today, row){
+    const { data: mentions, error } = await sb.from('journal_entry_mentions')
+      .select('contact_id, contacts(name)')
+      .eq('user_id', profile.id)
+      .eq('entry_date', today);
+    if(error){ logSilentError('Markierungen prüfen', error); return; }
+    if(!mentions || mentions.length===0) return;
+
+    const combinedText = JOURNAL_FIELDS.map((f,i)=> row['q'+(i+1)] || '').join(' ');
+    const staleContactIds = mentions
+      .filter(m=>{
+        const token = '@' + (m.contacts ? m.contacts.name.replace(/\s+/g,'') : '');
+        return !combinedText.includes(token);
+      })
+      .map(m=>m.contact_id);
+    if(staleContactIds.length===0) return;
+
+    const { error: delErr } = await sb.from('journal_entry_mentions')
+      .delete()
+      .eq('user_id', profile.id)
+      .eq('entry_date', today)
+      .in('contact_id', staleContactIds);
+    if(delErr) logSilentError('Markierung entfernen', delErr);
+  }
+
   // ---- Schnappschuss des Tages ----
   const PHOTO_BUCKET = 'journal-photos';
 
@@ -2474,6 +2507,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       else calEntryDates.delete(today);
       refreshDotForDate(today);
       loadJournalStreak();
+      pruneRemovedMentions(today, row);
     }, 700);
   }
 

@@ -279,8 +279,20 @@ Funktionen benutzen statt eigene Fehlerbehandlung zu erfinden.**
   Kontakt-Markierungen pro Tagebuchtag, rein persönlich, **keine
   CRM-Statistik**, genauso privat wie `journal_entries` selbst. Angezeigt wird
   das nicht im Tagebuch, sondern im Kontakt-Detail als eigener Reiter
-  "Tagebucheintrag" (Liste der Tage, an denen der Kontakt erwähnt wurde) —
-  bewusst **nicht löschbar**, ein Tagebucheintrag bleibt stehen wie geschrieben.
+  "Tagebucheintrag" (Liste der Tage, an denen der Kontakt erwähnt wurde).
+  **Korrektur 2026-08-04, kehrt eine frühere Entscheidung um:** ursprünglich
+  bewusst nicht löschbar angelegt ("ein Tagebucheintrag bleibt stehen wie
+  geschrieben") — der Nutzer hat das explizit widerrufen: "wenn ich den Text
+  lösche, ist es gelöscht, dann gibt es keine Erwähnung mehr." Seitdem prüft
+  `pruneRemovedMentions(today, row)` in `index.html` bei jedem Tagebuch-Save,
+  ob das `@Name`-Kürzel (Leerzeichen entfernt, gleiche Zusammensetzung wie
+  beim Einfügen) noch irgendwo im Text der 5 Felder steht — fehlt es, wird
+  **nur diese eine** Markierung gelöscht (`journal_mentions_delete_own_only`-
+  RLS-Policy existierte für genau diesen Fall bereits seit Patch 16, keine
+  neue SQL nötig). Andere Markierungen desselben Tages bleiben unberührt,
+  auch wenn ein unbeteiligtes Feld bearbeitet wird — per Playwright gegen die
+  echte Datenbank verifiziert (Schreiben behält, Löschen entfernt,
+  Fremd-Markierungen bleiben unangetastet).
 - `journal_photos` — ein Foto pro Tag, privater Storage-Bucket. Hat schon jetzt
   `transformed_path`/`transform_status`, aktuell ungenutzt — Platzhalter für
   eine spätere KI-Bildumwandlung (siehe "Bewusst aufgeschobene Ideen" unten).
