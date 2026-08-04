@@ -137,10 +137,7 @@ sondern auf genau diese Auslöser warten:
 
 - **Automatische Backups (Supabase Pro-Plan-Upgrade):** sobald echte
   Kolleg:innen anfangen, Kundendaten einzutragen, auf die sie sich
-  verlassen (siehe `project_supabase_backups`-Erinnerung). **Bereits jetzt
-  im Auge behalten:** laut Planung sollte der Nutzer genau ab heute
-  (2026-08-04) in den echten Alltagsbetrieb gehen — sobald das bestätigt
-  ist, aktiv ansprechen, nicht auf Zufall warten.
+  verlassen (siehe `project_supabase_backups`-Erinnerung).
 - **Multi-Org-Loskopplung** (`DEFAULT_ORG_ID` fest verdrahtet → echte
   Organisationsauswahl/-Onboarding): sobald eine zweite, tatsächlich
   zahlende Vertriebsorganisation real ansteht — nicht nur angedacht oder
