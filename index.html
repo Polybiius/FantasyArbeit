@@ -925,7 +925,23 @@
 
       <!-- SEITE 3: ABENTEUERLOG (Tagebuch) -->
       <div class="page" id="page-tagebuch" style="display:none;">
-        <div class="journal-grid">
+        <div class="card">
+          <h2>Kalender <span class="tag" id="calMonthLabel"></span></h2>
+          <div class="cal-nav">
+            <button class="cal-nav-btn" id="calPrevBtn">‹ zurück</button>
+            <button class="cal-nav-btn" id="calTodayBtn">heute</button>
+            <button class="cal-nav-btn" id="calNextBtn">weiter ›</button>
+          </div>
+          <div class="cal-grid" id="calGrid"></div>
+          <div class="cal-preview" id="calPreview"></div>
+        </div>
+
+        <div class="card" style="margin-top:18px;">
+          <h2>🔥 Tagebuch-Serie <span class="tag" id="journalStreakTag"></span></h2>
+          <div class="empty-page-hint" id="journalStreakHint"></div>
+        </div>
+
+        <div class="journal-grid" style="margin-top:18px;">
           <div class="journal-col">
             <div class="journal-savestate" id="jsave1"></div>
             <div class="journal-mention-wrap">
@@ -973,17 +989,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
           <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none;">
           <button class="cal-nav-btn" id="photoBtn">📷 Foto aufnehmen</button>
           <div class="photo-preview" id="photoPreview"></div>
-        </div>
-
-        <div class="card" style="margin-top:18px;">
-          <h2>Kalender <span class="tag" id="calMonthLabel"></span></h2>
-          <div class="cal-nav">
-            <button class="cal-nav-btn" id="calPrevBtn">‹ zurück</button>
-            <button class="cal-nav-btn" id="calTodayBtn">heute</button>
-            <button class="cal-nav-btn" id="calNextBtn">weiter ›</button>
-          </div>
-          <div class="cal-grid" id="calGrid"></div>
-          <div class="cal-preview" id="calPreview"></div>
         </div>
       </div>
 
@@ -2011,6 +2016,32 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     return Math.round((to-from)/86400000);
   }
 
+  // Einen Kalendertag-Schlüssel um `delta` Tage verschieben (über UTC-Mittag,
+  // gleiches Prinzip wie daysBetweenKeys()).
+  function addDaysToKey(key, delta){
+    const [y,m,d] = key.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m-1, d) + delta*86400000);
+    return `${dt.getUTCFullYear()}-${pad2(dt.getUTCMonth()+1)}-${pad2(dt.getUTCDate())}`;
+  }
+
+  // Reine Funktion ohne DB-Zugriff (Datums-Set rein, Serienlänge raus) —
+  // bewusst so getrennt von loadJournalStreak(), damit eine künftige
+  // Quest-Prüfung ("30 Tage in Folge Tagebuch führen") dieselbe Logik
+  // wiederverwenden kann, statt die Streak-Berechnung ein zweites Mal zu
+  // schreiben. Heute zählt schon mit, wenn schon eingetragen; ist heute noch
+  // offen, bleibt die bis gestern gezählte Serie "am Leben" (noch nicht
+  // gerissen), bis der Tag vorbei ist.
+  function computeJournalStreak(entryDateKeys, todayStr){
+    const todayDone = entryDateKeys.has(todayStr);
+    let cursor = todayDone ? todayStr : addDaysToKey(todayStr, -1);
+    let streak = 0;
+    while(entryDateKeys.has(cursor)){
+      streak++;
+      cursor = addDaysToKey(cursor, -1);
+    }
+    return { streak, todayDone };
+  }
+
   // Täglicher Gratis-Manatrank: hängt am Kalendertag, nicht am Login-Moment —
   // genau wie Energie-Reset und Tagebuch. Stapelt sich (kein Deckel), und
   // holt beim nächsten Öffnen auch mehrere ausgelassene Tage auf einmal nach
@@ -2222,6 +2253,35 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     await renderCalendar();
     initPhotoCapture();
     initJournalMentions();
+    loadJournalStreak();
+  }
+
+  // Serie wird bei jedem Aufruf frisch aus journal_entries berechnet, nie
+  // gespeichert — gleiches Prinzip wie XP/Level (computeTotals()). 400 Tage
+  // Rückschau sind für jede realistische Serie (auch eine künftige
+  // "30 Tage"-Quest) mehr als genug, bei minimaler Abfragegröße.
+  async function loadJournalStreak(){
+    const todayStr = todayKey(new Date());
+    const { data, error } = await sb.from('journal_entries')
+      .select('entry_date')
+      .eq('user_id', profile.id)
+      .lte('entry_date', todayStr)
+      .order('entry_date', { ascending:false })
+      .limit(400);
+    if(error){ logSilentError('Tagebuch-Serie laden', error); return; }
+    const dateSet = new Set((data||[]).map(r=>r.entry_date));
+    const { streak, todayDone } = computeJournalStreak(dateSet, todayStr);
+    renderJournalStreak(streak, todayDone);
+  }
+
+  function renderJournalStreak(streak, todayDone){
+    const tagEl = document.getElementById('journalStreakTag');
+    const hintEl = document.getElementById('journalStreakHint');
+    if(!tagEl || !hintEl) return;
+    tagEl.textContent = streak===0 ? 'noch keine Serie' : `${streak} ${streak===1?'Tag':'Tage'} in Folge`;
+    hintEl.textContent = streak===0
+      ? 'Heute den ersten Eintrag schreiben, um eine Serie zu starten.'
+      : (todayDone ? 'Heute schon eingetragen — weiter so.' : 'Heute noch nicht eingetragen — schreib etwas, um die Serie nicht zu verlieren.');
   }
 
   // ---- Tagebuch-Kundenmarkierung (@mention, persönlich, keine CRM-Statistik) ----
@@ -2354,6 +2414,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       setTimeout(()=>indicator.classList.remove('show'), 1500);
       calEntryDates.add(today);
       refreshDotForDate(today);
+      loadJournalStreak();
     }, 700);
   }
 
