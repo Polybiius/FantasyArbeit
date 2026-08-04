@@ -821,6 +821,37 @@ enthält, statt nur auf Zeilen-Existenz zu prüfen. Bei jeder künftigen
 Änderung an dieser Logik dasselbe Prinzip weiterverwenden, nicht auf
 Zeilen-Existenz zurückfallen.
 
+**Nächster großer Schritt — echter Termin-Kalender (Vision vom Nutzer,
+2026-08-04, NOCH NICHT GEBAUT, noch nicht gemeinsam durchgesprochen):** der
+Kalender soll sich von einem reinen Tagebuch-Rückblick (Vergangenheit: "wann
+habe ich geschrieben") zu einem echten, vorausschauenden Termin-Kalender
+wandeln, ähnlich Outlook. Konkret genannt:
+- Termine sollen sich **manuell eintragen** lassen, wie in jedem normalen
+  Kalender.
+- Termine, die über einen **Dungeon** zustande kommen, sollen sich
+  automatisch eintragen — das existiert als Datum technisch schon heute:
+  der Kanban-Übergang "Termin vereinbart" (`terminLeadModal`/
+  `terminLeadDatum` in `index.html`, siehe Kanban-Abschnitt oben) erzeugt
+  bereits ein echtes Termindatum, taucht aber bisher in keiner
+  Kalenderansicht auf. Vermutlich ebenfalls relevant: `contacts.
+  naechster_kontakt` (Wiedervorlage-Datum, existiert schon als Spalte,
+  siehe Kern-Tabellen oben) — heute ebenfalls nirgends kalendarisch
+  sichtbar.
+- Weitere "Outlook-typische" Kalenderfunktionen sind ausdrücklich gewünscht,
+  aber noch nicht spezifiziert (wiederkehrende Termine? Erinnerungen?
+  Tagesansicht mit Uhrzeiten? — offen).
+- Explizites Ziel laut Nutzer: **"maximale Effizienz und Bequemlichkeit"**
+  — die praktische, operative Hälfte des Produkts, nicht ihr Gegensatz zur
+  Motivationsmechanik-Hälfte (siehe "Die Grundidee" oben — beide Hälften
+  sind gleichrangig gemeint, siehe auch `feedback_practical_over_narrative_
+  framing` in der Erinnerung, wo genau diese Verwechslung live passiert
+  ist).
+
+**Vor dem Bauen unbedingt gemeinsam durchsprechen** (Kernstruktur-Änderung,
+neues Datenmodell für "Termine" nötig — eigene Tabelle? Wiederholungsregeln?
+Verknüpfung zu Kontakten/Dungeons?) statt direkt loszulegen, gleiches Prinzip
+wie beim Kanban/Produktkatalog seinerzeit.
+
 **Offen, vom Nutzer als Zukunftsidee genannt (2026-08-04):** das Tagebuch
 könnte perspektivisch selbst zu einer eigenen Kachel werden, mit
 klassenabhängiger Umbenennung analog zur Tabelle bei "Charakterklassen"
