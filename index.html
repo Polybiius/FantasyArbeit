@@ -2271,6 +2271,19 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   let calEntryDates = new Set(); // Tage im aktuell angezeigten Monat mit Text-Eintrag
   let calPhotoDates = new Set(); // Tage im aktuell angezeigten Monat mit Foto
 
+  // Eine journal_entries-Zeile bleibt auch nach dem Löschen aller Texte als
+  // leere Zeile stehen (upsert überschreibt, statt zu löschen — die Zeile
+  // ist per Fremdschlüssel Anker für journal_entry_mentions, siehe
+  // patch16_tagebuch_mentions.sql, "on delete cascade"; ein echtes Löschen
+  // würde also stumm auch @mention-Markierungen mitreißen, die laut CLAUDE.md
+  // bewusst nicht löschbar sein sollen). Deshalb zählt "hat einen Eintrag"
+  // NICHT als "die Zeile existiert", sondern als "mindestens ein Feld hat
+  // noch Text" — diese Prüfung an einer Stelle, für Kalender-Punkt UND
+  // Tagebuch-Serie gemeinsam genutzt.
+  function journalRowHasContent(row){
+    return JOURNAL_FIELDS.some((f,i)=> (row['q'+(i+1)]||'').trim().length>0);
+  }
+
   async function initJournal(){
     const today = todayKey(new Date());
     const { data, error } = await sb.from('journal_entries').select('*').eq('user_id', profile.id).eq('entry_date', today).maybeSingle();
@@ -2305,13 +2318,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   async function loadJournalStreak(){
     const todayStr = todayKey(new Date());
     const { data, error } = await sb.from('journal_entries')
-      .select('entry_date')
+      .select('entry_date,q1,q2,q3,q4,q5')
       .eq('user_id', profile.id)
       .lte('entry_date', todayStr)
       .order('entry_date', { ascending:false })
       .limit(400);
     if(error){ logSilentError('Tagebuch-Serie laden', error); return; }
-    const dateSet = new Set((data||[]).map(r=>r.entry_date));
+    const dateSet = new Set((data||[]).filter(journalRowHasContent).map(r=>r.entry_date));
     const { streak, todayDone } = computeJournalStreak(dateSet, todayStr);
     renderJournalStreak(streak, todayDone);
   }
@@ -2454,7 +2467,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       indicator.textContent = 'gespeichert';
       indicator.classList.add('show');
       setTimeout(()=>indicator.classList.remove('show'), 1500);
-      calEntryDates.add(today);
+      // Zeile bleibt beim Leeren aller Felder in der DB stehen (siehe
+      // journalRowHasContent-Kommentar oben), zählt ab jetzt aber konsequent
+      // auch lokal nicht mehr als Eintrag, sobald nichts mehr drinsteht.
+      if(journalRowHasContent(row)) calEntryDates.add(today);
+      else calEntryDates.delete(today);
       refreshDotForDate(today);
       loadJournalStreak();
     }, 700);
@@ -2476,9 +2493,9 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     const from = `${calViewYear}-${pad2(calViewMonth+1)}-01`;
     const to = `${calViewYear}-${pad2(calViewMonth+1)}-${pad2(daysInMonth(calViewYear,calViewMonth))}`;
-    const { data, error } = await sb.from('journal_entries').select('entry_date').eq('user_id', profile.id).gte('entry_date', from).lte('entry_date', to);
+    const { data, error } = await sb.from('journal_entries').select('entry_date,q1,q2,q3,q4,q5').eq('user_id', profile.id).gte('entry_date', from).lte('entry_date', to);
     if(error) logSilentError('Tagebuch-Tage laden', error);
-    calEntryDates = new Set((data||[]).map(r=>r.entry_date));
+    calEntryDates = new Set((data||[]).filter(journalRowHasContent).map(r=>r.entry_date));
     const { data: photoData, error: photoErr } = await sb.from('journal_photos').select('entry_date').eq('user_id', profile.id).gte('entry_date', from).lte('entry_date', to);
     if(photoErr) logSilentError('Foto-Tage laden', photoErr);
     calPhotoDates = new Set((photoData||[]).map(r=>r.entry_date));
