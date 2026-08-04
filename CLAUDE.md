@@ -793,6 +793,22 @@ noch nicht eingetragen, bleibt die bis gestern gezählte Serie "am Leben"
 die Serie auf 0. Aktualisiert sich live nach jedem Auto-Save
 (`scheduleJournalSave()`), kein Neuladen der Seite nötig.
 
+**Bugfix 2026-08-04, wichtiger Stolperstein:** "hat einen Eintrag" darf NICHT
+heißen "eine `journal_entries`-Zeile für den Tag existiert" — ein `upsert`
+beim Leeren aller 5 Felder überschreibt die Zeile nur mit leeren Strings,
+löscht sie aber nicht. Ein bewusst nicht-löschbares Löschen ist hier auch gar
+nicht möglich: `journal_entry_mentions` hat einen Fremdschlüssel auf
+`journal_entries(user_id, entry_date)` **mit `on delete cascade`**
+(`patch16_tagebuch_mentions.sql`) — ein echtes Löschen der leeren Zeile würde
+also still auch @mention-Markierungen mitreißen, die laut CLAUDE.md bewusst
+NICHT löschbar sein sollen. Deshalb prüft `journalRowHasContent(row)`
+(neben `JOURNAL_FIELDS`) jetzt an allen drei Stellen, die "Tag hat einen
+Eintrag" auswerten (`renderCalendar()`, `loadJournalStreak()`,
+`scheduleJournalSave()`), ob mindestens eines der 5 Felder noch echten Text
+enthält, statt nur auf Zeilen-Existenz zu prüfen. Bei jeder künftigen
+Änderung an dieser Logik dasselbe Prinzip weiterverwenden, nicht auf
+Zeilen-Existenz zurückfallen.
+
 **Offen, vom Nutzer als Zukunftsidee genannt (2026-08-04):** das Tagebuch
 könnte perspektivisch selbst zu einer eigenen Kachel werden, mit
 klassenabhängiger Umbenennung analog zur Tabelle bei "Charakterklassen"
