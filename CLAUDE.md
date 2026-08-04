@@ -316,9 +316,9 @@ Funktionen benutzen statt eigene Fehlerbehandlung zu erfinden.**
   `message`, `created_at`). Insert darf jeder für die eigene Organisation,
   Lesen nur Admins — sichtbar im neuen Reiter "Fehlerprotokoll". Bewusst kein
   Update/Delete: ein Protokoll wird nicht nachträglich verändert.
-- `schema_patches` — Changelog-Popup (seit Patch 32, **noch nicht
-  ausgeführt**, siehe eigener Abschnitt unten). `patch_number`/`title`/
-  `applied_at`, kein `org_id`-Bezug (beschreibt den DB-Zustand insgesamt,
+- `schema_patches` — Changelog-Popup (seit Patch 32, live, siehe eigener
+  Abschnitt unten). `patch_number`/`title`/`applied_at`, kein `org_id`-Bezug
+  (beschreibt den DB-Zustand insgesamt,
   nicht eine Organisation). Trägt sich pro künftigem Patch selbst ein.
 
 ### Sicherheitsmodell (RLS), zum Verständnis
@@ -802,13 +802,12 @@ Struktur-Idee, noch nicht gebaut, nicht von selbst anfangen.
 
 ## Changelog-Popup für angewendete SQL-Patches (Patch 32, 2026-08-04)
 
-**Status: Frontend-Code fertig in `index.html`, SQL-Patch geschrieben
-(`sql/patch32_changelog.sql`), aber `sql/patch32_changelog.sql` beim Nutzer
-noch NICHT ausgeführt** — bis dahin läuft `loadUnseenPatches()` beim Login
-gegen eine nicht existierende Tabelle, scheitert leise
-(`logSilentError('Changelog laden', ...)`, kein Popup, keine sichtbare
-Störung). Erst nach dem Go-Signal von Claude Code ausführen (siehe
-Absprache `feedback_sql_patch_wait_for_go` in der Erinnerung).
+**Status: live, seit 2026-08-04.** `sql/patch32_changelog.sql` wurde vom
+Nutzer im Supabase SQL-Editor ausgeführt und per Playwright end-to-end gegen
+die echte Datenbank verifiziert (nicht nur gemockt) — `last_seen_patch_number`
+testweise auf 0 zurückgesetzt, echter Reload, Popup erschien korrekt mit
+"Patch 32 — Changelog-Popup für angewendete SQL-Patches", App hat den Stand
+danach selbst wieder korrekt auf 32 gesetzt.
 
 **Konzept:** immer wenn ein neuer SQL-Patch angewendet wird, trägt sich der
 Patch selbst in `schema_patches` ein (letzte Zeile jeder Patch-Datei,
