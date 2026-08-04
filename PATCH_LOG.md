@@ -40,6 +40,7 @@ alle bis einschließlich Patch 15 im Supabase-Projekt eingespielt sind.
 | 29 | `patch29_zauberer_umbenennung.sql` | Klasse "Hexer" komplett in "Zauberer" umbenannt (es gibt keine "Hexerin", nur "Hexe" — negativ konnotiert). Nicht nur Anzeige-Text in `index.html`, auch der interne Schlüssel: `profiles.character_class`, Item-Keys `hexer_stab`/`hexer_cape` → `zauberer_stab`/`zauberer_cape` (samt umbenannter Bilddateien), bestehendes Inventar + angezogene Items werden mitmigriert |
 | 30 | `patch30_bws_verrechnung.sql` | BWS-Verrechnung (Phase 2 des Produktkatalogs): `products.bwp_faktor`/`provision_faktor`/`provision_mode`, `profiles.lv_promille_satz`/`kv_mb_satz` (individuelle Sätze pro Mitarbeiter), `rule_configs` neue Schlüssel `diffProvLvPromille`/`diffProvKvMb` (Referenzsätze für die Differenzprovision). Formel aus einer vom Nutzer gelieferten Excel abgeleitet, siehe CLAUDE.md. Keine Migration bestehender Produkte — Faktoren bleiben NULL, bis sie eingetragen werden |
 | 31 | `patch31_planungsziele.sql` | Persönliche Planungsziele je Mitarbeiter (`profiles.planung_lv_bws`/`planung_kv_mb`/`planung_bwp`/`planung_vks`/`planung_fa`) — Grundlage für den späteren Zielerreichungsgrad auf der Verkaufsstatistik-Seite, selbst gepflegt auf der neuen "Einstellungen"-Seite |
+| 32 | `patch32_changelog.sql` | Neue Tabelle `schema_patches` (patch_number/title/applied_at) + `profiles.last_seen_patch_number` — jeder künftige Patch trägt sich selbst ein (Titel aus der Kopfzeile), beim Login zeigt die App ein Popup mit allen seit dem letzten eigenen Login neu angewendeten Patches. Trigger sorgt dafür, dass neue Profile automatisch beim aktuellen Stand starten (keine rückwirkende Flut alter Patches) |
 
 ## Wichtiger Hinweis zu Patch 13
 
@@ -64,3 +65,9 @@ Nummer/Titel/Ausführungshinweis, `alter table ... add column if not exists`
 wo möglich (idempotent), destruktive Operationen (`drop column`, `delete`)
 immer explizit im Kommentar markieren und dem Nutzer gegenüber vor Ausführung
 benennen.
+
+**Seit Patch 32:** jede neue Patch-Datei sollte ganz am Ende einen
+`insert into public.schema_patches (patch_number, title) values (N, '...')
+on conflict (patch_number) do nothing;` enthalten — Titel 1:1 aus der
+Kopfzeile übernehmen. Sonst zeigt die App das Changelog-Popup für diesen
+Patch nicht an, auch wenn er sonst korrekt läuft.

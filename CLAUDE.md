@@ -316,6 +316,10 @@ Funktionen benutzen statt eigene Fehlerbehandlung zu erfinden.**
   `message`, `created_at`). Insert darf jeder für die eigene Organisation,
   Lesen nur Admins — sichtbar im neuen Reiter "Fehlerprotokoll". Bewusst kein
   Update/Delete: ein Protokoll wird nicht nachträglich verändert.
+- `schema_patches` — Changelog-Popup (seit Patch 32, **noch nicht
+  ausgeführt**, siehe eigener Abschnitt unten). `patch_number`/`title`/
+  `applied_at`, kein `org_id`-Bezug (beschreibt den DB-Zustand insgesamt,
+  nicht eine Organisation). Trägt sich pro künftigem Patch selbst ein.
 
 ### Sicherheitsmodell (RLS), zum Verständnis
 
@@ -795,6 +799,47 @@ klassenabhängiger Umbenennung analog zur Tabelle bei "Charakterklassen"
 oben — Zauberer: **Zauberbuch**, Krieger: **Kriegsjournal**, Schütze:
 vermutlich **Rolle** (noch nicht endgültig benannt). Reine Design-/
 Struktur-Idee, noch nicht gebaut, nicht von selbst anfangen.
+
+## Changelog-Popup für angewendete SQL-Patches (Patch 32, 2026-08-04)
+
+**Status: Frontend-Code fertig in `index.html`, SQL-Patch geschrieben
+(`sql/patch32_changelog.sql`), aber `sql/patch32_changelog.sql` beim Nutzer
+noch NICHT ausgeführt** — bis dahin läuft `loadUnseenPatches()` beim Login
+gegen eine nicht existierende Tabelle, scheitert leise
+(`logSilentError('Changelog laden', ...)`, kein Popup, keine sichtbare
+Störung). Erst nach dem Go-Signal von Claude Code ausführen (siehe
+Absprache `feedback_sql_patch_wait_for_go` in der Erinnerung).
+
+**Konzept:** immer wenn ein neuer SQL-Patch angewendet wird, trägt sich der
+Patch selbst in `schema_patches` ein (letzte Zeile jeder Patch-Datei,
+Konvention in `PATCH_LOG.md` festgehalten). Beim nächsten Login sieht
+**jedes** Team-Mitglied (nicht nur Admins — bewusste Nutzerentscheidung,
+Transparenz für alle) ein Popup mit allen Patches, die seit dem eigenen
+letzten Login dazugekommen sind — auch mehrere auf einmal, falls jemand
+länger nicht eingeloggt war. Der angezeigte Text ist **bewusst automatisch
+abgeleitet**, nicht von Hand nachformuliert (ausdrückliche Nutzer-
+Entscheidung, obwohl das für nicht-technische Kolleg:innen mitunter kryptisch
+klingen kann) — die Kopfzeile jeder Patch-Datei ("PATCH N — Titel"), die
+ohnehin beim Schreiben jedes Patches entsteht, wird 1:1 als Popup-Titel
+übernommen. Kein separater Changelog-Text-Schritt nötig.
+
+**"Gesehen" pro Person** über `profiles.last_seen_patch_number` — wird in
+dem Moment gesetzt, in dem das Popup erscheint (nicht erst beim Wegklicken).
+Ein DB-Trigger (`set_initial_seen_patch()`) sorgt dafür, dass **neue**
+Profile automatisch beim zu diesem Zeitpunkt aktuellen Patch-Stand starten,
+damit niemand bei der ersten Anmeldung mit der kompletten Historie
+überflutet wird — das Popup ist nur für echte Neuerungen ab dem eigenen
+Beitritt gedacht. Bewusst **einmalig pro Version, keine Historien-Seite**
+(Nutzerentscheidung) — wer es wegklickt, sieht diesen Patch nicht nochmal.
+
+**Bekannte, akzeptierte Grenze:** die Tabelle ist bewusst organisationsweit
+(kein `org_id`-Bezug, da Schema-Änderungen die ganze DB betreffen, nicht
+eine Organisation) — sobald es mehrere echte Kundenorganisationen auf
+derselben Datenbank gibt, würden alle Organisationen dieselben,
+möglicherweise fachlich irrelevanten Änderungen angezeigt bekommen. Passt zur
+bereits bekannten Lücke bei der Multi-Org-Loskopplung (`DEFAULT_ORG_ID`,
+siehe "Technische Skalierungs-Schwellen") — kein neues Problem, nicht vorab
+lösen.
 
 ## Sprite-Labor: Asset-Erstellungs-Werkzeug für neue Items (seit 2026-08-03 gebaut)
 

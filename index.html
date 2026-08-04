@@ -1180,6 +1180,16 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   </div>
 </div>
 
+<div class="loc-modal" id="changelogModal" style="display:none;">
+  <div class="loc-modal-inner">
+    <div class="loc-modal-header">
+      <span>✨ Was ist neu?</span>
+      <button id="changelogClose">✕</button>
+    </div>
+    <div id="changelogList"></div>
+  </div>
+</div>
+
 <div class="loc-modal" id="contactDetailModal" style="display:none;">
   <div class="loc-modal-inner" style="max-width:560px;">
     <div class="loc-modal-header">
@@ -1911,6 +1921,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     updateKanbanLabels();
     updateStatistikLabels();
     restoreLastPage();
+    loadUnseenPatches();
   }
 
   document.getElementById('nameInput').addEventListener('change', async (e)=>{
@@ -2071,6 +2082,37 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     }).select().single();
     if(logErr){ logSilentError('Manatrank-Gutschrift protokollieren', logErr); return; }
     if(data) log.push(data);
+  }
+
+  // ---- Changelog-Popup für angewendete SQL-Patches ----
+  // Jeder künftige Patch trägt sich selbst in schema_patches ein (Titel kommt
+  // 1:1 aus der Kopfzeile der Patch-Datei, kein separater Handschreib-Schritt
+  // nötig). Zeigt beim Login ALLE Patches, die seit dem letzten Login dieser
+  // Person angewendet wurden — nicht nur den neuesten — damit niemand etwas
+  // verpasst, der länger nicht eingeloggt war. "Gesehen" wird in dem Moment
+  // gezählt, in dem das Popup erscheint (nicht erst beim Wegklicken), analog
+  // zu allem anderen im Projekt, das sich nicht extra merkt, OB etwas gelesen
+  // wurde, nur DASS es angezeigt wurde.
+  async function loadUnseenPatches(){
+    const lastSeen = profile.last_seen_patch_number || 0;
+    const { data, error } = await sb.from('schema_patches')
+      .select('patch_number,title,applied_at')
+      .gt('patch_number', lastSeen)
+      .order('patch_number', { ascending:true });
+    if(error){ logSilentError('Changelog laden', error); return; }
+    if(!data || data.length===0) return;
+
+    document.getElementById('changelogList').innerHTML = data.map(p=>`
+      <div class="log-entry">
+        <span class="lname">Patch ${p.patch_number} — ${p.title}</span>
+        <span class="lright"><span class="ltime">${fmtTime(p.applied_at)}</span></span>
+      </div>`).join('');
+    document.getElementById('changelogModal').style.display = 'flex';
+
+    const maxSeen = Math.max(...data.map(p=>p.patch_number));
+    profile.last_seen_patch_number = maxSeen;
+    const { error: updErr } = await sb.from('profiles').update({ last_seen_patch_number: maxSeen }).eq('id', profile.id);
+    if(updErr) logSilentError('Gesehene Patches speichern', updErr);
   }
 
   async function checkAndAwardRecurringQuests(){
@@ -4211,6 +4253,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
   document.getElementById('productDetailClose').addEventListener('click', ()=>{
     document.getElementById('productDetailModal').style.display = 'none';
+  });
+
+  document.getElementById('changelogClose').addEventListener('click', ()=>{
+    document.getElementById('changelogModal').style.display = 'none';
   });
 
   document.getElementById('prodAddBtn').addEventListener('click', async ()=>{
