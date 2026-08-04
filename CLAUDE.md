@@ -765,6 +765,37 @@ viel verkauft" ergibt bei einem verlorenen Deal keinen Sinn). Auch hier
 Pflicht, ein Katalog-Produkt zu wählen — kein Freitext-Fallback mehr,
 irgendwo im System.
 
+## Abenteuerlog-Seite (Kalender/Tagebuch/Foto), seit 2026-08-04 neu sortiert
+
+Reihenfolge auf `#page-tagebuch` ist jetzt bewusst: **Kalender oben →
+Tagebuch-Serie → die 5 Tagebuch-Fragen → Foto ganz unten** (vorher:
+Tagebuch-Fragen → Foto → Kalender). Reiner Layout-Wunsch des Nutzers, keine
+Datenbank-/Logik-Änderung — alle IDs, RLS, `journal_entries`/`journal_photos`
+unverändert.
+
+**Tagebuch-Serie** (neue Kachel zwischen Kalender und Tagebuch-Fragen,
+`journalStreakTag`/`journalStreakHint` in `index.html`): zeigt "X Tage in
+Folge Tagebuch geführt", nach demselben Muster wie XP/Level — **wird nie
+gespeichert**, sondern bei jedem Aufruf frisch aus `journal_entries`
+berechnet (`loadJournalStreak()`, liest die letzten 400 Tage). Die eigentliche
+Zähllogik sitzt bewusst in einer reinen, DB-losen Funktion
+(`computeJournalStreak(entryDateKeys, todayStr)`, neben `daysBetweenKeys()`)
+statt direkt in der Ladefunktion — **auf ausdrücklichen Nutzerwunsch**, damit
+eine künftige Quest-Prüfung ("30 Tage in Folge Tagebuch führen", Teil des
+externen Quest-Baum-Nebenstrangs, siehe unten) dieselbe Logik aufrufen kann,
+statt die Streak-Berechnung ein zweites Mal zu schreiben. Ist der heutige Tag
+noch nicht eingetragen, bleibt die bis gestern gezählte Serie "am Leben"
+(noch nicht gerissen) — erst wenn auch gestern kein Eintrag existiert, fällt
+die Serie auf 0. Aktualisiert sich live nach jedem Auto-Save
+(`scheduleJournalSave()`), kein Neuladen der Seite nötig.
+
+**Offen, vom Nutzer als Zukunftsidee genannt (2026-08-04):** das Tagebuch
+könnte perspektivisch selbst zu einer eigenen Kachel werden, mit
+klassenabhängiger Umbenennung analog zur Tabelle bei "Charakterklassen"
+oben — Zauberer: **Zauberbuch**, Krieger: **Kriegsjournal**, Schütze:
+vermutlich **Rolle** (noch nicht endgültig benannt). Reine Design-/
+Struktur-Idee, noch nicht gebaut, nicht von selbst anfangen.
+
 ## Sprite-Labor: Asset-Erstellungs-Werkzeug für neue Items (seit 2026-08-03 gebaut)
 
 Der Bogen (siehe "Schützen-Bogen" weiter oben) brauchte in einer früheren
