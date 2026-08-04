@@ -303,6 +303,20 @@
   .dungeon-tile .dt-icon{font-size:32px;position:relative;}
   .dungeon-tile .dt-name{font-family:'Cinzel',serif;font-weight:700;font-size:13.5px;color:var(--text);position:relative;}
   .dungeon-tile .dt-count{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--arcane-glow);position:relative;}
+
+  /* Abenteuerlog: Buch-/Rollen-Kachel unter dem Kalender, Klick klappt die
+     5 Tagebuch-Fragen + Foto darunter auf/zu (kein Modal — Kalender bleibt
+     sichtbar, gut für längeres Schreiben). */
+  .journal-book-tile{
+    position:relative;overflow:hidden;background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius-lg);
+    padding:20px 14px;text-align:center;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;
+    transition:all .15s;box-shadow:var(--shadow-rest);max-width:220px;margin:0 auto;
+  }
+  .journal-book-tile:hover{border-color:var(--arcane);transform:translateY(-3px);box-shadow:var(--shadow-raised);}
+  .journal-book-tile.open{border-color:var(--arcane);}
+  .journal-book-icon{width:72px;height:72px;image-rendering:pixelated;}
+  .journal-book-name{font-family:'Cinzel',serif;font-weight:700;font-size:15px;color:var(--text);}
+  .journal-book-chevron{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--muted);}
   /* Questpfad: eine Wegkarte statt Büro-Spalten — Wegpunkte im Zickzack,
      verbunden durch Pfeile. Desktop: waagerechte Route, wechselnd hoch/tief
      versetzt. Handy: dieselbe Route senkrecht gedreht, wechselnd links/rechts
@@ -937,58 +951,65 @@
         </div>
 
         <div class="card" style="margin-top:18px;">
-          <h2>🔥 Tagebuch-Serie <span class="tag" id="journalStreakTag"></span></h2>
-          <div class="empty-page-hint" id="journalStreakHint"></div>
+          <div class="journal-book-tile" id="journalBookTile">
+            <img class="journal-book-icon" id="journalBookIcon" src="" alt="">
+            <div class="journal-book-name" id="journalBookName"></div>
+            <span class="tag" id="journalStreakTag"></span>
+            <div class="journal-book-chevron" id="journalBookChevron">▾ öffnen</div>
+          </div>
+          <div class="empty-page-hint" id="journalStreakHint" style="text-align:center;margin-top:8px;"></div>
         </div>
 
-        <div class="journal-grid" style="margin-top:18px;">
-          <div class="journal-col">
-            <div class="journal-savestate" id="jsave1"></div>
-            <div class="journal-mention-wrap">
-              <textarea class="journal-ta" id="j1" placeholder="Welche Etappe habe ich heute gemeistert?
+        <div id="journalEntryWrap" style="display:none;">
+          <div class="journal-grid" style="margin-top:18px;">
+            <div class="journal-col">
+              <div class="journal-savestate" id="jsave1"></div>
+              <div class="journal-mention-wrap">
+                <textarea class="journal-ta" id="j1" placeholder="Welche Etappe habe ich heute gemeistert?
 Was war mein wichtigster Fortschritt oder Erfolg? (@Name markiert einen Kontakt)"></textarea>
-              <div class="loc-suggestions" id="jSugg1"></div>
+                <div class="loc-suggestions" id="jSugg1"></div>
+              </div>
             </div>
-          </div>
-          <div class="journal-col">
-            <div class="journal-savestate" id="jsave2"></div>
-            <div class="journal-mention-wrap">
-              <textarea class="journal-ta" id="j2" placeholder="Welcher Herausforderung bin ich begegnet?
+            <div class="journal-col">
+              <div class="journal-savestate" id="jsave2"></div>
+              <div class="journal-mention-wrap">
+                <textarea class="journal-ta" id="j2" placeholder="Welcher Herausforderung bin ich begegnet?
 Welcher Einwand, welche Situation oder welches Hindernis hat mich heute gefordert?"></textarea>
-              <div class="loc-suggestions" id="jSugg2"></div>
+                <div class="loc-suggestions" id="jSugg2"></div>
+              </div>
             </div>
-          </div>
-          <div class="journal-col">
-            <div class="journal-savestate" id="jsave3"></div>
-            <div class="journal-mention-wrap">
-              <textarea class="journal-ta" id="j3" placeholder="Welche Entdeckung habe ich gemacht?
+            <div class="journal-col">
+              <div class="journal-savestate" id="jsave3"></div>
+              <div class="journal-mention-wrap">
+                <textarea class="journal-ta" id="j3" placeholder="Welche Entdeckung habe ich gemacht?
 Was habe ich heute über Kunden, den Markt oder mich selbst gelernt?"></textarea>
-              <div class="loc-suggestions" id="jSugg3"></div>
+                <div class="loc-suggestions" id="jSugg3"></div>
+              </div>
             </div>
-          </div>
-          <div class="journal-col">
-            <div class="journal-savestate" id="jsave4"></div>
-            <div class="journal-mention-wrap">
-              <textarea class="journal-ta" id="j4" placeholder="Welche Spur nehme ich mit?
+            <div class="journal-col">
+              <div class="journal-savestate" id="jsave4"></div>
+              <div class="journal-mention-wrap">
+                <textarea class="journal-ta" id="j4" placeholder="Welche Spur nehme ich mit?
 Welche Erkenntnis oder Strategie möchte ich künftig wieder anwenden oder vermeiden?"></textarea>
-              <div class="loc-suggestions" id="jSugg4"></div>
+                <div class="loc-suggestions" id="jSugg4"></div>
+              </div>
             </div>
-          </div>
-          <div class="journal-col">
-            <div class="journal-savestate" id="jsave5"></div>
-            <div class="journal-mention-wrap">
-              <textarea class="journal-ta" id="j5" placeholder="Wohin führt meine nächste Etappe?
+            <div class="journal-col">
+              <div class="journal-savestate" id="jsave5"></div>
+              <div class="journal-mention-wrap">
+                <textarea class="journal-ta" id="j5" placeholder="Wohin führt meine nächste Etappe?
 Was ist morgen der wichtigste konkrete Schritt?"></textarea>
-              <div class="loc-suggestions" id="jSugg5"></div>
+                <div class="loc-suggestions" id="jSugg5"></div>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div class="card" style="margin-top:18px;">
-          <h2>Schnappschuss des Tages <span class="tag">optional</span></h2>
-          <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none;">
-          <button class="cal-nav-btn" id="photoBtn">📷 Foto aufnehmen</button>
-          <div class="photo-preview" id="photoPreview"></div>
+          <div class="card" style="margin-top:18px;">
+            <h2>Schnappschuss des Tages <span class="tag">optional</span></h2>
+            <input type="file" id="photoInput" accept="image/*" capture="environment" style="display:none;">
+            <button class="cal-nav-btn" id="photoBtn">📷 Foto aufnehmen</button>
+            <div class="photo-preview" id="photoPreview"></div>
+          </div>
         </div>
       </div>
 
@@ -2284,7 +2305,29 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     return JOURNAL_FIELDS.some((f,i)=> (row['q'+(i+1)]||'').trim().length>0);
   }
 
+  // ---- Buch-Kachel: Klick klappt die 5 Fragen + Foto auf/zu, kein Modal ----
+  const CLASS_JOURNAL = {
+    zauberer: { name:'Zauberbuch', icon:'img/characters/creator/journal_zauberer.png' },
+    krieger:  { name:'Kriegsbuch', icon:'img/characters/creator/journal_krieger.png' },
+    schuetze: { name:'Schützenrolle', icon:'img/characters/creator/journal_schuetze.png' },
+  };
+  function updateJournalBookTile(){
+    const def = CLASS_JOURNAL[profile.character_class] || CLASS_JOURNAL.zauberer;
+    document.getElementById('journalBookIcon').src = def.icon;
+    document.getElementById('journalBookIcon').alt = def.name;
+    document.getElementById('journalBookName').textContent = def.name;
+  }
+  let journalEntryOpen = false;
+  function setJournalEntryOpen(open){
+    journalEntryOpen = open;
+    document.getElementById('journalEntryWrap').style.display = open ? 'block' : 'none';
+    document.getElementById('journalBookChevron').textContent = open ? '▴ schließen' : '▾ öffnen';
+    document.getElementById('journalBookTile').classList.toggle('open', open);
+  }
+
   async function initJournal(){
+    updateJournalBookTile();
+    document.getElementById('journalBookTile').addEventListener('click', ()=> setJournalEntryOpen(!journalEntryOpen));
     const today = todayKey(new Date());
     const { data, error } = await sb.from('journal_entries').select('*').eq('user_id', profile.id).eq('entry_date', today).maybeSingle();
     if(error) logSilentError('Tagebuch laden', error);
@@ -2719,6 +2762,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       updateGuildLabels();
       updateContactLabels();
       updateStatistikLabels();
+      updateJournalBookTile();
       renderCharacterEquipment();
     });
   });
