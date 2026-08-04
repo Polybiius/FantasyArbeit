@@ -122,6 +122,49 @@ nicht per Code-Änderung.
   Zurückhaltung bei Tech-Wechseln, siehe `feedback_tech_evolution_on_trigger`
   in der Erinnerung).
 
+## Technische Skalierungs-Schwellen ("Enterprise"-Infrastruktur)
+
+Festgelegt am 2026-08-04, auf ausdrücklichen Nutzerwunsch, nach einer
+Diskussion über einen "Vibe Coding"-Kritik-Post (Buzzword-Liste:
+Kubernetes, Docker, S3, SQS, CI/CD, Terraform, Rate Limiting, Load
+Balancer, High Availability, RPC, u.a.). Ziel: dasselbe Prinzip wie bei der
+Frontend-Framework-Schwelle oben (konkrete, prüfbare Auslöser statt
+vagem "irgendwann später") auch auf die übrige Infrastruktur ausweiten.
+**Aktueller Stand bewusst: fast nichts davon ist gebaut, und das ist
+richtig so** — Supabase/GitHub Pages übernehmen Server-Betrieb, Skalierung,
+Firewall, Storage (S3-kompatibel) bereits managed. Nicht vorbeugend bauen,
+sondern auf genau diese Auslöser warten:
+
+- **Automatische Backups (Supabase Pro-Plan-Upgrade):** sobald echte
+  Kolleg:innen anfangen, Kundendaten einzutragen, auf die sie sich
+  verlassen (siehe `project_supabase_backups`-Erinnerung). **Bereits jetzt
+  im Auge behalten:** laut Planung sollte der Nutzer genau ab heute
+  (2026-08-04) in den echten Alltagsbetrieb gehen — sobald das bestätigt
+  ist, aktiv ansprechen, nicht auf Zufall warten.
+- **Multi-Org-Loskopplung** (`DEFAULT_ORG_ID` fest verdrahtet → echte
+  Organisationsauswahl/-Onboarding): sobald eine zweite, tatsächlich
+  zahlende Vertriebsorganisation real ansteht — nicht nur angedacht oder
+  als Fernziel erwähnt.
+- **Rate Limiting:** sobald eine Organisation außerhalb der eigenen
+  echten Zugriff bekommt (fremde Nutzer, potenziell missbräuchlich oder
+  durch schieres Volumen andere Organisationen beeinträchtigend).
+- **CI/CD + automatisiertes Testen:** dieselbe Schwelle wie beim
+  Framework-Wechsel oben — mehrere Personen bearbeiten das Repo
+  gleichzeitig, ODER ein Deploy verursacht einen echten (nicht
+  hypothetischen) Produktionsfehler, den ein einfacher Test vorher
+  gefangen hätte.
+- **Kubernetes/Docker/Terraform/Load Balancer/eigene High-Availability:**
+  bewusst KEIN Zahlen-Trigger — diese Themen werden erst relevant, wenn
+  Supabase/GitHub Pages an eine nachweisbare Grenze stoßen (eine konkrete
+  Compliance-Anforderung, ein Preis-Limit bei echter Skalierung, ein
+  Performance-Limit). Nicht vorher spekulieren, sondern gegen das
+  tatsächliche Supabase-Limit bauen, sobald es auftritt — nicht die ganze
+  Liste auf einmal.
+
+Diese Liste ist absichtlich nicht abschließend — ein neues Thema verdient
+erst dann eine eigene Schwelle, wenn es wichtig genug wird, statt vage
+"später" zu bleiben.
+
 ## Datenbank — aktueller Stand (Annahme: Patch 1–25 eingespielt)
 
 **Wenn das nicht stimmt, sofort korrigieren, bevor irgendetwas gebaut wird** — sonst
