@@ -318,6 +318,14 @@
   .journal-book-icon{width:72px;height:72px;image-rendering:pixelated;}
   .journal-book-name{font-family:'Cinzel',serif;font-weight:700;font-size:15px;color:var(--text);}
   .journal-book-chevron{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--muted);}
+
+  /* Einstellungen: mehrere Themen als aufklappbare Kacheln in einer Karte
+     statt alles dauerhaft sichtbar — hält die Seite übersichtlich, auch
+     wenn weitere Einstellungs-Themen dazukommen. */
+  .settings-header-clickable{cursor:pointer;}
+  .settings-header-clickable:hover{color:var(--arcane);}
+  .settings-chevron{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--muted);}
+  .settings-subheading{font-family:'Cinzel',serif;font-weight:700;font-size:13.5px;color:var(--text);margin:0 0 6px;display:flex;align-items:center;justify-content:space-between;}
   /* Questpfad: eine Wegkarte statt Büro-Spalten — Wegpunkte im Zickzack,
      verbunden durch Pfeile. Desktop: waagerechte Route, wechselnd hoch/tief
      versetzt. Handy: dieselbe Route senkrecht gedreht, wechselnd links/rechts
@@ -352,6 +360,9 @@
     .kc-move-btn{display:flex;}
   }
   .contact-table-title{font-family:'Cinzel',serif;font-size:15px;margin:12px 0;}
+  /* Tabelle ist breiter als schmale Handy-Bildschirme (5 Spalten) — eigener
+     Scroll-Container statt die ganze Seite waagerecht zu sprengen. */
+  .ctable-wrap{overflow-x:auto;}
   .ctable{width:100%;border-collapse:collapse;font-size:12.5px;}
   .ctable th{text-align:left;color:var(--muted-2);font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;padding:8px 10px;border-bottom:1px solid var(--border);}
   .ctable td{padding:9px 10px;border-bottom:1px solid var(--border);color:var(--text);}
@@ -415,7 +426,7 @@
   .photo-hint{color:var(--muted-2);font-size:12px;font-family:'JetBrains Mono',monospace;}
   .card{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:20px;box-shadow:var(--shadow-rest);}
   .card h2{font-family:'Cinzel',serif;font-size:15px;font-weight:700;margin:0 0 14px;color:var(--text);letter-spacing:.03em;display:flex;align-items:center;justify-content:space-between;}
-  .card h2 .tag{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted-2);text-transform:none;letter-spacing:0;}
+  .card h2 .tag,.settings-subheading .tag{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted-2);text-transform:none;letter-spacing:0;}
 
   #sigil{display:block;margin:0 auto;}
   .skill-list{margin-top:14px;display:flex;flex-direction:column;gap:10px;}
@@ -843,12 +854,12 @@
             <div id="dungeonContactsTableWrap" style="display:none;margin-top:16px;">
               <button class="cal-nav-btn" id="backToDungeonListBtn">‹ Zurück zur Dungeon-Liste</button>
               <h3 class="contact-table-title" id="dungeonContactsTitle"></h3>
-              <div id="dungeonContactsTable"></div>
+              <div class="ctable-wrap" id="dungeonContactsTable"></div>
             </div>
           </div>
 
           <div id="kontakteAllView" style="display:none;">
-            <div id="allContactsTable"></div>
+            <div class="ctable-wrap" id="allContactsTable"></div>
           </div>
         </div>
       </div>
@@ -1032,34 +1043,35 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       <!-- SEITE: EINSTELLUNGEN (jeder für sich selbst) -->
       <div class="page" id="page-einstellungen" style="display:none;">
         <div class="card">
-          <h2>Individuelle Provision</h2>
-          <div class="empty-page-hint" style="margin-bottom:8px;">Nur bei Leben/Kranken relevant — andere Sparten nutzen den festen Faktor am Produkt.</div>
-          <div class="kanban-newlead-form">
-            <label class="cdl" style="display:block;">Leben-Satz (‰)</label>
-            <input type="number" id="settingsLvSatzInput" step="0.01" placeholder="z.B. 32">
-            <label class="cdl" style="display:block;margin-top:4px;">Kranken-MB-Satz</label>
-            <input type="number" id="settingsKvSatzInput" step="0.001" placeholder="z.B. 6">
-            <button class="cal-nav-btn" id="settingsProvisionSaveBtn" style="width:100%;margin-top:8px;">Speichern</button>
-            <div class="empty-page-hint" id="settingsProvisionStatus"></div>
-          </div>
-        </div>
+          <h2 class="settings-header-clickable" id="settingsProvisionHeader">Provision &amp; Planungsziele <span class="settings-chevron" id="settingsProvisionChevron">▾ öffnen</span></h2>
+          <div id="settingsProvisionWrap" style="display:none;">
+            <h3 class="settings-subheading">Individuelle Provision</h3>
+            <div class="empty-page-hint" style="margin-bottom:8px;">Nur bei Leben/Kranken relevant — andere Sparten nutzen den festen Faktor am Produkt.</div>
+            <div class="kanban-newlead-form">
+              <label class="cdl" style="display:block;">Leben-Satz (‰)</label>
+              <input type="number" id="settingsLvSatzInput" step="0.01" placeholder="z.B. 32">
+              <label class="cdl" style="display:block;margin-top:4px;">Kranken-MB-Satz</label>
+              <input type="number" id="settingsKvSatzInput" step="0.001" placeholder="z.B. 6">
+              <button class="cal-nav-btn" id="settingsProvisionSaveBtn" style="width:100%;margin-top:8px;">Speichern</button>
+              <div class="empty-page-hint" id="settingsProvisionStatus"></div>
+            </div>
 
-        <div class="card" style="margin-top:18px;">
-          <h2>Persönliche Planungsziele <span class="tag">Zielerreichungsgrad</span></h2>
-          <div class="empty-page-hint" style="margin-bottom:8px;">Deine eigenen Jahresziele — daraus berechnet das Kompendium später deinen Zielerreichungsgrad.</div>
-          <div class="kanban-newlead-form">
-            <label class="cdl" style="display:block;">Planung Leben-BWS</label>
-            <input type="number" id="settingsPlanLvBwsInput" step="0.01" placeholder="Ziel-Bewertungssumme Leben">
-            <label class="cdl" style="display:block;margin-top:4px;">Planung Kranken-Beitrag</label>
-            <input type="number" id="settingsPlanKvMbInput" step="0.01" placeholder="Ziel-Bewertungsbeitrag Kranken">
-            <label class="cdl" style="display:block;margin-top:4px;">Planung Bewertungspunkte</label>
-            <input type="number" id="settingsPlanBwpInput" step="0.01" placeholder="Ziel-Bewertungspunkte">
-            <label class="cdl" style="display:block;margin-top:4px;">Planung Verkaufsgespräche</label>
-            <input type="number" id="settingsPlanVksInput" step="1" placeholder="Ziel-Anzahl Verkaufsgespräche">
-            <label class="cdl" style="display:block;margin-top:4px;">Planung Fachkontakte (FA)</label>
-            <input type="number" id="settingsPlanFaInput" step="1" placeholder="Ziel-Anzahl Fachkontakte">
-            <button class="cal-nav-btn" id="settingsZieleSaveBtn" style="width:100%;margin-top:8px;">Speichern</button>
-            <div class="empty-page-hint" id="settingsZieleStatus"></div>
+            <h3 class="settings-subheading" style="margin-top:18px;">Persönliche Planungsziele <span class="tag">Zielerreichungsgrad</span></h3>
+            <div class="empty-page-hint" style="margin-bottom:8px;">Deine eigenen Jahresziele — daraus berechnet das Kompendium später deinen Zielerreichungsgrad.</div>
+            <div class="kanban-newlead-form">
+              <label class="cdl" style="display:block;">Planung Leben-BWS</label>
+              <input type="number" id="settingsPlanLvBwsInput" step="0.01" placeholder="Ziel-Bewertungssumme Leben">
+              <label class="cdl" style="display:block;margin-top:4px;">Planung Kranken-Beitrag</label>
+              <input type="number" id="settingsPlanKvMbInput" step="0.01" placeholder="Ziel-Bewertungsbeitrag Kranken">
+              <label class="cdl" style="display:block;margin-top:4px;">Planung Bewertungspunkte</label>
+              <input type="number" id="settingsPlanBwpInput" step="0.01" placeholder="Ziel-Bewertungspunkte">
+              <label class="cdl" style="display:block;margin-top:4px;">Planung Verkaufsgespräche</label>
+              <input type="number" id="settingsPlanVksInput" step="1" placeholder="Ziel-Anzahl Verkaufsgespräche">
+              <label class="cdl" style="display:block;margin-top:4px;">Planung Fachkontakte (FA)</label>
+              <input type="number" id="settingsPlanFaInput" step="1" placeholder="Ziel-Anzahl Fachkontakte">
+              <button class="cal-nav-btn" id="settingsZieleSaveBtn" style="width:100%;margin-top:8px;">Speichern</button>
+              <div class="empty-page-hint" id="settingsZieleStatus"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -4386,6 +4398,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('settingsProvisionStatus').textContent = '';
     document.getElementById('settingsZieleStatus').textContent = '';
   }
+
+  let settingsProvisionOpen = false;
+  document.getElementById('settingsProvisionHeader').addEventListener('click', ()=>{
+    settingsProvisionOpen = !settingsProvisionOpen;
+    document.getElementById('settingsProvisionWrap').style.display = settingsProvisionOpen ? 'block' : 'none';
+    document.getElementById('settingsProvisionChevron').textContent = settingsProvisionOpen ? '▴ schließen' : '▾ öffnen';
+  });
 
   document.getElementById('settingsProvisionSaveBtn').addEventListener('click', async ()=>{
     const statusEl = document.getElementById('settingsProvisionStatus');
