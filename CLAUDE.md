@@ -904,6 +904,23 @@ Nutzerwunsch ("das hat was Bequemliches").
 Prinzip):** wiederkehrende Termine, Erinnerungen, Tagesansicht. Nicht von
 selbst anfangen, nur auf expliziten Anstoß.
 
+**Nachbesserung Patch 34 (`sql/patch34_wochenende_ausblenden.sql`,
+2026-08-05), noch am selben Tag:** Bugfix + neue Einstellung, ausgelöst
+durch echtes Nutzer-Feedback ("ich hab meine Arbeitszeit nun von Montag bis
+Freitag gelegt, der Kalender zeigt immer noch Samstag und Sonntag"). Zwei
+Dinge:
+1. **Bugfix:** ein Wochentag ganz ohne Arbeitszeiten-Eintrag (z.B. ein nicht
+   konfiguriertes Wochenende) galt fälschlich als ungegraut statt komplett
+   arbeitsfrei — jetzt wird ein Tag ohne Eintrag in der Wochenansicht
+   ganztägig abgedunkelt (`week-nonwork-overlay` über die volle Höhe).
+2. **Neue Einstellung** `profiles.calendar_hide_weekends` (boolean,
+   Default false) — Checkbox in Einstellungen → Kalender → Arbeitszeiten:
+   Samstag/Sonntag lassen sich statt nur grau auch **komplett ausblenden**
+   (wie Outlooks "Arbeitswoche"-Ansicht). Das Wochenraster passt seine
+   Spaltenzahl/-breite dafür jetzt dynamisch an (`grid-template-columns`
+   wird pro `renderWeekView()`-Aufruf per JS gesetzt), statt fest auf 7
+   Spalten zu bestehen.
+
 **Buch-/Rollen-Kachel: seit 2026-08-04 live gebaut** (setzt die oben
 ursprünglich nur als Zukunftsidee notierte Umbenennung um, mit leicht
 anderen finalen Namen als zuerst angedacht): unter dem Kalender ersetzt
