@@ -1144,6 +1144,9 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
               </div>
             </div>
             <div id="azDaysList"></div>
+            <label class="cdl" style="display:flex;align-items:center;gap:6px;margin-top:10px;">
+              <input type="checkbox" id="azHideWeekendsInput"> Samstag/Sonntag in der Wochenansicht ganz ausblenden (statt nur grau)
+            </label>
             <button class="cal-nav-btn" id="azSaveBtn" style="width:100%;margin-top:10px;">Speichern</button>
             <div class="empty-page-hint" id="azStatus"></div>
           </div>
@@ -4350,16 +4353,24 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   async function renderWeekView(scrollToDefault){
-    const days = [];
-    for(let i=0;i<7;i++) days.push(new Date(calWeekStart.getFullYear(), calWeekStart.getMonth(), calWeekStart.getDate()+i));
+    const allDays = [];
+    for(let i=0;i<7;i++) allDays.push(new Date(calWeekStart.getFullYear(), calWeekStart.getMonth(), calWeekStart.getDate()+i));
+    const hideWeekends = !!profile.calendar_hide_weekends;
+    const days = hideWeekends ? allDays.filter(d=> d.getDay()!==0 && d.getDay()!==6) : allDays;
     const todayStr = dateKeyLocal(new Date());
 
+    const headerRowEl = document.getElementById('weekHeaderRow');
+    const daysEl = document.getElementById('weekDays');
+    const colTemplate = `repeat(${days.length},minmax(72px,1fr))`;
+    headerRowEl.style.gridTemplateColumns = `46px ${colTemplate}`;
+    daysEl.style.gridTemplateColumns = colTemplate;
+
     let headerHtml = '<div></div>';
-    days.forEach((d,i)=>{
+    days.forEach(d=>{
       const isToday = dateKeyLocal(d)===todayStr;
-      headerHtml += `<div class="week-day-header ${isToday?'today':''}"><span class="wdh-wd">${WEEKDAY_LABELS[i]}</span><span class="wdh-date">${pad2(d.getDate())}.${pad2(d.getMonth()+1)}.</span></div>`;
+      headerHtml += `<div class="week-day-header ${isToday?'today':''}"><span class="wdh-wd">${WEEKDAY_LABELS[(d.getDay()+6)%7]}</span><span class="wdh-date">${pad2(d.getDate())}.${pad2(d.getMonth()+1)}.</span></div>`;
     });
-    document.getElementById('weekHeaderRow').innerHTML = headerHtml;
+    headerRowEl.innerHTML = headerHtml;
 
     const totalHeight = 48*HALF_HOUR_PX;
     let timeHtml = '';
@@ -4376,13 +4387,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(error) logSilentError('Termine laden', error);
     weekTermine = data || [];
 
-    const daysEl = document.getElementById('weekDays');
     daysEl.innerHTML = '';
     days.forEach(d=>{
       const dayCol = document.createElement('div');
       dayCol.className = 'week-day-col' + (dateKeyLocal(d)===todayStr ? ' today' : '');
       dayCol.style.height = totalHeight+'px';
 
+      // Kein Eintrag für diesen Wochentag = ganzer Tag gilt als arbeitsfrei
+      // (komplett abgedunkelt) — vorher blieb ein Tag ohne Eintrag fälschlich
+      // ungegraut, als wäre er ein normaler Arbeitstag.
       const wz = profile.arbeitszeiten ? profile.arbeitszeiten[WEEKDAY_KEYS[(d.getDay()+6)%7]] : null;
       if(wz && wz.start && wz.end){
         const [sh,sm] = wz.start.split(':').map(Number);
@@ -4401,6 +4414,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
           after.style.top=endPx+'px'; after.style.height=(totalHeight-endPx)+'px';
           dayCol.appendChild(after);
         }
+      } else {
+        const full = document.createElement('div');
+        full.className = 'week-nonwork-overlay';
+        full.style.top='0px'; full.style.height=totalHeight+'px';
+        dayCol.appendChild(full);
       }
 
       const dayEvents = weekTermine.filter(t=> dateKeyLocal(new Date(t.start_at))===dateKeyLocal(d));
@@ -4999,6 +5017,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         document.getElementById('azEnde_'+k).disabled = !e.target.checked;
       });
     });
+    document.getElementById('azHideWeekendsInput').checked = !!profile.calendar_hide_weekends;
   }
 
   document.getElementById('azBulkApplyBtn').addEventListener('click', ()=>{
@@ -5023,9 +5042,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       const ende = document.getElementById('azEnde_'+k).value;
       if(start && ende) obj[k] = {start, end:ende};
     });
-    const { error } = await sb.from('profiles').update({ arbeitszeiten: obj }).eq('id', profile.id);
+    const hideWeekends = document.getElementById('azHideWeekendsInput').checked;
+    const { error } = await sb.from('profiles').update({ arbeitszeiten: obj, calendar_hide_weekends: hideWeekends }).eq('id', profile.id);
     if(error){ reportError('Arbeitszeiten speichern', error, statusEl); return; }
     profile.arbeitszeiten = obj;
+    profile.calendar_hide_weekends = hideWeekends;
     statusEl.textContent = 'Gespeichert.';
   });
 

@@ -42,6 +42,7 @@ alle bis einschließlich Patch 15 im Supabase-Projekt eingespielt sind.
 | 31 | `patch31_planungsziele.sql` | Persönliche Planungsziele je Mitarbeiter (`profiles.planung_lv_bws`/`planung_kv_mb`/`planung_bwp`/`planung_vks`/`planung_fa`) — Grundlage für den späteren Zielerreichungsgrad auf der Verkaufsstatistik-Seite, selbst gepflegt auf der neuen "Einstellungen"-Seite |
 | 32 | `patch32_changelog.sql` | Neue Tabelle `schema_patches` (patch_number/title/applied_at) + `profiles.last_seen_patch_number` — jeder künftige Patch trägt sich selbst ein (Titel aus der Kopfzeile), beim Login zeigt die App ein Popup mit allen seit dem letzten eigenen Login neu angewendeten Patches. Trigger sorgt dafür, dass neue Profile automatisch beim aktuellen Stand starten (keine rückwirkende Flut alter Patches) |
 | 33 | `patch33_termine.sql` | Neue Tabelle `termine` (echter Termin-Kalender, Wochenansicht) — rein persönlich, aber mit Admin-Leserechte-Ausnahme (anders als `journal_entries`). Optionale Verweise auf Kontakt/Betrieb, Freitext-Titel. `profiles.arbeitszeiten` (JSONB, pro Wochentag Start/Ende) für die neue Einstellungen-Unterseite "Kalender" |
+| 34 | `patch34_wochenende_ausblenden.sql` | `profiles.calendar_hide_weekends` (boolean, Default false) — Samstag/Sonntag in der Kalender-Wochenansicht wahlweise ganz ausblendbar statt nur grau. Behebt außerdem einen Bug: ein Tag ganz ohne Arbeitszeiten-Eintrag galt fälschlich als ungegraut statt komplett arbeitsfrei |
 
 ## Wichtiger Hinweis zu Patch 13
 
