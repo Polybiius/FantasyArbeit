@@ -332,6 +332,12 @@ Funktionen benutzen statt eigene Fehlerbehandlung zu erfinden.**
   Abschnitt unten). `patch_number`/`title`/`applied_at`, kein `org_id`-Bezug
   (beschreibt den DB-Zustand insgesamt,
   nicht eine Organisation). Trägt sich pro künftigem Patch selbst ein.
+- `termine` — echter Termin-Kalender (seit Patch 33, live, siehe eigener
+  Abschnitt "Echter Termin-Kalender" oben). `owner_id`, optionale
+  `contact_id`/`location_id`, Freitext-`title`, `start_at`/`end_at`. Rein
+  persönlich, aber mit Admin-Leserechte-Ausnahme (anders als
+  `journal_entries`). Keine Überschneidungs-Prüfung, Doppelbuchungen sind
+  einfach unabhängige Zeilen.
 
 ### Sicherheitsmodell (RLS), zum Verständnis
 
@@ -685,11 +691,20 @@ weiterhin zusätzlich, nichts wurde entfernt.
 - → Ersttermin vereinbart: Aktion `termin_vereinbart`. Auch erreichbar per
   Klick auf "Termin vereinbart" an einem Dungeon (fragt dann nach
   Vorname/Nachname und legt den Kontakt live an, statt anonym zu loggen).
+  Fragt seit dem Termin-Kalender (siehe eigener Abschnitt oben, Patch 33)
+  zusätzlich nach Start-/Endzeit und legt bei Eingabe einen echten
+  Kalendertermin an — überspringbar, sowohl über den Dungeon-Button als
+  auch beim Ziehen einer bestehenden Karte.
 - → Nicht erschienen: **nur von Ersttermin vereinbart aus**, sonst Abbruch.
   Loggt `termin_nicht_wahrgenommen` (−2 XP, der lange geplante
   Konversions-Malus).
-- → Angebot versendet / Zweittermin: Aktion `pitch`, danach optionales Popup
-  "Bedarfsanalyse geführt?" (Kann übersprungen werden).
+- → Angebot versendet: Aktion `pitch`, danach optionales Popup
+  "Bedarfsanalyse geführt?" (kann übersprungen werden). **Kein**
+  Termin-Popup — ein verschicktes Angebot ist kein Treffen.
+- → Zweittermin: dieselbe Aktion `pitch` + dieselbe Bedarfsanalyse-Nachfrage
+  wie Angebot versendet, zusätzlich aber (seit Patch 33, extra entkoppelt)
+  dasselbe überspringbare Termin-Popup wie bei Ersttermin — ein Zweittermin
+  ist ein echtes Treffen.
 - → Gewonnen: Aktion `abschluss`, danach Popup `recordWonSalesLoop()` —
   Produkt + Menge eintragen, "+ Produkt hinzufügen" für beliebig viele weitere
   Produkte desselben Abschlusses, "Fertig" zum Abschließen (je ein Insert in
@@ -821,36 +836,73 @@ enthält, statt nur auf Zeilen-Existenz zu prüfen. Bei jeder künftigen
 Änderung an dieser Logik dasselbe Prinzip weiterverwenden, nicht auf
 Zeilen-Existenz zurückfallen.
 
-**Nächster großer Schritt — echter Termin-Kalender (Vision vom Nutzer,
-2026-08-04, NOCH NICHT GEBAUT, noch nicht gemeinsam durchgesprochen):** der
-Kalender soll sich von einem reinen Tagebuch-Rückblick (Vergangenheit: "wann
-habe ich geschrieben") zu einem echten, vorausschauenden Termin-Kalender
-wandeln, ähnlich Outlook. Konkret genannt:
-- Termine sollen sich **manuell eintragen** lassen, wie in jedem normalen
-  Kalender.
-- Termine, die über einen **Dungeon** zustande kommen, sollen sich
-  automatisch eintragen — das existiert als Datum technisch schon heute:
-  der Kanban-Übergang "Termin vereinbart" (`terminLeadModal`/
-  `terminLeadDatum` in `index.html`, siehe Kanban-Abschnitt oben) erzeugt
-  bereits ein echtes Termindatum, taucht aber bisher in keiner
-  Kalenderansicht auf. Vermutlich ebenfalls relevant: `contacts.
-  naechster_kontakt` (Wiedervorlage-Datum, existiert schon als Spalte,
-  siehe Kern-Tabellen oben) — heute ebenfalls nirgends kalendarisch
-  sichtbar.
-- Weitere "Outlook-typische" Kalenderfunktionen sind ausdrücklich gewünscht,
-  aber noch nicht spezifiziert (wiederkehrende Termine? Erinnerungen?
-  Tagesansicht mit Uhrzeiten? — offen).
-- Explizites Ziel laut Nutzer: **"maximale Effizienz und Bequemlichkeit"**
-  — die praktische, operative Hälfte des Produkts, nicht ihr Gegensatz zur
-  Motivationsmechanik-Hälfte (siehe "Die Grundidee" oben — beide Hälften
-  sind gleichrangig gemeint, siehe auch `feedback_practical_over_narrative_
-  framing` in der Erinnerung, wo genau diese Verwechslung live passiert
-  ist).
+**Echter Termin-Kalender (Wochenansicht, Outlook-Stil), seit 2026-08-05
+live** — Phase 1 der am 2026-08-04 nur als Vision notierten Idee, nach
+ausführlicher Absprache gebaut (siehe Muster "erst durchsprechen" oben).
+Der Kalender bleibt in der Monatsansicht ein reiner Tagebuch-Rückblick,
+bekommt aber eine neue, umschaltbare **Wochenansicht** dazu (`calViewMode`
+'monat'/'woche', Umschalter über das bestehende `.view-switch`-Muster wie
+bei Kontakte "Nach Dungeon/Alle Kontakte"). Monatsansicht hat jetzt zusätzlich
+eine Mo–So-Kopfzeile (`.cal-weekday-header`, fehlte vorher komplett) und
+zeigt einen dritten Punkt-Typ (`dot-termin`) neben den bestehenden
+Tagebuch-/Foto-Punkten, wenn an dem Tag ein Termin liegt.
 
-**Vor dem Bauen unbedingt gemeinsam durchsprechen** (Kernstruktur-Änderung,
-neues Datenmodell für "Termine" nötig — eigene Tabelle? Wiederholungsregeln?
-Verknüpfung zu Kontakten/Dungeons?) statt direkt loszulegen, gleiches Prinzip
-wie beim Kanban/Produktkatalog seinerzeit.
+**Datenmodell (Patch 33, `sql/patch33_termine.sql`):** neue Tabelle
+`termine` — `owner_id` (rein persönlich, keine Team-Sichtbarkeit, wie beim
+Tagebuch), optionale `contact_id`/`location_id`, Freitext-`title`,
+`start_at`/`end_at` (timestamptz). **Bewusst NICHT so abgeschottet wie
+`journal_entries`**: Admins haben eine normale Leserechte-Ausnahme (wie bei
+Kontakten/Locations) — ausdrückliche Nutzerentscheidung ("das wird noch
+skalieren", Tagebuch bleibt die einzige komplett private Ausnahme). Keine
+Überschneidungs-Prüfung in der DB — Doppelbuchungen sind einfach
+unabhängige Zeilen, die Wochenansicht **layoutet sie nebeneinander**
+(Outlook-Stil, `computeOverlapLayout()`: Cluster überschneidender Termine
+gruppieren, dann greedy Spalten vergeben — Standard-Kollisionsalgorithmus).
+Zusätzlich `profiles.arbeitszeiten` (JSONB, pro Wochentag `{start,end}`) für
+eine neue Einstellungen-Unterseite "Kalender" → Arbeitszeiten (eigene
+aufklappbare Kachel neben "Provision & Planungsziele", gleiches Muster).
+Wirkt sich nur optisch aus (Zeiten außerhalb werden in der Wochenansicht
+abgedunkelt, `.week-nonwork-overlay`, `pointer-events:none`) — Termine
+lassen sich weiterhin überall eintragen, nichts wird technisch gesperrt.
+
+**Bedienung Wochenansicht:** Zeitraster im Halbe-Stunde-Takt
+(`HALF_HOUR_PX=32`), Ziehen über eine Zeitspanne (Pointer Events, nicht
+native HTML5-Drag&Drop — gleicher Grund wie beim Kanban-↕-Menü: funktioniert
+zuverlässig auch auf Touch) öffnet ein Popup (Titel, Start/Ende, optional
+Kontakt-/Betrieb-Suche über eine neue generische `initGenericAutocomplete()`-
+Hilfsfunktion, die den bestehenden `contactLocationSearch`-Stil wiederverwendet).
+**Wichtiger Stolperstein, gelöst:** ob ein Klick einen bestehenden Termin
+öffnet oder einen neuen erzeugt, entscheidet sich über die **Ziehstrecke**
+(>6px Bewegung = neuer Termin), nicht über das Element unter dem Finger —
+sonst ließe sich kein zweiter, überschneidender Termin mehr über einem
+bereits voll-breiten bestehenden Termin aufziehen (der erste Versuch hat
+das per `e.target.closest('.week-event')`-Abbruch im `pointerdown` blockiert
+und musste korrigiert werden). Zeitachse bleibt beim seitlichen Scrollen auf
+schmalen Bildschirmen sticky stehen (`.week-time-col{position:sticky;
+left:0}`) — **derselbe Bug wie bei der Kontakt-Tabelle zuvor** (siehe
+Abenteuerlog/Kontakte-Fix weiter oben) ist hier auch aufgetaucht: der erste
+Wurf hatte `overflow-x:hidden` auf `.week-view-wrap` gesetzt, wodurch
+Samstag/Sonntag auf dem Handy einfach unsichtbar abgeschnitten waren statt
+scrollbar zu sein — auf `overflow-x:auto` korrigiert, gegen die echte,
+eingeloggte App auf 390px-Breite verifiziert.
+
+**Kanban-Integration:** die Kanban-Übergänge "Ersttermin vereinbart" und
+"Zweittermin" fragen jetzt beide (überspringbar, kein Zwang, `promptKanbanTermin()`)
+nach Datum+Uhrzeit und legen bei Eingabe einen echten Kalendertermin an —
+und zwar an **beiden** Auslösern: dem bestehenden Dungeon-Button
+(`terminLeadModal`, jetzt um Start/Ende-Zeitfelder ergänzt) UND beim Ziehen
+einer bereits bestehenden Karte im Board (vorher dort komplett ohne
+Datumsabfrage). **"Angebot versendet" bekommt bewusst KEIN Termin-Popup**
+— teilte sich vorher denselben Code-Pfad wie Zweittermin (beide loggen die
+Aktion `pitch`), wurde dafür entkoppelt: ein Angebot verschicken ist kein
+Treffen. Derselbe `promptKanbanTermin()`-Baustein sitzt zusätzlich als
+"Termin eintragen"-Button im Kontaktformular (`cdTerminBtn`) — bequemer
+Nachtrag, falls beim Verschieben übersprungen wurde, ausdrücklicher
+Nutzerwunsch ("das hat was Bequemliches").
+
+**Bewusst noch nicht gebaut (Phase 2, siehe "Bewusst aufgeschobene Ideen"-
+Prinzip):** wiederkehrende Termine, Erinnerungen, Tagesansicht. Nicht von
+selbst anfangen, nur auf expliziten Anstoß.
 
 **Buch-/Rollen-Kachel: seit 2026-08-04 live gebaut** (setzt die oben
 ursprünglich nur als Zukunftsidee notierte Umbenennung um, mit leicht

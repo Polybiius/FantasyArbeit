@@ -401,6 +401,8 @@
   .cal-nav{display:flex;gap:8px;margin-bottom:12px;}
   .cal-nav-btn{background:var(--panel-2);border:1px solid var(--border);color:var(--muted);border-radius:var(--radius-sm);padding:6px 12px;font-size:12px;cursor:pointer;font-family:'JetBrains Mono',monospace;}
   .cal-nav-btn:hover{border-color:var(--arcane);color:var(--text);}
+  .cal-weekday-header{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px;}
+  .cal-weekday-header span{text-align:center;font-family:'Cinzel',serif;font-size:10.5px;font-weight:700;color:var(--muted-2);text-transform:uppercase;letter-spacing:.04em;}
   .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;}
   .cal-day{
     aspect-ratio:1;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--panel-2);
@@ -410,10 +412,43 @@
   .cal-day:hover{border-color:var(--arcane);}
   .cal-day.empty{visibility:hidden;cursor:default;}
   .cal-day.today{border-color:var(--arcane);color:var(--text);}
+  .cal-day-dots{display:flex;align-items:center;gap:3px;}
   .cal-day .dot{width:5px;height:5px;border-radius:50%;}
   .cal-day .dot-text{background:#22d3c8;}
   .cal-day .dot-photo{background:#f2a154;}
   .cal-day .dot-mixed{background:linear-gradient(90deg, #22d3c8 50%, #f2a154 50%);}
+  .cal-day .dot-termin{background:var(--arcane-glow);}
+
+  /* Wochenansicht: Outlook-artiges Zeitraster, Halbe-Stunde-Zeilen.
+     week-view-wrap ist der scrollende Rahmen, darin bleibt die
+     Kopfzeile (Wochentage) sticky oben. */
+  .week-view-wrap{border:1px solid var(--border);border-radius:var(--radius-md);max-height:600px;overflow:auto;}
+  .week-header-row{display:grid;grid-template-columns:46px repeat(7,minmax(72px,1fr));position:sticky;top:0;z-index:3;background:var(--panel-2);border-bottom:1px solid var(--border);min-width:550px;}
+  .week-header-row>div:first-child{position:sticky;left:0;z-index:4;background:var(--panel-2);}
+  .week-day-header{padding:8px 4px;text-align:center;border-left:1px solid var(--border);}
+  .week-day-header .wdh-wd{font-family:'Cinzel',serif;font-size:10.5px;color:var(--muted-2);text-transform:uppercase;letter-spacing:.03em;}
+  .week-day-header .wdh-date{display:block;font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--text);margin-top:2px;}
+  .week-day-header.today .wdh-wd,.week-day-header.today .wdh-date{color:var(--arcane-glow);}
+  .week-body{display:flex;position:relative;min-width:550px;}
+  .week-time-col{flex:0 0 46px;position:relative;position:sticky;left:0;z-index:2;background:var(--panel);}
+  .week-time-col .wtc-label{position:absolute;right:6px;transform:translateY(-50%);font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--muted-2);}
+  .week-days{flex:1;display:grid;grid-template-columns:repeat(7,minmax(72px,1fr));position:relative;}
+  .week-day-col{
+    position:relative;border-left:1px solid var(--border);cursor:crosshair;user-select:none;
+    background-image:linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px),linear-gradient(var(--border) 1px, transparent 1px);
+    background-size:100% 32px,100% 64px;
+  }
+  .week-day-col.today{background-color:rgba(139,92,246,0.05);}
+  .week-nonwork-overlay{position:absolute;left:0;right:0;background:rgba(0,0,0,0.32);pointer-events:none;}
+  .week-drag-ghost{position:absolute;left:2px;right:2px;background:rgba(139,92,246,0.35);border:1px dashed var(--arcane);border-radius:var(--radius-sm);pointer-events:none;z-index:4;}
+  .week-event{
+    position:absolute;border-radius:var(--radius-sm);background:var(--arcane);color:#fff;
+    padding:3px 5px;overflow:hidden;cursor:pointer;box-shadow:var(--shadow-rest);
+    border:1px solid rgba(255,255,255,0.18);z-index:2;transition:box-shadow .15s;
+  }
+  .week-event:hover{box-shadow:var(--shadow-raised);z-index:3;}
+  .week-event .we-title{font-weight:600;font-size:10.5px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .week-event .we-time{display:block;font-family:'JetBrains Mono',monospace;font-size:9px;opacity:0.85;white-space:nowrap;overflow:hidden;}
   .cal-preview{margin-top:16px;border-top:1px solid var(--border);padding-top:14px;font-size:12.5px;color:var(--text);display:none;}
   .cal-preview.show{display:block;}
   .cal-preview h3{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted-2);text-transform:uppercase;letter-spacing:.05em;margin:0 0 10px;}
@@ -953,13 +988,33 @@
       <div class="page" id="page-tagebuch" style="display:none;">
         <div class="card">
           <h2>Kalender <span class="tag" id="calMonthLabel"></span></h2>
+          <div class="view-switch">
+            <button class="cal-nav-btn view-switch-btn active" id="calViewMonthBtn">Monat</button>
+            <button class="cal-nav-btn view-switch-btn" id="calViewWeekBtn">Woche</button>
+          </div>
           <div class="cal-nav">
             <button class="cal-nav-btn" id="calPrevBtn">‹ zurück</button>
             <button class="cal-nav-btn" id="calTodayBtn">heute</button>
             <button class="cal-nav-btn" id="calNextBtn">weiter ›</button>
           </div>
-          <div class="cal-grid" id="calGrid"></div>
-          <div class="cal-preview" id="calPreview"></div>
+
+          <div id="calMonthView">
+            <div class="cal-weekday-header">
+              <span>Mo</span><span>Di</span><span>Mi</span><span>Do</span><span>Fr</span><span>Sa</span><span>So</span>
+            </div>
+            <div class="cal-grid" id="calGrid"></div>
+            <div class="cal-preview" id="calPreview"></div>
+          </div>
+
+          <div id="calWeekView" style="display:none;">
+            <div class="week-view-wrap" id="weekViewWrap">
+              <div class="week-header-row" id="weekHeaderRow"></div>
+              <div class="week-body" id="weekBody">
+                <div class="week-time-col" id="weekTimeCol"></div>
+                <div class="week-days" id="weekDays"></div>
+              </div>
+            </div>
+          </div>
         </div>
 
         <div class="card" style="margin-top:18px;">
@@ -1074,6 +1129,25 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
             </div>
           </div>
         </div>
+
+        <div class="card" style="margin-top:18px;">
+          <h2 class="settings-header-clickable" id="settingsArbeitszeitenHeader">Kalender <span class="settings-chevron" id="settingsArbeitszeitenChevron">▾ öffnen</span></h2>
+          <div id="settingsArbeitszeitenWrap" style="display:none;">
+            <h3 class="settings-subheading">Arbeitszeiten</h3>
+            <div class="empty-page-hint" style="margin-bottom:8px;">Wirkt sich nur auf die Wochenansicht im Kalender aus (Zeiten außerhalb werden abgedunkelt dargestellt) — Termine lassen sich trotzdem jederzeit überall eintragen.</div>
+            <div class="kanban-newlead-form" style="margin-bottom:14px;">
+              <label class="cdl" style="display:block;">Mo–Fr auf einmal setzen</label>
+              <div class="contact-add-row">
+                <input type="time" id="azBulkStart" value="09:00">
+                <input type="time" id="azBulkEnde" value="18:00">
+                <button class="cal-nav-btn" id="azBulkApplyBtn">Übernehmen</button>
+              </div>
+            </div>
+            <div id="azDaysList"></div>
+            <button class="cal-nav-btn" id="azSaveBtn" style="width:100%;margin-top:10px;">Speichern</button>
+            <div class="empty-page-hint" id="azStatus"></div>
+          </div>
+        </div>
       </div>
 
       <!-- SEITE: PRODUKTE (nur Admins) -->
@@ -1184,9 +1258,85 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       <input type="text" id="terminLeadNachname" placeholder="Nachname">
       <label class="cdl" style="display:block;margin-top:4px;">Datum des Ersttermins</label>
       <input type="date" id="terminLeadDatum">
+      <div class="contact-add-row">
+        <div>
+          <label class="cdl" style="display:block;">Von</label>
+          <input type="time" id="terminLeadStart">
+        </div>
+        <div>
+          <label class="cdl" style="display:block;">Bis</label>
+          <input type="time" id="terminLeadEnde">
+        </div>
+      </div>
       <div class="empty-page-hint" id="terminLeadStatus"></div>
     </div>
     <button class="cal-nav-btn" id="terminLeadSaveBtn" style="width:100%;margin-top:8px;">Anlegen</button>
+  </div>
+</div>
+
+<!-- Termin bei Ersttermin/Zweittermin für einen BESTEHENDEN Kontakt eintragen
+     (Kanban-Ziehen, oder "Termin eintragen" im Kontaktformular) — anders als
+     terminLeadModal oben wird hier kein neuer Kontakt angelegt, nur ein
+     Kalendertermin. Überspringbar (✕), der Kanban-Wechsel passiert trotzdem. -->
+<div class="loc-modal" id="kanbanTerminModal" style="display:none;">
+  <div class="loc-modal-inner">
+    <div class="loc-modal-header">
+      <span id="kanbanTerminTitle">Termin eintragen</span>
+      <button id="kanbanTerminClose">✕</button>
+    </div>
+    <div class="kanban-newlead-form">
+      <label class="cdl" style="display:block;">Datum</label>
+      <input type="date" id="kanbanTerminDatum">
+      <div class="contact-add-row">
+        <div>
+          <label class="cdl" style="display:block;">Von</label>
+          <input type="time" id="kanbanTerminStart">
+        </div>
+        <div>
+          <label class="cdl" style="display:block;">Bis</label>
+          <input type="time" id="kanbanTerminEnde">
+        </div>
+      </div>
+      <div class="empty-page-hint" id="kanbanTerminStatus"></div>
+    </div>
+    <button class="cal-nav-btn" id="kanbanTerminSaveBtn" style="width:100%;margin-top:8px;">Termin speichern</button>
+  </div>
+</div>
+
+<!-- Termin manuell anlegen/bearbeiten (Wochenansicht: Ziehen über ein
+     Zeitfenster, oder Klick auf einen bestehenden Termin). -->
+<div class="loc-modal" id="termineEntryModal" style="display:none;">
+  <div class="loc-modal-inner">
+    <div class="loc-modal-header">
+      <span id="termineEntryDateLabel">Termin</span>
+      <button id="termineEntryClose">✕</button>
+    </div>
+    <div class="kanban-newlead-form">
+      <input type="text" id="termineEntryTitle" placeholder="Titel (z.B. Büroarbeit, Besprechung)">
+      <div class="contact-add-row">
+        <div>
+          <label class="cdl" style="display:block;">Von</label>
+          <input type="time" id="termineEntryStart">
+        </div>
+        <div>
+          <label class="cdl" style="display:block;">Bis</label>
+          <input type="time" id="termineEntryEnde">
+        </div>
+      </div>
+      <label class="cdl" style="display:block;margin-top:4px;">Kontakt (optional)</label>
+      <div class="loc-autocomplete">
+        <input type="text" id="termineEntryContactSearch" placeholder="Kontakt suchen …" autocomplete="off">
+        <div class="loc-suggestions" id="termineEntryContactSuggestions"></div>
+      </div>
+      <label class="cdl" style="display:block;margin-top:4px;">Betrieb (optional)</label>
+      <div class="loc-autocomplete">
+        <input type="text" id="termineEntryLocationSearch" placeholder="Betrieb suchen …" autocomplete="off">
+        <div class="loc-suggestions" id="termineEntryLocationSuggestions"></div>
+      </div>
+      <div class="empty-page-hint" id="termineEntryStatus"></div>
+    </div>
+    <button class="cal-nav-btn" id="termineEntrySaveBtn" style="width:100%;margin-top:8px;">Speichern</button>
+    <button class="cal-nav-btn" id="termineEntryDeleteBtn" style="width:100%;margin-top:8px;display:none;color:var(--danger);">Termin löschen</button>
   </div>
 </div>
 
@@ -2354,12 +2504,22 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const now = new Date();
     const p = localPartsInTZ(now, tz());
     calViewYear = p.year; calViewMonth = p.month-1;
-    document.getElementById('calPrevBtn').addEventListener('click', ()=>{ changeCalMonth(-1); });
-    document.getElementById('calNextBtn').addEventListener('click', ()=>{ changeCalMonth(1); });
+    calWeekStart = mondayOfWeek(now);
+    document.getElementById('calPrevBtn').addEventListener('click', ()=>{
+      if(calViewMode==='woche') changeCalWeek(-1); else changeCalMonth(-1);
+    });
+    document.getElementById('calNextBtn').addEventListener('click', ()=>{
+      if(calViewMode==='woche') changeCalWeek(1); else changeCalMonth(1);
+    });
     document.getElementById('calTodayBtn').addEventListener('click', ()=>{
-      const p2 = localPartsInTZ(new Date(), tz());
-      calViewYear=p2.year; calViewMonth=p2.month-1;
-      renderCalendar();
+      if(calViewMode==='woche'){
+        calWeekStart = mondayOfWeek(new Date());
+        renderWeekView(true);
+      } else {
+        const p2 = localPartsInTZ(new Date(), tz());
+        calViewYear=p2.year; calViewMonth=p2.month-1;
+        renderCalendar();
+      }
     });
     await renderCalendar();
     initPhotoCapture();
@@ -2589,6 +2749,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const { data: photoData, error: photoErr } = await sb.from('journal_photos').select('entry_date').eq('user_id', profile.id).gte('entry_date', from).lte('entry_date', to);
     if(photoErr) logSilentError('Foto-Tage laden', photoErr);
     calPhotoDates = new Set((photoData||[]).map(r=>r.entry_date));
+    const { data: termineData, error: termineErr } = await sb.from('termine').select('start_at').eq('owner_id', profile.id)
+      .gte('start_at', new Date(calViewYear, calViewMonth, 1).toISOString())
+      .lt('start_at', new Date(calViewYear, calViewMonth, daysInMonth(calViewYear,calViewMonth)+1).toISOString());
+    if(termineErr) logSilentError('Termin-Tage laden', termineErr);
+    calTermineDates = new Set((termineData||[]).map(r=> dateKeyLocal(new Date(r.start_at))));
 
     const grid = document.getElementById('calGrid');
     const firstWeekday = (new Date(calViewYear, calViewMonth, 1).getDay()+6)%7; // Montag=0
@@ -2610,10 +2775,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   function dotMarkupForDate(dateStr){
     const hasText = calEntryDates.has(dateStr);
     const hasPhoto = calPhotoDates.has(dateStr);
-    if(hasText && hasPhoto) return '<span class="dot dot-mixed"></span>';
-    if(hasText) return '<span class="dot dot-text"></span>';
-    if(hasPhoto) return '<span class="dot dot-photo"></span>';
-    return '';
+    const hasTermin = calTermineDates.has(dateStr);
+    let journalDot = '';
+    if(hasText && hasPhoto) journalDot = '<span class="dot dot-mixed"></span>';
+    else if(hasText) journalDot = '<span class="dot dot-text"></span>';
+    else if(hasPhoto) journalDot = '<span class="dot dot-photo"></span>';
+    const terminDot = hasTermin ? '<span class="dot dot-termin"></span>' : '';
+    if(!journalDot && !terminDot) return '';
+    return `<span class="cal-day-dots">${journalDot}${terminDot}</span>`;
   }
 
   function refreshDotForDate(dateStr){
@@ -3380,6 +3549,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     html += `<div class="cc-actions" style="margin-top:14px;">
       <button id="cdLogActionBtn">Aktion loggen</button>
+      <button id="cdTerminBtn">Termin eintragen</button>
       ${canEdit ? `<button id="cdEditBtn">Bearbeiten</button><button id="cdDeleteBtn">Löschen</button>` : ''}
     </div>`;
 
@@ -3401,6 +3571,9 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('cdLogActionBtn').addEventListener('click', ()=>{
       document.getElementById('contactDetailModal').style.display='none';
       openContactActionModal(c);
+    });
+    document.getElementById('cdTerminBtn').addEventListener('click', async ()=>{
+      await promptKanbanTermin(c, 'Termin');
     });
     const editBtn = document.getElementById('cdEditBtn');
     if(editBtn) editBtn.addEventListener('click', ()=>{ document.getElementById('contactDetailModal').style.display='none'; startEditContact(c); });
@@ -3914,12 +4087,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       const vornameEl = document.getElementById('terminLeadVorname');
       const nachnameEl = document.getElementById('terminLeadNachname');
       const datumEl = document.getElementById('terminLeadDatum');
+      const startEl = document.getElementById('terminLeadStart');
+      const endeEl = document.getElementById('terminLeadEnde');
       const statusEl = document.getElementById('terminLeadStatus');
       const modal = document.getElementById('terminLeadModal');
       const saveBtn = document.getElementById('terminLeadSaveBtn');
       const closeBtn = document.getElementById('terminLeadClose');
       document.getElementById('terminLeadLocName').textContent = loc.name;
-      vornameEl.value = ''; nachnameEl.value = ''; datumEl.value = ''; statusEl.textContent = '';
+      vornameEl.value = ''; nachnameEl.value = ''; datumEl.value = ''; startEl.value = ''; endeEl.value = ''; statusEl.textContent = '';
       modal.style.display = 'flex';
 
       function finish(){
@@ -3939,12 +4114,404 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         }).select().single();
         if(cErr){ reportError('Kontakt anlegen', cErr, statusEl); return; }
         await logKanbanAction(contact, 'termin_vereinbart');
+        await insertTermineIfTimeGiven(contact, 'Ersttermin', datum, startEl.value, endeEl.value);
         await renderContactsPage();
         finish();
       };
       closeBtn.onclick = finish;
     });
   }
+
+  // Wird von createLeadAndLogTerminVereinbart genutzt — Zeit ist optional
+  // (überspringbar), nur wenn Start UND Ende ausgefüllt sind, entsteht ein
+  // Kalendertermin. Ohne Zeit bleibt nur das Datum wie bisher an
+  // contacts.naechster_kontakt hängen.
+  async function insertTermineIfTimeGiven(contact, label, datum, startStr, endeStr){
+    if(!datum || !startStr || !endeStr) return;
+    const [y,m,d] = datum.split('-').map(Number);
+    const [sh,sm] = startStr.split(':').map(Number);
+    const [eh,em] = endeStr.split(':').map(Number);
+    const startAt = new Date(y, m-1, d, sh, sm);
+    const endAt = new Date(y, m-1, d, eh, em);
+    if(endAt<=startAt) return;
+    const { error } = await sb.from('termine').insert({
+      org_id:profile.org_id, owner_id:profile.id, contact_id:contact.id,
+      title:`${label}: ${contact.name}`, start_at:startAt.toISOString(), end_at:endAt.toISOString()
+    });
+    if(error) logSilentError('Termin aus Kanban speichern', error);
+  }
+
+  // Kleines, überspringbares Termin-Fenster für Ersttermin/Zweittermin beim
+  // Ziehen einer BESTEHENDEN Kanban-Karte (kein neuer Kontakt) — sowie für
+  // den "Termin eintragen"-Button im Kontaktformular. Analog zu
+  // createLeadAndLogTerminVereinbart als Promise, damit moveKanbanCard
+  // darauf warten kann, bevor das Board neu gerendert wird.
+  function promptKanbanTermin(contact, label){
+    return new Promise(resolve=>{
+      const modal = document.getElementById('kanbanTerminModal');
+      const titleEl = document.getElementById('kanbanTerminTitle');
+      const datumEl = document.getElementById('kanbanTerminDatum');
+      const startEl = document.getElementById('kanbanTerminStart');
+      const endeEl = document.getElementById('kanbanTerminEnde');
+      const statusEl = document.getElementById('kanbanTerminStatus');
+      const saveBtn = document.getElementById('kanbanTerminSaveBtn');
+      const closeBtn = document.getElementById('kanbanTerminClose');
+
+      titleEl.textContent = `${label} für ${contact.name}`;
+      datumEl.value=''; startEl.value=''; endeEl.value=''; statusEl.textContent='';
+      modal.style.display = 'flex';
+
+      function finish(){
+        modal.style.display = 'none';
+        saveBtn.onclick = null; closeBtn.onclick = null;
+        resolve();
+      }
+      saveBtn.onclick = async ()=>{
+        const datum = datumEl.value;
+        if(!datum || !startEl.value || !endeEl.value){ statusEl.textContent = 'Bitte Datum, Start- und Endzeit eingeben.'; return; }
+        const [y,m,d] = datum.split('-').map(Number);
+        const [sh,sm] = startEl.value.split(':').map(Number);
+        const [eh,em] = endeEl.value.split(':').map(Number);
+        const startAt = new Date(y,m-1,d,sh,sm);
+        const endAt = new Date(y,m-1,d,eh,em);
+        if(endAt<=startAt){ statusEl.textContent = 'Ende muss nach dem Start liegen.'; return; }
+        const { error } = await sb.from('termine').insert({
+          org_id:profile.org_id, owner_id:profile.id, contact_id:contact.id,
+          title:`${label}: ${contact.name}`, start_at:startAt.toISOString(), end_at:endAt.toISOString()
+        });
+        if(error){ reportError('Termin speichern', error, statusEl); return; }
+        finish();
+      };
+      closeBtn.onclick = finish;
+    });
+  }
+
+  // ---- Termin-Kalender: Wochenansicht (Outlook-Stil) ----
+  const HALF_HOUR_PX = 32;
+  const WEEKDAY_KEYS = ['mon','tue','wed','thu','fri','sat','sun'];
+  const WEEKDAY_LABELS = ['Mo','Di','Mi','Do','Fr','Sa','So'];
+
+  let calViewMode = 'monat'; // 'monat' | 'woche'
+  let calWeekStart = null; // Date, Montag 00:00 der aktuell angezeigten Woche
+  let calTermineDates = new Set(); // Tage im aktuell angezeigten Monat mit Termin (Punkt in der Monatsansicht)
+  let weekTermine = []; // Termine der aktuell angezeigten Woche, inkl. Kontakt-/Betriebsname
+  let termineContactSelectedId = null;
+  let termineLocationSelectedId = null;
+  let termineEditingId = null; // null = neuer Termin, sonst wird ein bestehender bearbeitet
+  let termineEntryDateForSave = null;
+
+  function escHtml(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function mondayOfWeek(d){
+    const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const wd = (x.getDay()+6)%7; // Montag=0
+    x.setDate(x.getDate()-wd);
+    return x;
+  }
+  function dateKeyLocal(d){ return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; }
+  function timeHHMM(d){ return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; }
+  function minToHHMM(min){ return `${pad2(Math.floor(min/60))}:${pad2(min%60)}`; }
+  function minutesSinceMidnight(d){ return d.getHours()*60 + d.getMinutes(); }
+
+  function setCalViewMode(mode){
+    calViewMode = mode;
+    document.getElementById('calViewMonthBtn').classList.toggle('active', mode==='monat');
+    document.getElementById('calViewWeekBtn').classList.toggle('active', mode==='woche');
+    document.getElementById('calMonthView').style.display = mode==='monat' ? 'block' : 'none';
+    document.getElementById('calWeekView').style.display = mode==='woche' ? 'block' : 'none';
+    if(mode==='woche') renderWeekView(true);
+  }
+  document.getElementById('calViewMonthBtn').addEventListener('click', ()=> setCalViewMode('monat'));
+  document.getElementById('calViewWeekBtn').addEventListener('click', ()=> setCalViewMode('woche'));
+
+  function changeCalWeek(delta){
+    calWeekStart = new Date(calWeekStart.getFullYear(), calWeekStart.getMonth(), calWeekStart.getDate()+7*delta);
+    renderWeekView(true);
+  }
+
+  // Beim ersten Öffnen der Wochenansicht (oder Wochenwechsel) zum frühesten
+  // hinterlegten Arbeitsbeginn scrollen, sonst pauschal 7 Uhr — spart
+  // Scrollen zum eigentlich relevanten Bereich des Tages.
+  function weekViewScrollTarget(){
+    const az = profile.arbeitszeiten;
+    if(!az) return 420;
+    let min = null;
+    WEEKDAY_KEYS.forEach(k=>{
+      const v = az[k];
+      if(v && v.start){
+        const [h,m] = v.start.split(':').map(Number);
+        const mins = h*60+m;
+        if(min===null || mins<min) min = mins;
+      }
+    });
+    return min===null ? 420 : min;
+  }
+
+  // Klassisches Kollisions-Layout für überschneidende Termine (Outlook-Stil):
+  // erst zu zusammenhängenden Clustern gruppieren, dann pro Cluster greedy
+  // Spalten vergeben (frühester freier Platz gewinnt).
+  function computeOverlapLayout(events){
+    const sorted = [...events].sort((a,b)=> a.start-b.start || a.end-b.end);
+    const clusters = [];
+    let current = [], currentEnd = null;
+    sorted.forEach(ev=>{
+      if(current.length && ev.start >= currentEnd){ clusters.push(current); current = []; currentEnd = null; }
+      current.push(ev);
+      currentEnd = currentEnd===null ? ev.end : new Date(Math.max(currentEnd, ev.end));
+    });
+    if(current.length) clusters.push(current);
+
+    const layout = new Map();
+    clusters.forEach(cluster=>{
+      const colEnds = [];
+      cluster.forEach(ev=>{
+        let placed = false;
+        for(let c=0;c<colEnds.length;c++){
+          if(ev.start >= colEnds[c]){ colEnds[c]=ev.end; layout.set(ev.id,{col:c}); placed=true; break; }
+        }
+        if(!placed){ colEnds.push(ev.end); layout.set(ev.id,{col:colEnds.length-1}); }
+      });
+      const cols = colEnds.length;
+      cluster.forEach(ev=> layout.get(ev.id).cols = cols);
+    });
+    return layout;
+  }
+
+  function renderDayEvents(dayCol, dayDate, dayEvents){
+    const events = dayEvents.map(row=>({ id:row.id, start:new Date(row.start_at), end:new Date(row.end_at), row }));
+    const layout = computeOverlapLayout(events);
+    const pxPerMin = HALF_HOUR_PX/30;
+    events.forEach(ev=>{
+      const { col, cols } = layout.get(ev.id);
+      const startMin = minutesSinceMidnight(ev.start);
+      const durMin = Math.min((ev.end-ev.start)/60000, 1440-startMin);
+      const widthPct = 100/cols;
+      const el = document.createElement('div');
+      el.className = 'week-event';
+      el.style.top = (startMin*pxPerMin)+'px';
+      el.style.height = Math.max(18, durMin*pxPerMin)+'px';
+      el.style.left = `calc(${col*widthPct}% + 2px)`;
+      el.style.width = `calc(${widthPct}% - 4px)`;
+      el.innerHTML = `<span class="we-title">${escHtml(ev.row.title)}</span><span class="we-time">${timeHHMM(ev.start)}–${timeHHMM(ev.end)}</span>`;
+      el.dataset.eventId = ev.id;
+      dayCol.appendChild(el);
+    });
+  }
+
+  // Ziehen zum Anlegen — Pointer Events statt der nativen HTML5-Drag&Drop-API,
+  // damit es (wie beim Kanban-↕-Menü, siehe CLAUDE.md) auch auf Touch-Geräten
+  // zuverlässig funktioniert. Ob ein Klick einen bestehenden Termin öffnet
+  // oder einen neuen erzeugt, entscheidet sich über die Ziehstrecke (nicht
+  // über das Element unter dem Finger) — sonst ließe sich kein neuer Termin
+  // mehr über einem bereits voll-breiten bestehenden Termin aufziehen.
+  function attachDragHandlers(dayCol, dayDate){
+    let dragging = false, startMin = null, ghost = null, downTarget = null, downX = 0, downY = 0;
+    const pxPerMin = HALF_HOUR_PX/30;
+
+    function minutesFromEvent(e){
+      const rect = dayCol.getBoundingClientRect();
+      const y = e.clientY - rect.top;
+      const slot = Math.max(0, Math.min(47, Math.floor(y / HALF_HOUR_PX)));
+      return slot*30;
+    }
+    function updateGhost(fromMin, toMin){
+      ghost.style.top = (fromMin*pxPerMin)+'px';
+      ghost.style.height = ((toMin-fromMin)*pxPerMin)+'px';
+    }
+    dayCol.addEventListener('pointerdown', (e)=>{
+      dragging = true;
+      downTarget = e.target.closest('.week-event');
+      downX = e.clientX; downY = e.clientY;
+      startMin = minutesFromEvent(e);
+      ghost = document.createElement('div');
+      ghost.className = 'week-drag-ghost';
+      dayCol.appendChild(ghost);
+      updateGhost(startMin, startMin+30);
+      dayCol.setPointerCapture(e.pointerId);
+    });
+    dayCol.addEventListener('pointermove', (e)=>{
+      if(!dragging) return;
+      const curMin = minutesFromEvent(e);
+      updateGhost(Math.min(startMin,curMin), Math.max(startMin,curMin)+30);
+    });
+    dayCol.addEventListener('pointerup', (e)=>{
+      if(!dragging) return;
+      dragging = false;
+      if(ghost){ ghost.remove(); ghost=null; }
+      const moved = Math.hypot(e.clientX-downX, e.clientY-downY);
+      if(moved <= 6 && downTarget){
+        const row = weekTermine.find(t=>t.id===downTarget.dataset.eventId);
+        if(row) openTermineEntryModal({editing: row});
+        return;
+      }
+      const curMin = minutesFromEvent(e);
+      const from = Math.min(startMin,curMin), to = Math.max(startMin,curMin)+30;
+      openTermineEntryModal({date:dayDate, startMin:from, endMin:to});
+    });
+  }
+
+  async function renderWeekView(scrollToDefault){
+    const days = [];
+    for(let i=0;i<7;i++) days.push(new Date(calWeekStart.getFullYear(), calWeekStart.getMonth(), calWeekStart.getDate()+i));
+    const todayStr = dateKeyLocal(new Date());
+
+    let headerHtml = '<div></div>';
+    days.forEach((d,i)=>{
+      const isToday = dateKeyLocal(d)===todayStr;
+      headerHtml += `<div class="week-day-header ${isToday?'today':''}"><span class="wdh-wd">${WEEKDAY_LABELS[i]}</span><span class="wdh-date">${pad2(d.getDate())}.${pad2(d.getMonth()+1)}.</span></div>`;
+    });
+    document.getElementById('weekHeaderRow').innerHTML = headerHtml;
+
+    const totalHeight = 48*HALF_HOUR_PX;
+    let timeHtml = '';
+    for(let h=0; h<24; h++) timeHtml += `<span class="wtc-label" style="top:${h*2*HALF_HOUR_PX}px;">${pad2(h)}:00</span>`;
+    const timeColEl = document.getElementById('weekTimeCol');
+    timeColEl.innerHTML = timeHtml;
+    timeColEl.style.height = totalHeight+'px';
+
+    const weekEnd = new Date(calWeekStart.getFullYear(), calWeekStart.getMonth(), calWeekStart.getDate()+7);
+    const { data, error } = await sb.from('termine')
+      .select('*, contact:contacts(id,name), location:locations(id,name)')
+      .eq('owner_id', profile.id)
+      .gte('start_at', calWeekStart.toISOString()).lt('start_at', weekEnd.toISOString());
+    if(error) logSilentError('Termine laden', error);
+    weekTermine = data || [];
+
+    const daysEl = document.getElementById('weekDays');
+    daysEl.innerHTML = '';
+    days.forEach(d=>{
+      const dayCol = document.createElement('div');
+      dayCol.className = 'week-day-col' + (dateKeyLocal(d)===todayStr ? ' today' : '');
+      dayCol.style.height = totalHeight+'px';
+
+      const wz = profile.arbeitszeiten ? profile.arbeitszeiten[WEEKDAY_KEYS[(d.getDay()+6)%7]] : null;
+      if(wz && wz.start && wz.end){
+        const [sh,sm] = wz.start.split(':').map(Number);
+        const [eh,em] = wz.end.split(':').map(Number);
+        const pxPerMin = HALF_HOUR_PX/30;
+        const startPx = (sh*60+sm)*pxPerMin, endPx = (eh*60+em)*pxPerMin;
+        if(startPx>0){
+          const before = document.createElement('div');
+          before.className = 'week-nonwork-overlay';
+          before.style.top='0px'; before.style.height=startPx+'px';
+          dayCol.appendChild(before);
+        }
+        if(endPx<totalHeight){
+          const after = document.createElement('div');
+          after.className = 'week-nonwork-overlay';
+          after.style.top=endPx+'px'; after.style.height=(totalHeight-endPx)+'px';
+          dayCol.appendChild(after);
+        }
+      }
+
+      const dayEvents = weekTermine.filter(t=> dateKeyLocal(new Date(t.start_at))===dateKeyLocal(d));
+      renderDayEvents(dayCol, d, dayEvents);
+      attachDragHandlers(dayCol, d);
+      daysEl.appendChild(dayCol);
+    });
+
+    if(scrollToDefault){
+      const wrap = document.getElementById('weekViewWrap');
+      wrap.scrollTop = Math.max(0, weekViewScrollTarget()*(HALF_HOUR_PX/30) - 40);
+    }
+  }
+
+  function openTermineEntryModal(opts){
+    termineEditingId = opts.editing ? opts.editing.id : null;
+    termineContactSelectedId = opts.editing ? (opts.editing.contact_id || null) : null;
+    termineLocationSelectedId = opts.editing ? (opts.editing.location_id || null) : null;
+    termineEntryDateForSave = opts.editing ? new Date(opts.editing.start_at) : opts.date;
+
+    document.getElementById('termineEntryDateLabel').textContent =
+      termineEntryDateForSave.toLocaleDateString('de-DE', {weekday:'long', day:'2-digit', month:'2-digit', year:'numeric'});
+    document.getElementById('termineEntryTitle').value = opts.editing ? opts.editing.title : '';
+    document.getElementById('termineEntryStart').value = opts.editing ? timeHHMM(new Date(opts.editing.start_at)) : minToHHMM(opts.startMin);
+    document.getElementById('termineEntryEnde').value = opts.editing ? timeHHMM(new Date(opts.editing.end_at)) : minToHHMM(opts.endMin);
+    document.getElementById('termineEntryContactSearch').value = (opts.editing && opts.editing.contact) ? opts.editing.contact.name : '';
+    document.getElementById('termineEntryLocationSearch').value = (opts.editing && opts.editing.location) ? opts.editing.location.name : '';
+    document.getElementById('termineEntryStatus').textContent = '';
+    document.getElementById('termineEntryDeleteBtn').style.display = opts.editing ? 'block' : 'none';
+    document.getElementById('termineEntryModal').style.display = 'flex';
+  }
+
+  function initGenericAutocomplete({inputId, boxId, table, onSelect}){
+    const input = document.getElementById(inputId);
+    const box = document.getElementById(boxId);
+    let timer = null;
+    function doSearch(q){
+      clearTimeout(timer);
+      if(!q){ box.style.display='none'; box.innerHTML=''; return; }
+      timer = setTimeout(async ()=>{
+        const { data, error } = await sb.from(table).select('id,name').eq('org_id', profile.org_id).ilike('name', `%${q}%`).limit(8);
+        if(error){ logSilentError('Vorschläge suchen', error); return; }
+        box.innerHTML = (data && data.length)
+          ? data.map(m=>`<div class="loc-sugg-item" data-id="${m.id}" data-name="${escHtml(m.name)}">${escHtml(m.name)}</div>`).join('')
+          : '<div class="empty-page-hint" style="padding:8px;">Keine Treffer.</div>';
+        box.style.display = 'block';
+        box.querySelectorAll('[data-id]').forEach(el=>{
+          el.addEventListener('click', ()=>{
+            onSelect(el.dataset.id, el.dataset.name);
+            input.value = el.dataset.name;
+            box.style.display='none';
+          });
+        });
+      }, 250);
+    }
+    input.addEventListener('input', ()=>{ onSelect(null,null); doSearch(input.value.trim()); });
+    input.addEventListener('focus', ()=>{ if(input.value.trim()) doSearch(input.value.trim()); });
+    document.addEventListener('click', (e)=>{ if(!box.contains(e.target) && e.target!==input) box.style.display='none'; });
+  }
+
+  initGenericAutocomplete({
+    inputId:'termineEntryContactSearch', boxId:'termineEntryContactSuggestions', table:'contacts',
+    onSelect:(id,name)=>{
+      termineContactSelectedId = id;
+      const titleEl = document.getElementById('termineEntryTitle');
+      if(id && !titleEl.value.trim()) titleEl.value = name;
+    }
+  });
+  initGenericAutocomplete({
+    inputId:'termineEntryLocationSearch', boxId:'termineEntryLocationSuggestions', table:'locations',
+    onSelect:(id)=>{ termineLocationSelectedId = id; }
+  });
+
+  document.getElementById('termineEntryClose').addEventListener('click', ()=>{
+    document.getElementById('termineEntryModal').style.display='none';
+  });
+  document.getElementById('termineEntrySaveBtn').addEventListener('click', async ()=>{
+    const statusEl = document.getElementById('termineEntryStatus');
+    const title = document.getElementById('termineEntryTitle').value.trim();
+    const startStr = document.getElementById('termineEntryStart').value;
+    const endeStr = document.getElementById('termineEntryEnde').value;
+    if(!title){ statusEl.textContent = 'Bitte einen Titel eingeben.'; return; }
+    if(!startStr || !endeStr){ statusEl.textContent = 'Bitte Start- und Endzeit eingeben.'; return; }
+    const [sh,sm] = startStr.split(':').map(Number);
+    const [eh,em] = endeStr.split(':').map(Number);
+    const d = termineEntryDateForSave;
+    const startAt = new Date(d.getFullYear(), d.getMonth(), d.getDate(), sh, sm);
+    const endAt = new Date(d.getFullYear(), d.getMonth(), d.getDate(), eh, em);
+    if(endAt<=startAt){ statusEl.textContent = 'Ende muss nach dem Start liegen.'; return; }
+
+    const payload = { title, start_at:startAt.toISOString(), end_at:endAt.toISOString(), contact_id:termineContactSelectedId, location_id:termineLocationSelectedId };
+    let error;
+    if(termineEditingId){
+      ({ error } = await sb.from('termine').update(payload).eq('id', termineEditingId));
+    } else {
+      ({ error } = await sb.from('termine').insert({ ...payload, org_id:profile.org_id, owner_id:profile.id }));
+    }
+    if(error){ reportError('Termin speichern', error, statusEl); return; }
+    document.getElementById('termineEntryModal').style.display='none';
+    renderWeekView(false);
+    if(calViewMode==='monat') renderCalendar();
+  });
+  document.getElementById('termineEntryDeleteBtn').addEventListener('click', async ()=>{
+    if(!termineEditingId) return;
+    if(!confirm('Diesen Termin wirklich löschen?')) return;
+    const { error } = await sb.from('termine').delete().eq('id', termineEditingId);
+    if(error){ reportError('Termin löschen', error); return; }
+    document.getElementById('termineEntryModal').style.display='none';
+    renderWeekView(false);
+    if(calViewMode==='monat') renderCalendar();
+  });
 
   // ---- Kanban (Questpfad / Gildenbrett / Feldzug) ----
   // Philosophie: die Spalte einer Karte wird aus dem Aktions-Log abgeleitet
@@ -4226,7 +4793,9 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       ok = await logKanbanAction(contact, 'kundenausbau');
     } else if(toStage==='ersttermin_vereinbart'){
       ok = await logKanbanAction(contact, 'termin_vereinbart');
-    } else if(toStage==='angebot_versendet' || toStage==='zweittermin'){
+    } else if(toStage==='angebot_versendet'){
+      ok = await logKanbanAction(contact, 'pitch');
+    } else if(toStage==='zweittermin'){
       ok = await logKanbanAction(contact, 'pitch');
     } else if(toStage==='gewonnen'){
       ok = await logKanbanAction(contact, 'abschluss');
@@ -4247,6 +4816,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     if(toStage==='angebot_versendet' || toStage==='zweittermin'){
       await offerExtraAction(contact, [{key:'bedarfsanalyse', label:'Bedarfsanalyse geführt'}]);
+    }
+    // Echte Treffen (Ersttermin + Zweittermin) bekommen zusätzlich ein
+    // überspringbares Datum/Zeit-Fenster, das einen Kalendertermin anlegt —
+    // "Angebot versendet" ist kein Treffen, bekommt deshalb keins.
+    if(toStage==='ersttermin_vereinbart'){
+      await promptKanbanTermin(contact, 'Ersttermin');
+    }
+    if(toStage==='zweittermin'){
+      await promptKanbanTermin(contact, 'Zweittermin');
     }
     if(toStage==='dauerbrenner'){
       await offerExtraAction(contact, [
@@ -4397,7 +4975,66 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('settingsPlanFaInput').value = profile.planung_fa ?? '';
     document.getElementById('settingsProvisionStatus').textContent = '';
     document.getElementById('settingsZieleStatus').textContent = '';
+    renderArbeitszeitenRows();
+    document.getElementById('azStatus').textContent = '';
   }
+
+  const WEEKDAY_LABELS_FULL = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag'];
+  function renderArbeitszeitenRows(){
+    const az = profile.arbeitszeiten || {};
+    document.getElementById('azDaysList').innerHTML = WEEKDAY_KEYS.map((k,i)=>{
+      const v = az[k];
+      const active = !!(v && v.start && v.end);
+      return `<div class="contact-add-row" style="align-items:center;">
+        <label class="cdl" style="min-width:90px;display:flex;align-items:center;gap:6px;">
+          <input type="checkbox" id="azActive_${k}" ${active?'checked':''}> ${WEEKDAY_LABELS_FULL[i]}
+        </label>
+        <input type="time" id="azStart_${k}" value="${active?v.start:''}" ${active?'':'disabled'}>
+        <input type="time" id="azEnde_${k}" value="${active?v.end:''}" ${active?'':'disabled'}>
+      </div>`;
+    }).join('');
+    WEEKDAY_KEYS.forEach(k=>{
+      document.getElementById('azActive_'+k).addEventListener('change', (e)=>{
+        document.getElementById('azStart_'+k).disabled = !e.target.checked;
+        document.getElementById('azEnde_'+k).disabled = !e.target.checked;
+      });
+    });
+  }
+
+  document.getElementById('azBulkApplyBtn').addEventListener('click', ()=>{
+    const start = document.getElementById('azBulkStart').value;
+    const ende = document.getElementById('azBulkEnde').value;
+    if(!start || !ende) return;
+    ['mon','tue','wed','thu','fri'].forEach(k=>{
+      document.getElementById('azActive_'+k).checked = true;
+      document.getElementById('azStart_'+k).disabled = false;
+      document.getElementById('azEnde_'+k).disabled = false;
+      document.getElementById('azStart_'+k).value = start;
+      document.getElementById('azEnde_'+k).value = ende;
+    });
+  });
+
+  document.getElementById('azSaveBtn').addEventListener('click', async ()=>{
+    const statusEl = document.getElementById('azStatus');
+    const obj = {};
+    WEEKDAY_KEYS.forEach(k=>{
+      if(!document.getElementById('azActive_'+k).checked) return;
+      const start = document.getElementById('azStart_'+k).value;
+      const ende = document.getElementById('azEnde_'+k).value;
+      if(start && ende) obj[k] = {start, end:ende};
+    });
+    const { error } = await sb.from('profiles').update({ arbeitszeiten: obj }).eq('id', profile.id);
+    if(error){ reportError('Arbeitszeiten speichern', error, statusEl); return; }
+    profile.arbeitszeiten = obj;
+    statusEl.textContent = 'Gespeichert.';
+  });
+
+  let settingsArbeitszeitenOpen = false;
+  document.getElementById('settingsArbeitszeitenHeader').addEventListener('click', ()=>{
+    settingsArbeitszeitenOpen = !settingsArbeitszeitenOpen;
+    document.getElementById('settingsArbeitszeitenWrap').style.display = settingsArbeitszeitenOpen ? 'block' : 'none';
+    document.getElementById('settingsArbeitszeitenChevron').textContent = settingsArbeitszeitenOpen ? '▴ schließen' : '▾ öffnen';
+  });
 
   let settingsProvisionOpen = false;
   document.getElementById('settingsProvisionHeader').addEventListener('click', ()=>{
