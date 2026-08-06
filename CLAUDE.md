@@ -966,11 +966,53 @@ sobald Produkt oder Vertragsbeginn gewählt werden — aber nur, solange der
 Nutzer das Feld nicht selbst angefasst hat (`wiedervorlageUserEdited`-Flag),
 überschreibbar jederzeit.
 
-**Bewusst noch nicht Teil dieses Patches (nächster Schritt, siehe unten):**
-Serientermine (wiederkehrende Termine mit Outlook-Style "nur dieses
-Element"/"ganze Serie"-Abfrage beim Löschen/Verschieben) — eigenes,
-größeres Datenmodell-Thema, wird als separater Patch angegangen. Auch
-weiterhin offen: echte Erinnerungen (Push/E-Mail o.ä.), bewusst
+**Serientermine (wiederkehrende Termine, Outlook-Stil), seit 2026-08-06
+live (Patch 36, `sql/patch36_serientermine.sql`) — zweiter Baustein von
+Phase 2.** Wiederholungsregel und echte Kalendertage sind bewusst getrennt:
+`termin_series` (die Regel: Titel, Uhrzeit, `freq` täglich/wöchentlich/
+monatlich, `interval_n`, `weekdays`-Array nur bei wöchentlich, `start_date`,
+`until_date` NULL=unbegrenzt, `generated_until`) und `termine.series_id`
+(Rückverweis, `on delete cascade`). Statt die Wiederholung rein virtuell zu
+berechnen, werden echte `termine`-Zeilen vorausschauend **materialisiert**
+— rollierend bis zu einem 6-Monats-Horizont (`SERIES_HORIZON_MONTHS`),
+genau wie beim täglichen Manatrank-Nachtrag (`topUpAllSeriesForUser()`,
+einmalig pro Sitzung in `enterApp()`, direkt nach `grantDailyManatrank()`).
+**Kernvorteil dieses Ansatzes:** ein einzelner Tag der Serie lässt sich
+danach ganz normal verschieben/löschen wie jeder andere Termin, ohne eigene
+Ausnahme-Buchhaltung — `generated_until` wandert nur vorwärts, ein einmal
+erzeugter (und ggf. verschobener) Tag wird nie ein zweites Mal erzeugt.
+
+Beim **Neuanlegen** eines Termins (nur dort, nicht nachträglich beim
+Bearbeiten — Outlook macht das genauso) gibt es ein "Wiederholung"-Feld im
+bestehenden Termin-Popup: Häufigkeit, Intervall ("alle N ..."), bei
+wöchentlich zusätzlich Wochentage-Mehrfachauswahl (voreingestellt auf den
+Wochentag des angelegten Termins), Ende per Datum oder "kein Ende". Nach
+dem Speichern wird die Serie sofort per `topUpSeries()` bis zum Horizont
+gefüllt, nicht erst beim nächsten Login.
+
+**Ändern und Löschen fragen bei jedem Serientermin** (neues, generisches
+`askSeriesScope()`-Popup, `#seriesScopeModal` — **wichtig: eigener
+`z-index:1001`**, weil es über einem bereits offenen `.loc-modal` sitzt und
+alle `.loc-modal`-Elemente sonst denselben z-index teilen; ohne die
+Anhebung fing das darunterliegende Termin-Popup die Klicks ab, per
+Playwright-Test entdeckt und korrigiert) immer "Nur diesen Termin" oder
+"Ganze Serie":
+- **Löschen, ganze Serie:** löscht die `termin_series`-Zeile, per Cascade
+  automatisch alle zugehörigen `termine` — inklusive vergangener Termine
+  (wie Outlooks tatsächliches Verhalten beim Löschen einer Serie).
+- **Ändern, ganze Serie:** aktualisiert `termin_series.start_time/end_time`
+  auf die neue Uhrzeit und wendet sie auf alle Termine der Serie an, deren
+  `start_at` **ab dem heutigen Tag** liegt (jeweils eigenes Datum bleibt
+  erhalten, nur die Uhrzeit ändert sich) — vergangene Termine bleiben
+  unangetastet, wie mit dem Nutzer abgesprochen.
+
+End-to-end gegen die echte Datenbank verifiziert (Playwright: Serie
+anlegen → 4 wöchentliche Termine korrekt materialisiert → "ganze Serie"
+verschoben, vergangener Termin nachweislich unverändert, alle künftigen
+korrekt aktualisiert → "ganze Serie" gelöscht, danach nichts mehr in
+`termine`/`termin_series` — kein Testdaten-Rückstand).
+
+**Bewusst weiterhin offen:** echte Erinnerungen (Push/E-Mail o.ä.), bewusst
 unentschieden gelassen, keine Eile.
 
 **Buch-/Rollen-Kachel: seit 2026-08-04 live gebaut** (setzt die oben
