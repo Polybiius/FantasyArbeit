@@ -1260,6 +1260,17 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   </div>
 </div>
 
+<div class="loc-modal" id="seriesScopeModal" style="display:none;z-index:1001;">
+  <div class="loc-modal-inner">
+    <div class="loc-modal-header">
+      <span id="seriesScopeTitle">Serientermin</span>
+      <button id="seriesScopeClose">✕</button>
+    </div>
+    <button class="cal-nav-btn" id="seriesScopeOnlyBtn" style="width:100%;margin-top:4px;">Nur diesen Termin</button>
+    <button class="cal-nav-btn" id="seriesScopeAllBtn" style="width:100%;margin-top:8px;">Ganze Serie</button>
+  </div>
+</div>
+
 <div class="loc-modal" id="locActionModal" style="display:none;">
   <div class="loc-modal-inner">
     <div class="loc-modal-header">
@@ -1356,6 +1367,46 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         <input type="text" id="termineEntryLocationSearch" placeholder="Betrieb suchen …" autocomplete="off">
         <div class="loc-suggestions" id="termineEntryLocationSuggestions"></div>
       </div>
+
+      <div id="termineEntryRecurrenceSection">
+        <label class="cdl" style="display:block;margin-top:8px;">Wiederholung</label>
+        <select id="termineEntryRecurrenceFreq">
+          <option value="">Keine</option>
+          <option value="taeglich">Täglich</option>
+          <option value="woechentlich">Wöchentlich</option>
+          <option value="monatlich">Monatlich</option>
+        </select>
+        <div id="termineEntryRecurrenceDetails" style="display:none;">
+          <div class="contact-add-row" style="align-items:center;margin-top:6px;">
+            <span class="cdl">alle</span>
+            <input type="number" id="termineEntryRecurrenceInterval" min="1" value="1" style="width:70px;">
+            <span class="cdl" id="termineEntryRecurrenceIntervalUnit">Tage</span>
+          </div>
+          <div id="termineEntryRecurrenceWeekdays" style="display:none;margin-top:6px;">
+            <div class="view-switch" style="flex-wrap:wrap;margin-bottom:0;">
+              <button type="button" class="cal-nav-btn view-switch-btn wd-toggle-btn" data-wd="0" style="flex:1;min-width:38px;">Mo</button>
+              <button type="button" class="cal-nav-btn view-switch-btn wd-toggle-btn" data-wd="1" style="flex:1;min-width:38px;">Di</button>
+              <button type="button" class="cal-nav-btn view-switch-btn wd-toggle-btn" data-wd="2" style="flex:1;min-width:38px;">Mi</button>
+              <button type="button" class="cal-nav-btn view-switch-btn wd-toggle-btn" data-wd="3" style="flex:1;min-width:38px;">Do</button>
+              <button type="button" class="cal-nav-btn view-switch-btn wd-toggle-btn" data-wd="4" style="flex:1;min-width:38px;">Fr</button>
+              <button type="button" class="cal-nav-btn view-switch-btn wd-toggle-btn" data-wd="5" style="flex:1;min-width:38px;">Sa</button>
+              <button type="button" class="cal-nav-btn view-switch-btn wd-toggle-btn" data-wd="6" style="flex:1;min-width:38px;">So</button>
+            </div>
+          </div>
+          <label class="cdl" style="display:block;margin-top:8px;">Ende</label>
+          <div class="contact-add-row" style="align-items:center;">
+            <label class="cdl" style="display:flex;align-items:center;gap:4px;font-weight:normal;">
+              <input type="radio" name="termineEntryRecurrenceEndMode" id="termineEntryRecurrenceEndNie" value="nie" checked> Kein Ende
+            </label>
+            <label class="cdl" style="display:flex;align-items:center;gap:4px;font-weight:normal;">
+              <input type="radio" name="termineEntryRecurrenceEndMode" id="termineEntryRecurrenceEndDatum" value="datum"> Am
+            </label>
+            <input type="date" id="termineEntryRecurrenceUntil" disabled>
+          </div>
+        </div>
+      </div>
+      <div class="empty-page-hint" id="termineEntrySeriesNote" style="display:none;">Teil einer Serie — beim Speichern/Löschen wirst du gefragt, ob nur dieser Termin oder die ganze Serie betroffen ist.</div>
+
       <div class="empty-page-hint" id="termineEntryStatus"></div>
     </div>
     <button class="cal-nav-btn" id="termineEntrySaveBtn" style="width:100%;margin-top:8px;">Speichern</button>
@@ -2130,6 +2181,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     render();
     initJournal();
     await grantDailyManatrank();
+    await topUpAllSeriesForUser();
     initInventory();
     renderCharacterEquipment();
     initGuild();
@@ -4294,6 +4346,103 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     else return null;
     return dateKeyLocal(d);
   }
+
+  // ---- Serientermine (Patch 36) ----
+  // Wiederholungsregel und echte Kalendertage sind getrennt (termin_series
+  // vs. termine.series_id) — Termine werden vorausschauend "gebacken"
+  // (materialisiert), rollierend bis zu einem Horizont, statt die
+  // Wiederholung rein virtuell zu berechnen. Dadurch lässt sich ein
+  // einzelner Tag ganz normal verschieben/löschen wie jeder andere Termin,
+  // ohne eigene Ausnahme-Buchhaltung — generated_until wandert nur vorwärts,
+  // ein einmal erzeugter Tag wird nie ein zweites Mal erzeugt.
+  const SERIES_HORIZON_MONTHS = 6;
+  let seriesTopUpDone = false;
+
+  function isSeriesOccurrenceDay(series, d, start){
+    const daysSinceStart = Math.round((d-start)/86400000);
+    if(daysSinceStart<0) return false;
+    if(series.freq==='taeglich') return daysSinceStart % series.interval_n === 0;
+    if(series.freq==='woechentlich'){
+      const weekdays = (series.weekdays && series.weekdays.length) ? series.weekdays : [(start.getDay()+6)%7];
+      if(!weekdays.includes((d.getDay()+6)%7)) return false;
+      const weeksSinceStart = Math.round((mondayOfWeek(d)-mondayOfWeek(start))/(7*86400000));
+      return weeksSinceStart % series.interval_n === 0;
+    }
+    if(series.freq==='monatlich'){
+      if(d.getDate()!==start.getDate()) return false;
+      const monthsSinceStart = (d.getFullYear()-start.getFullYear())*12 + (d.getMonth()-start.getMonth());
+      return monthsSinceStart>=0 && monthsSinceStart % series.interval_n === 0;
+    }
+    return false;
+  }
+
+  function seriesOccurrencesInRange(series, fromExclusiveStr, toInclusiveStr){
+    const start = new Date(series.start_date+'T00:00:00');
+    const dayAfterFrom = new Date(fromExclusiveStr+'T00:00:00'); dayAfterFrom.setDate(dayAfterFrom.getDate()+1);
+    const from = start > dayAfterFrom ? start : dayAfterFrom;
+    const to = new Date(toInclusiveStr+'T00:00:00');
+    const untilCap = series.until_date ? new Date(series.until_date+'T00:00:00') : null;
+    const results = [];
+    for(const d=new Date(from); d<=to; d.setDate(d.getDate()+1)){
+      if(untilCap && d>untilCap) break;
+      if(isSeriesOccurrenceDay(series, d, start)) results.push(dateKeyLocal(d));
+    }
+    return results;
+  }
+
+  async function topUpSeries(series){
+    const today = new Date();
+    const horizon = new Date(today.getFullYear(), today.getMonth()+SERIES_HORIZON_MONTHS, today.getDate());
+    const untilCap = series.until_date ? new Date(series.until_date+'T00:00:00') : null;
+    const to = (untilCap && untilCap<horizon) ? untilCap : horizon;
+    if(to <= new Date(series.generated_until+'T00:00:00')) return;
+    const dates = seriesOccurrencesInRange(series, series.generated_until, dateKeyLocal(to));
+    if(dates.length){
+      const [sh,sm] = series.start_time.split(':').map(Number);
+      const [eh,em] = series.end_time.split(':').map(Number);
+      const rows = dates.map(dateStr=>{
+        const d = new Date(dateStr+'T00:00:00');
+        return {
+          org_id: series.org_id, owner_id: series.owner_id,
+          contact_id: series.contact_id, location_id: series.location_id,
+          title: series.title, series_id: series.id,
+          start_at: new Date(d.getFullYear(),d.getMonth(),d.getDate(),sh,sm).toISOString(),
+          end_at: new Date(d.getFullYear(),d.getMonth(),d.getDate(),eh,em).toISOString()
+        };
+      });
+      const { error } = await sb.from('termine').insert(rows);
+      if(error){ logSilentError('Serientermine nachfüllen', error); return; }
+    }
+    const { error: updErr } = await sb.from('termin_series').update({ generated_until: dateKeyLocal(to) }).eq('id', series.id);
+    if(updErr) logSilentError('Serien-Fortschritt speichern', updErr);
+  }
+
+  async function topUpAllSeriesForUser(){
+    if(seriesTopUpDone) return;
+    seriesTopUpDone = true;
+    const { data, error } = await sb.from('termin_series').select('*').eq('owner_id', profile.id);
+    if(error){ logSilentError('Serientermine laden', error); return; }
+    for(const series of (data||[])) await topUpSeries(series);
+  }
+
+  function askSeriesScope(title){
+    return new Promise(resolve=>{
+      document.getElementById('seriesScopeTitle').textContent = title;
+      const modal = document.getElementById('seriesScopeModal');
+      const onlyBtn = document.getElementById('seriesScopeOnlyBtn');
+      const allBtn = document.getElementById('seriesScopeAllBtn');
+      const closeBtn = document.getElementById('seriesScopeClose');
+      modal.style.display = 'flex';
+      function finish(result){
+        modal.style.display = 'none';
+        onlyBtn.onclick = null; allBtn.onclick = null; closeBtn.onclick = null;
+        resolve(result);
+      }
+      onlyBtn.onclick = ()=> finish('only');
+      allBtn.onclick = ()=> finish('all');
+      closeBtn.onclick = ()=> finish(null);
+    });
+  }
   function timeHHMM(d){ return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; }
   function minToHHMM(min){ return `${pad2(Math.floor(min/60))}:${pad2(min%60)}`; }
   function minutesSinceMidnight(d){ return d.getHours()*60 + d.getMinutes(); }
@@ -4538,7 +4687,65 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('termineEntryLocationSearch').value = (opts.editing && opts.editing.location) ? opts.editing.location.name : '';
     document.getElementById('termineEntryStatus').textContent = '';
     document.getElementById('termineEntryDeleteBtn').style.display = opts.editing ? 'block' : 'none';
+
+    // Wiederholung lässt sich nur beim Neuanlegen festlegen (Outlook-Stil:
+    // ein bestehender Termin wird nicht nachträglich zur Serie gemacht,
+    // sondern beim Ändern/Löschen nur nach Umfang gefragt, siehe unten).
+    document.getElementById('termineEntryRecurrenceSection').style.display = opts.editing ? 'none' : 'block';
+    document.getElementById('termineEntrySeriesNote').style.display = (opts.editing && opts.editing.series_id) ? 'block' : 'none';
+    document.getElementById('termineEntryRecurrenceFreq').value = '';
+    document.getElementById('termineEntryRecurrenceDetails').style.display = 'none';
+    document.getElementById('termineEntryRecurrenceInterval').value = '1';
+    document.getElementById('termineEntryRecurrenceEndNie').checked = true;
+    document.getElementById('termineEntryRecurrenceUntil').value = '';
+    document.getElementById('termineEntryRecurrenceUntil').disabled = true;
+    recurrenceSelectedWeekdays = new Set([(termineEntryDateForSave.getDay()+6)%7]);
+    document.querySelectorAll('.wd-toggle-btn').forEach(b=>
+      b.classList.toggle('active', recurrenceSelectedWeekdays.has(parseInt(b.dataset.wd,10))));
+
     document.getElementById('termineEntryModal').style.display = 'flex';
+  }
+
+  let recurrenceSelectedWeekdays = new Set();
+  document.querySelectorAll('.wd-toggle-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const wd = parseInt(btn.dataset.wd, 10);
+      if(recurrenceSelectedWeekdays.has(wd)){ recurrenceSelectedWeekdays.delete(wd); btn.classList.remove('active'); }
+      else { recurrenceSelectedWeekdays.add(wd); btn.classList.add('active'); }
+    });
+  });
+  const RECURRENCE_UNIT_LABELS = { taeglich:'Tage', woechentlich:'Wochen', monatlich:'Monate' };
+  document.getElementById('termineEntryRecurrenceFreq').addEventListener('change', function(){
+    const freq = this.value;
+    document.getElementById('termineEntryRecurrenceDetails').style.display = freq ? 'block' : 'none';
+    document.getElementById('termineEntryRecurrenceIntervalUnit').textContent = RECURRENCE_UNIT_LABELS[freq] || '';
+    document.getElementById('termineEntryRecurrenceWeekdays').style.display = freq==='woechentlich' ? 'block' : 'none';
+  });
+  document.getElementById('termineEntryRecurrenceEndDatum').addEventListener('change', ()=>{
+    document.getElementById('termineEntryRecurrenceUntil').disabled = false;
+  });
+  document.getElementById('termineEntryRecurrenceEndNie').addEventListener('change', ()=>{
+    document.getElementById('termineEntryRecurrenceUntil').disabled = true;
+  });
+
+  async function createSeriesFromModal(insertedRow, startStr, endeStr){
+    const freq = document.getElementById('termineEntryRecurrenceFreq').value;
+    const interval = parseInt(document.getElementById('termineEntryRecurrenceInterval').value, 10) || 1;
+    const endMode = document.querySelector('input[name="termineEntryRecurrenceEndMode"]:checked').value;
+    const untilDate = endMode==='datum' ? (document.getElementById('termineEntryRecurrenceUntil').value || null) : null;
+    const weekdays = freq==='woechentlich' ? Array.from(recurrenceSelectedWeekdays).sort() : null;
+    const startDateStr = dateKeyLocal(termineEntryDateForSave);
+    const { data: seriesRow, error } = await sb.from('termin_series').insert({
+      org_id: profile.org_id, owner_id: profile.id,
+      contact_id: termineContactSelectedId, location_id: termineLocationSelectedId,
+      title: insertedRow.title, start_time: startStr, end_time: endeStr,
+      freq, interval_n: interval, weekdays, start_date: startDateStr, until_date: untilDate,
+      generated_until: startDateStr
+    }).select().single();
+    if(error){ logSilentError('Serie anlegen', error); return; }
+    const { error: linkErr } = await sb.from('termine').update({ series_id: seriesRow.id }).eq('id', insertedRow.id);
+    if(linkErr) logSilentError('Ersten Serientermin verknüpfen', linkErr);
+    await topUpSeries(seriesRow);
   }
 
   function initGenericAutocomplete({inputId, boxId, table, onSelect}){
@@ -4602,9 +4809,35 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const payload = { title, start_at:startAt.toISOString(), end_at:endAt.toISOString(), contact_id:termineContactSelectedId, location_id:termineLocationSelectedId };
     let error;
     if(termineEditingId){
-      ({ error } = await sb.from('termine').update(payload).eq('id', termineEditingId));
+      const editingRow = weekTermine.find(t=>t.id===termineEditingId);
+      if(editingRow && editingRow.series_id){
+        const scope = await askSeriesScope('Diesen Termin oder die ganze Serie ändern?');
+        if(!scope) return;
+        if(scope==='all'){
+          const { error: seriesErr } = await sb.from('termin_series').update({ start_time:startStr, end_time:endeStr }).eq('id', editingRow.series_id);
+          if(seriesErr){ reportError('Serie ändern', seriesErr, statusEl); return; }
+          const startOfToday = new Date(); startOfToday.setHours(0,0,0,0);
+          const { data: futureRows, error: futErr } = await sb.from('termine').select('id,start_at')
+            .eq('series_id', editingRow.series_id).gte('start_at', startOfToday.toISOString());
+          if(futErr) logSilentError('Serie: künftige Termine laden', futErr);
+          await Promise.all((futureRows||[]).map(row=>{
+            const rd = new Date(row.start_at);
+            const ns = new Date(rd.getFullYear(), rd.getMonth(), rd.getDate(), sh, sm);
+            const ne = new Date(rd.getFullYear(), rd.getMonth(), rd.getDate(), eh, em);
+            return sb.from('termine').update({ title, start_at:ns.toISOString(), end_at:ne.toISOString(), contact_id:termineContactSelectedId, location_id:termineLocationSelectedId }).eq('id', row.id);
+          }));
+        } else {
+          ({ error } = await sb.from('termine').update(payload).eq('id', termineEditingId));
+        }
+      } else {
+        ({ error } = await sb.from('termine').update(payload).eq('id', termineEditingId));
+      }
     } else {
-      ({ error } = await sb.from('termine').insert({ ...payload, org_id:profile.org_id, owner_id:profile.id }));
+      const { data: inserted, error: insErr } = await sb.from('termine').insert({ ...payload, org_id:profile.org_id, owner_id:profile.id }).select().single();
+      error = insErr;
+      if(!insErr && document.getElementById('termineEntryRecurrenceFreq').value){
+        await createSeriesFromModal(inserted, startStr, endeStr);
+      }
     }
     if(error){ reportError('Termin speichern', error, statusEl); return; }
     document.getElementById('termineEntryModal').style.display='none';
@@ -4613,9 +4846,23 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   });
   document.getElementById('termineEntryDeleteBtn').addEventListener('click', async ()=>{
     if(!termineEditingId) return;
-    if(!confirm('Diesen Termin wirklich löschen?')) return;
-    const { error } = await sb.from('termine').delete().eq('id', termineEditingId);
-    if(error){ reportError('Termin löschen', error); return; }
+    const editingRow = weekTermine.find(t=>t.id===termineEditingId);
+    if(editingRow && editingRow.series_id){
+      const scope = await askSeriesScope('Nur diesen Termin oder die ganze Serie löschen?');
+      if(!scope) return;
+      if(scope==='all'){
+        if(!confirm('Die ganze Serie inkl. aller vergangenen und künftigen Termine wirklich löschen?')) return;
+        const { error } = await sb.from('termin_series').delete().eq('id', editingRow.series_id);
+        if(error){ reportError('Serie löschen', error); return; }
+      } else {
+        const { error } = await sb.from('termine').delete().eq('id', termineEditingId);
+        if(error){ reportError('Termin löschen', error); return; }
+      }
+    } else {
+      if(!confirm('Diesen Termin wirklich löschen?')) return;
+      const { error } = await sb.from('termine').delete().eq('id', termineEditingId);
+      if(error){ reportError('Termin löschen', error); return; }
+    }
     document.getElementById('termineEntryModal').style.display='none';
     renderWeekView(false);
     if(calViewMode==='monat') renderCalendar();
