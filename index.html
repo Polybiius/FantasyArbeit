@@ -418,17 +418,27 @@
   .cal-day .dot-photo{background:#f2a154;}
   .cal-day .dot-mixed{background:linear-gradient(90deg, #22d3c8 50%, #f2a154 50%);}
   .cal-day .dot-termin{background:var(--arcane-glow);}
+  .cal-day .dot-aufgabe{background:#ffc448;}
+
+  .week-task-chip{display:inline-block;font-size:10.5px;padding:2px 7px;border-radius:var(--radius-sm);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
+  .week-task-chip.geburtstag{background:rgba(255,196,72,0.18);color:#ffd479;}
+  .week-task-chip.wiedervorlage{background:rgba(120,190,255,0.16);color:#8ecbff;}
+  .cp-tasks{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;}
 
   /* Wochenansicht: Outlook-artiges Zeitraster, Halbe-Stunde-Zeilen.
      week-view-wrap ist der scrollende Rahmen, darin bleibt die
      Kopfzeile (Wochentage) sticky oben. */
   .week-view-wrap{border:1px solid var(--border);border-radius:var(--radius-md);max-height:600px;overflow:auto;}
-  .week-header-row{display:grid;grid-template-columns:46px repeat(7,minmax(72px,1fr));position:sticky;top:0;z-index:3;background:var(--panel-2);border-bottom:1px solid var(--border);min-width:550px;}
+  .week-sticky-head{position:sticky;top:0;z-index:3;background:var(--panel-2);}
+  .week-header-row{display:grid;grid-template-columns:46px repeat(7,minmax(72px,1fr));border-bottom:1px solid var(--border);min-width:550px;}
   .week-header-row>div:first-child{position:sticky;left:0;z-index:4;background:var(--panel-2);}
   .week-day-header{padding:8px 4px;text-align:center;border-left:1px solid var(--border);}
   .week-day-header .wdh-wd{font-family:'Cinzel',serif;font-size:10.5px;color:var(--muted-2);text-transform:uppercase;letter-spacing:.03em;}
   .week-day-header .wdh-date{display:block;font-family:'JetBrains Mono',monospace;font-size:13px;color:var(--text);margin-top:2px;}
   .week-day-header.today .wdh-wd,.week-day-header.today .wdh-date{color:var(--arcane-glow);}
+  .week-tasks-row{display:grid;grid-template-columns:46px repeat(7,minmax(72px,1fr));min-width:550px;border-bottom:1px solid var(--border);}
+  .week-tasks-row>div:first-child{position:sticky;left:0;z-index:4;background:var(--panel-2);}
+  .week-tasks-row .wtr-day{display:flex;flex-direction:column;gap:2px;padding:3px 3px;border-left:1px solid var(--border);min-height:4px;}
   .week-body{display:flex;position:relative;min-width:550px;}
   .week-time-col{flex:0 0 46px;position:relative;position:sticky;left:0;z-index:2;background:var(--panel);}
   .week-time-col .wtc-label{position:absolute;right:6px;transform:translateY(-50%);font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--muted-2);}
@@ -1008,7 +1018,10 @@
 
           <div id="calWeekView" style="display:none;">
             <div class="week-view-wrap" id="weekViewWrap">
-              <div class="week-header-row" id="weekHeaderRow"></div>
+              <div class="week-sticky-head">
+                <div class="week-header-row" id="weekHeaderRow"></div>
+                <div class="week-tasks-row" id="weekTasksRow"></div>
+              </div>
               <div class="week-body" id="weekBody">
                 <div class="week-time-col" id="weekTimeCol"></div>
                 <div class="week-days" id="weekDays"></div>
@@ -1147,6 +1160,9 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
             <label class="cdl" style="display:flex;align-items:center;gap:6px;margin-top:10px;">
               <input type="checkbox" id="azHideWeekendsInput"> Samstag/Sonntag in der Wochenansicht ganz ausblenden (statt nur grau)
             </label>
+            <label class="cdl" style="display:flex;align-items:center;gap:6px;margin-top:6px;">
+              <input type="checkbox" id="azShowBirthdaysInput"> Geburtstage meiner Kontakte als Hinweis im Kalender anzeigen
+            </label>
             <button class="cal-nav-btn" id="azSaveBtn" style="width:100%;margin-top:10px;">Speichern</button>
             <div class="empty-page-hint" id="azStatus"></div>
           </div>
@@ -1211,6 +1227,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       <div class="empty-page-hint" id="saleEntryStatus"></div>
       <div class="empty-page-hint" id="saleEntryList"></div>
     </div>
+    <label class="cdl" style="display:block;margin-top:10px;">Wiedervorlage (optional) – wann meldest du dich wieder?</label>
+    <input type="date" id="saleEntryWiedervorlage" style="width:100%;">
     <button class="cal-nav-btn" id="saleEntryDoneBtn" style="width:100%;margin-top:8px;">Fertig</button>
   </div>
 </div>
@@ -1360,6 +1378,16 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       <input type="number" id="productDetailBwpInput" step="0.001" placeholder="z.B. 0.05">
       <label class="cdl" style="display:block;margin-top:4px;">Provisions-Faktor <span id="productDetailProvHint" style="font-weight:normal;"></span></label>
       <input type="number" id="productDetailProvInput" step="0.001" placeholder="z.B. 0.1">
+      <label class="cdl" style="display:block;margin-top:4px;">Nachfass-Empfehlung (optional) — wann nach Vertragsbeginn wieder melden?</label>
+      <div class="contact-add-row">
+        <input type="number" id="productDetailRecontactAmountInput" min="0" placeholder="z.B. 3" style="flex:1;">
+        <select id="productDetailRecontactUnitInput" style="flex:1;">
+          <option value="tage">Tage</option>
+          <option value="wochen">Wochen</option>
+          <option value="monate">Monate</option>
+          <option value="jahre">Jahre</option>
+        </select>
+      </div>
       <div class="empty-page-hint" id="productDetailStatus"></div>
     </div>
     <button class="cal-nav-btn" id="productDetailSaveBtn" style="width:100%;margin-top:8px;">Speichern</button>
@@ -2740,7 +2768,37 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     await renderCalendar();
   }
 
+  // ---- Kalender-Aufgaben (Geburtstage/Wiedervorlage) ----
+  // Nicht-blockierende Hinweise im Kalender, abgeleitet wie XP/Level: nichts
+  // wird extra gespeichert, sondern bei jedem Rendern frisch aus den eigenen
+  // Kontakten berechnet (geburtsdatum → jährlich wiederkehrend anhand
+  // Monat/Tag, naechster_kontakt → exakter Datumstreffer).
+  let ownContactsForTasks = [];
+  async function loadContactTaskData(){
+    const { data, error } = await sb.from('contacts').select('id,name,geburtsdatum,naechster_kontakt').eq('owner_id', profile.id);
+    if(error){ logSilentError('Kalender-Aufgaben laden', error); return; }
+    ownContactsForTasks = data || [];
+  }
+  function tasksForDate(dateStr){
+    const mmdd = dateStr.slice(5);
+    const showBirthdays = profile.calendar_show_birthdays !== false;
+    const tasks = [];
+    ownContactsForTasks.forEach(c=>{
+      if(showBirthdays && c.geburtsdatum && c.geburtsdatum.slice(5)===mmdd){
+        tasks.push({type:'geburtstag', icon:'🎂', label:'Geburtstag', name:c.name, contactId:c.id});
+      }
+      if(c.naechster_kontakt === dateStr){
+        tasks.push({type:'wiedervorlage', icon:'📞', label:'Wiedervorlage', name:c.name, contactId:c.id});
+      }
+    });
+    return tasks;
+  }
+  function renderCalTasksNow(){
+    if(calViewMode==='woche') renderWeekView(false); else renderCalendar();
+  }
+
   async function renderCalendar(){
+    await loadContactTaskData();
     document.getElementById('calMonthLabel').textContent =
       new Date(calViewYear, calViewMonth, 1).toLocaleDateString('de-DE',{month:'long', year:'numeric'});
 
@@ -2784,8 +2842,9 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     else if(hasText) journalDot = '<span class="dot dot-text"></span>';
     else if(hasPhoto) journalDot = '<span class="dot dot-photo"></span>';
     const terminDot = hasTermin ? '<span class="dot dot-termin"></span>' : '';
-    if(!journalDot && !terminDot) return '';
-    return `<span class="cal-day-dots">${journalDot}${terminDot}</span>`;
+    const aufgabeDot = tasksForDate(dateStr).length>0 ? '<span class="dot dot-aufgabe"></span>' : '';
+    if(!journalDot && !terminDot && !aufgabeDot) return '';
+    return `<span class="cal-day-dots">${journalDot}${terminDot}${aufgabeDot}</span>`;
   }
 
   function refreshDotForDate(dateStr){
@@ -2817,10 +2876,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       if(signed) photoHtml = `<img class="photo-thumb" src="${signed.signedUrl}" style="margin-bottom:12px;">`;
     }
     const niceDate = new Date(dateStr+'T12:00:00').toLocaleDateString('de-DE',{weekday:'long', day:'2-digit', month:'2-digit', year:'numeric'});
+    const tasks = tasksForDate(dateStr);
+    const tasksHtml = tasks.length ? `<div class="cp-tasks">${tasks.map(t=>
+      `<span class="week-task-chip ${t.type}">${t.icon} ${t.label}: ${escHtml(t.name)}</span>`).join('')}</div>` : '';
     if(!data && !photoRow){
-      preview.innerHTML = `<h3>${niceDate}</h3><div class="cpempty">Kein Eintrag an diesem Tag.</div>`;
+      preview.innerHTML = `<h3>${niceDate}</h3>` + tasksHtml + `<div class="cpempty">Kein Eintrag an diesem Tag.</div>`;
     } else {
-      preview.innerHTML = `<h3>${niceDate}</h3>` + photoHtml + (data ? JOURNAL_LABELS.map((label,i)=>{
+      preview.innerHTML = `<h3>${niceDate}</h3>` + tasksHtml + photoHtml + (data ? JOURNAL_LABELS.map((label,i)=>{
         const val = data['q'+(i+1)];
         return `<div class="cpq"><span class="cplabel">${label}</span><span class="cptext">${val ? val.replace(/</g,'&lt;') : '—'}</span></div>`;
       }).join('') : '');
@@ -4211,6 +4273,19 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     return x;
   }
   function dateKeyLocal(d){ return `${d.getFullYear()}-${pad2(d.getMonth()+1)}-${pad2(d.getDate())}`; }
+  // Produktweite Nachfass-Empfehlung (Patch 35): Vertragsbeginn + Zahl/Einheit
+  // vom Produkt ergibt das vorgeschlagene Wiedervorlage-Datum.
+  function computeRecontactDate(product, vertragsbeginnStr){
+    if(!product || !product.recontact_amount || !product.recontact_unit || !vertragsbeginnStr) return null;
+    const d = new Date(vertragsbeginnStr+'T12:00:00');
+    const n = product.recontact_amount;
+    if(product.recontact_unit==='tage') d.setDate(d.getDate()+n);
+    else if(product.recontact_unit==='wochen') d.setDate(d.getDate()+n*7);
+    else if(product.recontact_unit==='monate') d.setMonth(d.getMonth()+n);
+    else if(product.recontact_unit==='jahre') d.setFullYear(d.getFullYear()+n);
+    else return null;
+    return dateKeyLocal(d);
+  }
   function timeHHMM(d){ return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; }
   function minToHHMM(min){ return `${pad2(Math.floor(min/60))}:${pad2(min%60)}`; }
   function minutesSinceMidnight(d){ return d.getHours()*60 + d.getMinutes(); }
@@ -4353,6 +4428,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   async function renderWeekView(scrollToDefault){
+    await loadContactTaskData();
     const allDays = [];
     for(let i=0;i<7;i++) allDays.push(new Date(calWeekStart.getFullYear(), calWeekStart.getMonth(), calWeekStart.getDate()+i));
     const hideWeekends = !!profile.calendar_hide_weekends;
@@ -4360,17 +4436,23 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const todayStr = dateKeyLocal(new Date());
 
     const headerRowEl = document.getElementById('weekHeaderRow');
+    const tasksRowEl = document.getElementById('weekTasksRow');
     const daysEl = document.getElementById('weekDays');
     const colTemplate = `repeat(${days.length},minmax(72px,1fr))`;
     headerRowEl.style.gridTemplateColumns = `46px ${colTemplate}`;
+    tasksRowEl.style.gridTemplateColumns = `46px ${colTemplate}`;
     daysEl.style.gridTemplateColumns = colTemplate;
 
     let headerHtml = '<div></div>';
+    let tasksHtml = '<div></div>';
     days.forEach(d=>{
       const isToday = dateKeyLocal(d)===todayStr;
       headerHtml += `<div class="week-day-header ${isToday?'today':''}"><span class="wdh-wd">${WEEKDAY_LABELS[(d.getDay()+6)%7]}</span><span class="wdh-date">${pad2(d.getDate())}.${pad2(d.getMonth()+1)}.</span></div>`;
+      const dayTasks = tasksForDate(dateKeyLocal(d));
+      tasksHtml += `<div class="wtr-day">${dayTasks.map(t=>`<span class="week-task-chip ${t.type}" title="${escHtml(t.label)}: ${escHtml(t.name)}">${t.icon} ${escHtml(t.name)}</span>`).join('')}</div>`;
     });
     headerRowEl.innerHTML = headerHtml;
+    tasksRowEl.innerHTML = tasksHtml;
 
     const totalHeight = 48*HALF_HOUR_PX;
     let timeHtml = '';
@@ -4716,6 +4798,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       const beitragEl = document.getElementById('saleEntryBeitrag');
       const beginnEl = document.getElementById('saleEntryVertragsbeginn');
       const bwsEl = document.getElementById('saleEntryBws');
+      const wiedervorlageEl = document.getElementById('saleEntryWiedervorlage');
       const statusEl = document.getElementById('saleEntryStatus');
       const listEl = document.getElementById('saleEntryList');
       const modal = document.getElementById('saleEntryModal');
@@ -4725,10 +4808,24 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       document.getElementById('saleEntryContactName').textContent = contact.name;
       populateCategorySelect(catEl);
       populateProductSelect(catEl, produktEl);
-      catEl.onchange = ()=> populateProductSelect(catEl, produktEl);
-      mengeEl.value = '1'; beitragEl.value = ''; beginnEl.value = ''; bwsEl.value = '';
+      mengeEl.value = '1'; beitragEl.value = ''; beginnEl.value = ''; bwsEl.value = ''; wiedervorlageEl.value = '';
       statusEl.textContent = ''; listEl.textContent = '';
       const added = [];
+
+      // Produktweite Nachfass-Empfehlung (Patch 35) füllt die Wiedervorlage
+      // nur vor, solange der Nutzer sie nicht selbst angefasst hat — reine
+      // Empfehlung, kein Zwang.
+      let wiedervorlageUserEdited = false;
+      wiedervorlageEl.oninput = ()=>{ wiedervorlageUserEdited = true; };
+      function updateWiedervorlageSuggestion(){
+        if(wiedervorlageUserEdited) return;
+        const suggestion = computeRecontactDate(productById(produktEl.value), beginnEl.value);
+        if(suggestion) wiedervorlageEl.value = suggestion;
+      }
+      catEl.onchange = ()=>{ populateProductSelect(catEl, produktEl); updateWiedervorlageSuggestion(); };
+      produktEl.onchange = updateWiedervorlageSuggestion;
+      beginnEl.onchange = updateWiedervorlageSuggestion;
+
       modal.style.display = 'flex';
 
       async function addProduct(){
@@ -4749,7 +4846,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         listEl.innerHTML = added.map(x=>'✓ '+x).join('<br>');
         mengeEl.value = '1'; beitragEl.value = ''; beginnEl.value = ''; bwsEl.value = ''; statusEl.textContent = '';
       }
-      function finish(){
+      async function finish(){
+        if(wiedervorlageEl.value){
+          const { error } = await sb.from('contacts').update({ naechster_kontakt: wiedervorlageEl.value }).eq('id', contact.id);
+          if(error) logSilentError('Wiedervorlage speichern', error);
+          else contact.naechster_kontakt = wiedervorlageEl.value;
+        }
         modal.style.display = 'none';
         addBtn.onclick = null; doneBtn.onclick = null; closeBtn.onclick = null;
         resolve();
@@ -4927,6 +5029,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     provEl.value = p.provision_faktor ?? '';
     provEl.disabled = modeEl.value !== 'fest';
     hintEl.textContent = modeEl.value !== 'fest' ? '(ignoriert bei individuellem Modus)' : '';
+    document.getElementById('productDetailRecontactAmountInput').value = p.recontact_amount ?? '';
+    document.getElementById('productDetailRecontactUnitInput').value = p.recontact_unit || 'monate';
     statusEl.textContent = '';
     toggleBtn.textContent = p.active ? 'Deaktivieren' : 'Reaktivieren';
 
@@ -4936,10 +5040,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     };
     document.getElementById('productDetailSaveBtn').onclick = async ()=>{
       const mode = modeEl.value;
+      const recontactAmountVal = document.getElementById('productDetailRecontactAmountInput').value;
       const { error } = await sb.from('products').update({
         provision_mode: mode,
         bwp_faktor: bwpEl.value ? parseFloat(bwpEl.value) : null,
-        provision_faktor: (mode==='fest' && provEl.value) ? parseFloat(provEl.value) : null
+        provision_faktor: (mode==='fest' && provEl.value) ? parseFloat(provEl.value) : null,
+        recontact_amount: recontactAmountVal ? parseInt(recontactAmountVal, 10) : null,
+        recontact_unit: recontactAmountVal ? document.getElementById('productDetailRecontactUnitInput').value : null
       }).eq('id', p.id);
       if(error){ reportError('Produkt-Faktoren speichern', error, statusEl); return; }
       await loadProducts();
@@ -5018,6 +5125,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       });
     });
     document.getElementById('azHideWeekendsInput').checked = !!profile.calendar_hide_weekends;
+    document.getElementById('azShowBirthdaysInput').checked = profile.calendar_show_birthdays !== false;
   }
 
   document.getElementById('azBulkApplyBtn').addEventListener('click', ()=>{
@@ -5043,11 +5151,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       if(start && ende) obj[k] = {start, end:ende};
     });
     const hideWeekends = document.getElementById('azHideWeekendsInput').checked;
-    const { error } = await sb.from('profiles').update({ arbeitszeiten: obj, calendar_hide_weekends: hideWeekends }).eq('id', profile.id);
+    const showBirthdays = document.getElementById('azShowBirthdaysInput').checked;
+    const { error } = await sb.from('profiles').update({ arbeitszeiten: obj, calendar_hide_weekends: hideWeekends, calendar_show_birthdays: showBirthdays }).eq('id', profile.id);
     if(error){ reportError('Arbeitszeiten speichern', error, statusEl); return; }
     profile.arbeitszeiten = obj;
     profile.calendar_hide_weekends = hideWeekends;
+    profile.calendar_show_birthdays = showBirthdays;
     statusEl.textContent = 'Gespeichert.';
+    renderCalTasksNow();
   });
 
   let settingsArbeitszeitenOpen = false;
