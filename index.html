@@ -418,11 +418,13 @@
   .cal-day .dot-photo{background:#f2a154;}
   .cal-day .dot-mixed{background:linear-gradient(90deg, #22d3c8 50%, #f2a154 50%);}
   .cal-day .dot-termin{background:var(--arcane-glow);}
-  .cal-day .dot-aufgabe{background:#ffc448;}
+  .cal-day .dot-geburtstag{background:#ec4899;}
+  .cal-day .dot-wiedervorlage{background:#38bdf8;}
+  .cal-day .dot-aufgabe-mixed{background:linear-gradient(90deg, #ec4899 50%, #38bdf8 50%);}
 
   .week-task-chip{display:inline-block;font-size:10.5px;padding:2px 7px;border-radius:var(--radius-sm);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%;}
-  .week-task-chip.geburtstag{background:rgba(255,196,72,0.18);color:#ffd479;}
-  .week-task-chip.wiedervorlage{background:rgba(120,190,255,0.16);color:#8ecbff;}
+  .week-task-chip.geburtstag{background:rgba(236,72,153,0.18);color:#f9a8d4;}
+  .week-task-chip.wiedervorlage{background:rgba(56,189,248,0.16);color:#7dd3fc;}
   .cp-tasks{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:10px;}
 
   /* Wochenansicht: Outlook-artiges Zeitraster, Halbe-Stunde-Zeilen.
@@ -2842,7 +2844,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     else if(hasText) journalDot = '<span class="dot dot-text"></span>';
     else if(hasPhoto) journalDot = '<span class="dot dot-photo"></span>';
     const terminDot = hasTermin ? '<span class="dot dot-termin"></span>' : '';
-    const aufgabeDot = tasksForDate(dateStr).length>0 ? '<span class="dot dot-aufgabe"></span>' : '';
+    const dayTasks = tasksForDate(dateStr);
+    const hasGeburtstag = dayTasks.some(t=>t.type==='geburtstag');
+    const hasWiedervorlage = dayTasks.some(t=>t.type==='wiedervorlage');
+    let aufgabeDot = '';
+    if(hasGeburtstag && hasWiedervorlage) aufgabeDot = '<span class="dot dot-aufgabe-mixed"></span>';
+    else if(hasGeburtstag) aufgabeDot = '<span class="dot dot-geburtstag"></span>';
+    else if(hasWiedervorlage) aufgabeDot = '<span class="dot dot-wiedervorlage"></span>';
     if(!journalDot && !terminDot && !aufgabeDot) return '';
     return `<span class="cal-day-dots">${journalDot}${terminDot}${aufgabeDot}</span>`;
   }
