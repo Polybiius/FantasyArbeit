@@ -921,6 +921,58 @@ Dinge:
    wird pro `renderWeekView()`-Aufruf per JS gesetzt), statt fest auf 7
    Spalten zu bestehen.
 
+**Kalender-Aufgaben (Geburtstage + Wiedervorlage), seit 2026-08-06 live
+(Patch 35, `sql/patch35_kalender_aufgaben.sql`) — Phase 2 des Termin-
+Kalenders, erster Baustein.** Nicht-blockierender Hinweis-Mechanismus im
+Kalender, bewusst wie XP/Level komplett **abgeleitet, nicht extra
+gespeichert**: `tasksForDate(dateStr)` in `index.html` liest bei jedem
+Rendern die eigenen Kontakte (`ownContactsForTasks`, geladen über
+`loadContactTaskData()`) und erzeugt daraus Hinweis-Objekte — kein neues
+Termin o.ä. wird angelegt. Zwei Quellen bisher:
+- **Geburtstage** aus dem längst vorhandenen `contacts.geburtsdatum`
+  (Patch 15) — jährlich wiederkehrend anhand reinem Monat/Tag-Vergleich
+  (`geburtsdatum.slice(5)`), unabhängig vom Geburtsjahr. Ein/Aus-Schalter
+  pro Person: `profiles.calendar_show_birthdays` (Default true), Checkbox
+  in Einstellungen → Kalender → Arbeitszeiten (gleiche Kachel wie
+  Wochenenden ausblenden).
+- **Wiedervorlage** aus `contacts.naechster_kontakt` (existierte vorher
+  schon als manuelles Korrekturfeld im Kontaktformular) — exakter
+  Datumstreffer, kein Wiederholungsmuster. Neu seit diesem Patch: das
+  "Gewonnen"-Verkaufspopup (`recordWonSalesLoop()`) fragt am Ende
+  **einmal für den ganzen Abschluss** (nicht pro Produktzeile) nach einem
+  Wiedervorlage-Datum, überspringbar wie die anderen Zusatzabfragen im
+  Projekt.
+
+Anzeige an zwei Stellen, beide über dieselbe `tasksForDate()`-Funktion:
+Monatsansicht bekommt einen dritten Punkt-Typ (`dot-aufgabe`, gelb) neben
+den bestehenden Tagebuch-/Termin-Punkten, Details erscheinen beim Antippen
+eines Tages oben in der bestehenden Vorschau-Kachel (`cp-tasks`). In der
+Wochenansicht sitzt eine neue schmale Zeile (`#weekTasksRow`) direkt unter
+der Wochentage-Kopfzeile (beide zusammen jetzt in einem gemeinsamen
+`.week-sticky-head`-Wrapper, damit sie beim Scrollen im Zeitraster zusammen
+oben kleben bleiben) — pro Tag ein kleiner Chip mit Kundenname und Icon
+(🎂/📞), bewusst **außerhalb** des Zeitrasters, damit normale Termine
+dadurch nicht verdrängt werden (ausdrücklicher Nutzerwunsch, "soll unsere
+normalen Termine nicht stören, aber der Name muss sichtbar sein").
+
+**Produktweite Nachfass-Empfehlung**, im selben Patch: `products.
+recontact_amount` (Zahl) + `products.recontact_unit` (Tage/Wochen/Monate/
+Jahre, bewusst wählbar statt fest — eine Berufshaftpflicht denkt in
+Monaten, eine Immobilienfinanzierung eher in Jahren bis zur Prolongation),
+pflegbar in der bestehenden Produkt-Detailkachel. Reine Empfehlung, kein
+Zwang: `computeRecontactDate()` errechnet aus Vertragsbeginn + Produktregel
+einen Vorschlag, der das Wiedervorlage-Feld im Verkaufspopup vorbefüllt,
+sobald Produkt oder Vertragsbeginn gewählt werden — aber nur, solange der
+Nutzer das Feld nicht selbst angefasst hat (`wiedervorlageUserEdited`-Flag),
+überschreibbar jederzeit.
+
+**Bewusst noch nicht Teil dieses Patches (nächster Schritt, siehe unten):**
+Serientermine (wiederkehrende Termine mit Outlook-Style "nur dieses
+Element"/"ganze Serie"-Abfrage beim Löschen/Verschieben) — eigenes,
+größeres Datenmodell-Thema, wird als separater Patch angegangen. Auch
+weiterhin offen: echte Erinnerungen (Push/E-Mail o.ä.), bewusst
+unentschieden gelassen, keine Eile.
+
 **Buch-/Rollen-Kachel: seit 2026-08-04 live gebaut** (setzt die oben
 ursprünglich nur als Zukunftsidee notierte Umbenennung um, mit leicht
 anderen finalen Namen als zuerst angedacht): unter dem Kalender ersetzt
