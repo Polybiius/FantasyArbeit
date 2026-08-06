@@ -129,7 +129,9 @@
     flex:0 0 190px;display:flex;flex-direction:column;gap:6px;
     background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-lg);padding:12px;
     position:sticky;top:20px;
+    transition:mask-image .15s, -webkit-mask-image .15s;
   }
+  .kanban-board, .stat-tabs{transition:mask-image .15s, -webkit-mask-image .15s;}
   .nav-btn{
     background:transparent;border:1px solid transparent;border-radius:var(--radius-sm);
     padding:11px 14px;color:var(--muted);text-align:left;cursor:pointer;
@@ -475,7 +477,7 @@
   .card h2{font-family:'Cinzel',serif;font-size:15px;font-weight:700;margin:0 0 14px;color:var(--text);letter-spacing:.03em;display:flex;align-items:center;justify-content:space-between;}
   .card h2 .tag,.settings-subheading .tag{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted-2);text-transform:none;letter-spacing:0;}
 
-  #sigil{display:block;margin:0 auto;}
+  #sigil{display:block;margin:0 auto;width:100%;max-width:530px;height:auto;}
   .skill-list{margin-top:14px;display:flex;flex-direction:column;gap:10px;}
   .skill-row{font-size:12px;}
   .skill-row-top{display:flex;justify-content:space-between;margin-bottom:4px;color:var(--muted);}
@@ -702,7 +704,7 @@
 
         <div class="card" style="margin-top:18px;">
           <h2>Sigil der Fähigkeiten <span class="tag">skill radar</span></h2>
-          <svg id="sigil" width="330" height="330" viewBox="-35 -35 330 330"></svg>
+          <svg id="sigil" width="530" height="530" viewBox="-95 -65 530 530"></svg>
           <div class="skill-list" id="skillList"></div>
         </div>
       </div>
@@ -1669,6 +1671,29 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     el.addEventListener('animationend', ()=>el.classList.remove('shake'), { once:true });
   }
 
+  // Dezenter Rand-Fade an seitlich scrollbaren Leisten (Sidebar-Nav auf
+  // Mobile, Feldzug-Route auf Desktop, Monats-Reiter in der Trophäenkammer)
+  // — ohne Hinweis war nicht erkennbar, dass dort noch mehr kommt. Per
+  // mask-image statt Hintergrundverlauf, damit es unabhängig von der
+  // jeweiligen Panel-Hintergrundfarbe funktioniert; blendet sich an einer
+  // Seite komplett aus, sobald dort nichts mehr zu scrollen ist.
+  function updateScrollFade(el){
+    const canLeft = el.scrollLeft > 4;
+    const canRight = el.scrollLeft < el.scrollWidth - el.clientWidth - 4;
+    let mask = 'none';
+    if(canLeft && canRight) mask = 'linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent)';
+    else if(canLeft) mask = 'linear-gradient(to right, transparent, black 24px)';
+    else if(canRight) mask = 'linear-gradient(to left, transparent, black 24px)';
+    el.style.maskImage = mask;
+    el.style.webkitMaskImage = mask;
+  }
+  function initScrollFade(el){
+    if(!el) return;
+    updateScrollFade(el);
+    el.addEventListener('scroll', ()=>updateScrollFade(el));
+    window.addEventListener('resize', ()=>updateScrollFade(el));
+  }
+
   // ---- Profil-Screen: echter Name, Geschlecht, Unternehmen (optional), Charaktername ----
   let selectedGender = null;
   // Gesetzt in afterLogin(), wenn ein bestehendes Alt-Profil (vor Profil-/Aussehen-
@@ -2177,6 +2202,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       document.getElementById('classSwitcher').style.display='flex';
       updateClassSwitcherActive();
     }
+    initScrollFade(document.querySelector('.sidebar'));
     buildActionGrid();
     render();
     initJournal();
@@ -2232,9 +2258,16 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   });
 
   // ---- Sigil zeichnen (mit Obergrenze, damit Luft nach oben bleibt) ----
+  // Größer als früher und mit richtungsabhängigem text-anchor (Labels rechts
+  // vom Zentrum wachsen nach rechts, links vom Zentrum nach links, oben/unten
+  // bleiben zentriert) — dadurch passen auch lange, volle Skillnamen wie
+  // "Beziehungspflege" ohne Abschneiden ins viewBox. Vorher wurde jedes Label
+  // hart auf 10 Zeichen gekappt ("Fachwissen" → "chwissen" etc.); der Nutzer
+  // will die Wörter vollständig lesen können, das viewBox ist deshalb bewusst
+  // großzügig bemessen statt möglichst knapp.
   function drawSigil(skillXp, totalXp, skillsMap){
     const svg = document.getElementById('sigil');
-    const cx=130, cy=130, r=95;
+    const cx=160, cy=160, r=105;
     const keys = Object.keys(skillsMap);
     const n = keys.length;
     const VISUAL_CAP = 0.88;
@@ -2249,8 +2282,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     [0.25,0.5,0.75,1].forEach(f=>{ s+=`<polygon points="${ringPts(r*f).map(p=>p.join(',')).join(' ')}" fill="none" stroke="#2c2540" stroke-width="1"/>`; });
     keys.forEach((k,i)=>{ const [x,y]=ringPts(r)[i]; s+=`<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="#2c2540" stroke-width="1"/>`; });
     s+=`<polygon points="${keys.map((k,i)=>pt(i,skillXp[k]||0,r).join(',')).join(' ')}" fill="rgba(139,92,246,0.28)" stroke="#a78bfa" stroke-width="2" style="filter:drop-shadow(0 0 6px rgba(139,92,246,0.6))"/>`;
-    keys.forEach((k,i)=>{ const a=angle(i); const lx=cx+Math.cos(a)*(r+22), ly=cy+Math.sin(a)*(r+22); const short=skillsMap[k].split(' ')[0].split('&')[0].slice(0,10);
-      s+=`<text x="${lx}" y="${ly}" fill="#9089a8" font-size="9.5" font-family="JetBrains Mono, monospace" text-anchor="middle" dominant-baseline="middle">${short}</text>`; });
+    keys.forEach((k,i)=>{
+      const a=angle(i); const lx=cx+Math.cos(a)*(r+28), ly=cy+Math.sin(a)*(r+28);
+      const label = skillsMap[k].split(' ')[0].split('&')[0];
+      const cosA = Math.cos(a);
+      const anchor = cosA>0.25 ? 'start' : cosA<-0.25 ? 'end' : 'middle';
+      s+=`<text x="${lx}" y="${ly}" fill="#9089a8" font-size="15" font-family="JetBrains Mono, monospace" text-anchor="${anchor}" dominant-baseline="middle">${label}</text>`;
+    });
     svg.innerHTML = s;
   }
 
@@ -3433,6 +3471,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         renderStatistikPage();
       });
     });
+    initScrollFade(el);
   }
 
   async function initContacts(){
@@ -4922,6 +4961,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         </div>`).join('');
     });
     wireKanbanDragAndDrop();
+    initScrollFade(document.getElementById('kanbanBoard'));
   }
 
   function wireKanbanDragAndDrop(){
