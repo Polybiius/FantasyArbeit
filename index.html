@@ -702,7 +702,7 @@
 
         <div class="card" style="margin-top:18px;">
           <h2>Sigil der Fähigkeiten <span class="tag">skill radar</span></h2>
-          <svg id="sigil" width="260" height="260" viewBox="0 0 260 260"></svg>
+          <svg id="sigil" width="330" height="330" viewBox="-35 -35 330 330"></svg>
           <div class="skill-list" id="skillList"></div>
         </div>
       </div>
@@ -2530,6 +2530,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       logListEl.innerHTML = log.slice(-150).map(e=>
         `<div class="log-entry"><span class="lname">${e.label}${e.context?` <span class="lctx">(${e.context})</span>`:''}</span><span class="lright"><span class="ltime">${fmtTime(e.created_at)}</span><span class="lxp">+${e.xp} XP</span></span></div>`
       ).join('');
+      // .log nutzt flex-direction:column-reverse, damit der neueste Eintrag
+      // ohne JS-Array-Reverse oben steht — der Browser setzt die
+      // Scrollposition dabei aber standardmäßig auf 0, was bei
+      // column-reverse den ÄLTESTEN Ausschnitt zeigt, nicht den neuesten
+      // (per Playwright-Audit entdeckt: die letzten Einträge waren nach
+      // oben aus dem sichtbaren Bereich herausgescrollt). Explizit auf den
+      // negativen Maximalwert setzen, das zeigt zuverlässig den neuesten
+      // Eintrag oben an.
+      logListEl.scrollTop = -logListEl.scrollHeight;
     }
   }
 
@@ -5495,6 +5504,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(pageName==='einstellungen') renderEinstellungenPage();
     if(pageName==='statistik'){ renderStatTabs(); renderStatistikPage(); }
     if(pageName==='kanban') renderKanbanBoard();
+    if(pageName==='handlungen'){
+      // Chronik nutzt column-reverse (siehe .log-CSS) — solange die Seite
+      // per display:none verborgen war, hatte scrollHeight dort 0 und der
+      // scrollTop-Fix in render() konnte nicht greifen. Beim tatsächlichen
+      // Anzeigen hier nachholen, damit der neueste Eintrag oben sichtbar ist.
+      const logListEl = document.getElementById('logList');
+      if(logListEl) logListEl.scrollTop = -logListEl.scrollHeight;
+    }
   }
 
   document.querySelectorAll('.nav-btn').forEach(btn=>{
