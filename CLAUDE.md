@@ -1015,6 +1015,65 @@ korrekt aktualisiert → "ganze Serie" gelöscht, danach nichts mehr in
 **Bewusst weiterhin offen:** echte Erinnerungen (Push/E-Mail o.ä.), bewusst
 unentschieden gelassen, keine Eile.
 
+## UI-Audit über alle Seiten (2026-08-06/07)
+
+Auf ausdrücklichen Nutzerwunsch ("kontrolliere die vollständige UI ...
+achte auf Mobile UND Desktop") wurde die gesamte App einmal systematisch
+geprüft: alle 12 Nav-Seiten, je bei 390px (Mobile) und 1440px (Desktop),
+per Playwright mit echtem Login — automatisierter Overflow-Check
+(`scrollWidth` vs. `clientWidth`) plus visuelle Screenshot-Sichtung. Dabei
+zwei echte, bis dahin unbemerkte Bugs gefunden und behoben (beide
+betrafen Mobile UND Desktop gleichermaßen, keine reinen
+Responsive-Probleme):
+
+1. **Fähigkeiten-Radar (Sigil) schnitt lange Achsenbeschriftungen am
+   Rand ab** ("Fachwissen" erschien als "chwissen") — das SVG-viewBox war
+   exakt so groß wie der Radar selbst, `text-anchor="middle"` ließ lange
+   Labels über den sichtbaren Bereich hinausragen. Behoben durch
+   großzügigeres viewBox.
+2. **Chronik (Handlungen-Seite) zeigte beim Öffnen nicht die neuesten
+   Einträge** — `.log` nutzt `flex-direction:column-reverse` (neuester
+   Eintrag oben, ohne das Array in JS umzudrehen), aber der Browser
+   initialisiert die Scrollposition dabei mit `scrollTop:0`, was hier
+   einen Ausschnitt aus der Mitte der Historie zeigte statt der neuesten
+   Einträge. Behoben durch explizites `scrollTop = -scrollHeight`, sowohl
+   beim Rendern als auch beim tatsächlichen Anzeigen der Seite (die Seite
+   war beim ersten Rendern noch unsichtbar, `scrollHeight` dort also 0 —
+   deshalb zwei Stellen nötig, `render()` UND `showPage()`).
+
+**Direkter Folgeauftrag, noch am 2026-08-07 umgesetzt** (zwei von drei
+Politur-Vorschlägen aus dem Audit-Bericht, vom Nutzer freigegeben):
+
+- **Sigil deutlich vergrößert, volle Skillnamen statt 10-Zeichen-Kürzung**
+  ("ich würde die Wörter schon gerne lesen können"). `drawSigil()` in
+  `index.html`: viewBox von 260×260 auf 530×530 (mit Versatz) vergrößert,
+  `text-anchor` jetzt richtungsabhängig (Labels rechts vom Zentrum wachsen
+  nach rechts, links vom Zentrum nach links, oben/unten bleiben zentriert)
+  statt überall `middle` — dadurch passen auch "Gesprächsführung" und
+  "Beziehungspflege" komplett ins Bild. `#sigil` per CSS responsiv
+  (`width:100%;max-width:530px;height:auto`), skaliert auf schmalen
+  Bildschirmen mit, ohne zu überlaufen.
+- **Scroll-Fade an seitlich scrollbaren Leisten** (Sidebar-Nav auf Mobile,
+  Feldzug-Route, Monats-Reiter Trophäenkammer) — vorher kein Hinweis, dass
+  dort noch mehr kommt. Neuer, wiederverwendbarer Helfer `initScrollFade(el)`
+  / `updateScrollFade(el)` in `index.html` (per `mask-image`, nicht per
+  Hintergrundverlauf, damit es unabhängig von der jeweiligen
+  Panel-Hintergrundfarbe funktioniert) — blendet sich automatisch an der
+  Seite aus, an der gerade nichts mehr zu scrollen ist. **Bei künftigen
+  neuen horizontal scrollenden Bereichen diesen Helfer wiederverwenden**
+  statt eine eigene Lösung zu bauen.
+- Dritter Vorschlag (Emoji-Rendering in Testscreenshots) war nur ein
+  Hinweis zu meiner Testumgebung, kein App-Bug — keine Änderung nötig,
+  vom Nutzer bestätigt ("keine Probleme mit den Emojis").
+
+Methodik-Erkenntnis aus derselben Session, siehe auch
+[[feedback_verify_live_before_reporting]]: ein vom Nutzer gemeldetes
+"Geburtsdatum wird nicht angezeigt" stellte sich bei einer direkten
+Live-Prüfung (Supabase-REST + Playwright) als kein Bug heraus — der Nutzer
+hatte einen Test-Kontakt in der Jägerchronik gemeint, nicht sein eigenes
+Profil. Vor dem Bauen einer "Behebung" für ein gemeldetes Problem lohnt
+sich ein kurzer Live-Check, bevor man dem Bug-Report unbesehen glaubt.
+
 **Buch-/Rollen-Kachel: seit 2026-08-04 live gebaut** (setzt die oben
 ursprünglich nur als Zukunftsidee notierte Umbenennung um, mit leicht
 anderen finalen Namen als zuerst angedacht): unter dem Kalender ersetzt
