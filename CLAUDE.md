@@ -1053,18 +1053,37 @@ erreicht).
 `sql/*.sql`-Policies + Live-Bestätigung per direktem PostgREST-Aufruf mit
 echtem Session-Token, nicht nur gelesen/vermutet):**
 
-- **Gefunden und bestätigt, SQL-Fix geschrieben (`sql/patch38_profile_privilege_schutz.sql`,
-  noch NICHT ausgeführt — wartet auf Go des Nutzers, wie üblich):**
+- **Gefunden, gefixt, ausgeführt UND nach Ausführung erneut live bestätigt
+  (`sql/patch38_profile_privilege_schutz.sql`, seit 2026-08-07 live):**
   `profiles_update_own` hat `using (id = auth.uid())` ohne eigene
   `with check` — Postgres übernimmt dafür automatisch dieselbe Bedingung,
-  die aber nur `id` schützt, keine andere Spalte. Live bestätigt: eigener
+  die aber nur `id` schützt, keine andere Spalte. Erstbestätigung: eigener
   Account per PATCH auf `/rest/v1/profiles` von `role:'admin'` auf
   `'member'` gesetzt und sofort wieder zurück (beides per Read verifiziert)
   — ein normaler Nutzer könnte sich also selbst zum Admin machen
   (`is_admin()` liest nur `profiles.role`), ebenso `character_class`
   (soll laut Konzept "einmalig, dauerhaft" sein) und `org_id` frei ändern.
   Patch 38 fügt einen BEFORE-UPDATE-Trigger hinzu, der diese drei Spalten
-  blockiert, außer der Ausführende ist bereits Admin.
+  blockiert, außer der Ausführende ist bereits Admin. **Nach dem Einspielen
+  erneut getestet, diesmal mit einem frischen Wegwerf-Testaccount statt dem
+  echten Account** (Selbstregistrierung ist offen, siehe Patch 39): als
+  Admin auf `member` herabgestuft (erlaubt), direkt danach als `member`
+  versucht sich selbst zurück auf `admin` zu setzen — vom Trigger korrekt
+  mit der eigenen Fehlermeldung ("Nur Admins dürfen die Rolle ändern.")
+  abgelehnt, Rolle blieb `member`. Schutz bestätigt wirksam.
+- **Zweite, verwandte Lücke direkt beim erneuten Testen gefunden — Patch 38
+  deckte nur UPDATE ab, nicht die allererste Zeile (`sql/patch39_profile_insert_privilege_schutz.sql`,
+  noch NICHT ausgeführt — wartet auf Go):** `profiles_insert_self` prüft
+  beim Anlegen ebenfalls nur `id = auth.uid()`. Live mit demselben
+  Wegwerf-Testaccount bestätigt: ein direktes INSERT mit `role:'admin'`
+  im Payload legt sofort ein fertiges Admin-Profil an — komplett am
+  Registrierungsbildschirm vorbei (der schickt zwar immer `role:'member'`,
+  aber das ist nur eine Konvention der App, keine Absicherung auf
+  Datenbank-Ebene). Da die App offene Selbstregistrierung erlaubt (kein
+  Einladungszwang), war das nicht nur ein Kollegen-Risiko, sondern von
+  jedem Internet-Besucher aus nutzbar, der die URL kennt. Patch 39 erzwingt
+  `role='member'` und die aktuelle Standard-`org_id` per BEFORE-INSERT-
+  Trigger bei jeder neuen Zeile, unabhängig vom mitgeschickten Wert.
 - **Gefunden, noch NICHT gefixt (Priorität niedriger, Nutzer-Entscheidung
   offen):** `user_inventory` hat dieselbe Lücke bei `item_key`/`quantity`
   (`inventory_insert_own`/`inventory_update_own` prüfen nur `user_id`).
@@ -1093,6 +1112,17 @@ echtem Session-Token, nicht nur gelesen/vermutet):**
   Admin-Button einfach ausgeblendet), ohne dass eine passende RLS-Policy
   dahintersteht — sowie Randfälle in der Business-Logik (Kanban-Übergänge,
   Provisionsberechnung).
+- **Aufräumen nötig, vom Testen übrig geblieben (harmlos, aber steht noch
+  in der echten DB):** eine Zeile in `user_inventory`
+  (`item_key='xss_audit_testitem'`, `quantity=0`, siehe oben) sowie ein
+  kompletter Wegwerf-Testaccount aus dem INSERT-Test von Patch 39
+  (E-Mail `patch38-audit-<Zeitstempel>@example.com`, `display_name`
+  `PatchAuditTest`, Rolle inzwischen `member`). Beides per SQL-Editor:
+  `delete from public.user_inventory where item_key='xss_audit_testitem';`
+  und `delete from public.profiles where display_name='PatchAuditTest';`
+  — den zugehörigen Auth-Nutzer zusätzlich unter Supabase-Dashboard →
+  Authentication → Users (nach der `@example.com`-Adresse suchen) von
+  Hand löschen, dafür gibt's keinen SQL-Zugriff ohne Service-Role-Key.
 
 ## Abenteuerlog-Seite (Kalender/Tagebuch/Foto), seit 2026-08-04 neu sortiert
 
