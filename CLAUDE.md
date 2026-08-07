@@ -338,6 +338,11 @@ Funktionen benutzen statt eigene Fehlerbehandlung zu erfinden.**
   persönlich, aber mit Admin-Leserechte-Ausnahme (anders als
   `journal_entries`). Keine Überschneidungs-Prüfung, Doppelbuchungen sind
   einfach unabhängige Zeilen.
+- `contact_activities` — echte CRM-Aktivitäten am Kontakt (Anrufe, später
+  Emails), seit Patch 37, siehe eigener Abschnitt "Kontakt-Chronik" oben.
+  Getrennt von `action_log` (das bleibt reine XP-Buchhaltung), optional
+  über `action_log_id` mit der zugehörigen XP-Buchung verknüpft. Gleiches
+  RLS-Muster wie `termine`.
 
 ### Sicherheitsmodell (RLS), zum Verständnis
 
@@ -796,6 +801,82 @@ viel verkauft" ergibt bei einem verlorenen Deal keinen Sinn). Auch hier
 Pflicht, ein Katalog-Produkt zu wählen — kein Freitext-Fallback mehr,
 irgendwo im System.
 
+## Kontakt-Chronik: Anruf/Email-Aktivitäten + CRM/XP-Trennung, seit Patch 37 (2026-08-07)
+
+Auf Nutzerwunsch entstanden: die am selben Tag zuvor gebaute Chronik am
+Kontakt (siehe unten, ursprünglich nur ein einfacher gemischter Feed aus
+`action_log`) wurde nach Nutzer-Feedback ("für das wahre CRM sind die
+XP-Aktionen nicht sooo relevant … wann ein Kunde angerufen worden ist, was
+besprochen wurde, wann eine Email empfangen wurde — ähnlich wie in
+Salesforce") grundlegend erweitert. Referenzpunkt des Nutzers ist explizit
+Salesforce ("Log a Call"/NE-Erfassung).
+
+**Neue Tabelle `contact_activities`** (`sql/patch37_crm_chronik.sql`) —
+bewusst **getrennt von `action_log`**, das bleibt reine XP-Buchhaltung,
+unangetastet. Felder: `type` ('anruf'/'email'), `outcome` (bei Anruf
+'erreicht'/'nicht_erreicht' — das Nutzer-Vorbild "NE" aus Salesforce; bei
+Email 'geschrieben'/'empfangen'), `betreff` (nur Email), `inhalt`
+(Notiz-/Email-Text), `occurred_at` (editierbarer Zeitpunkt, Default jetzt).
+**Bewusst genau die Felder, die eine spätere echte Email-Integration
+bräuchte** (Nutzerwunsch: "kannst du das Fundament so erstellen, dass wir
+das in Zukunft anbinden können?") — vorerst werden sie von Hand befüllt,
+eine Integration würde nur noch `betreff`/`inhalt`/`occurred_at`
+automatisch statt manuell setzen, keine Schema-Änderung nötig. RLS wie bei
+`termine`: rein persönlich mit Admin-Leserechte-Ausnahme, Team-Sichtbarkeit
+unter Kolleg:innen bewusst nicht Teil dieses Patches (siehe unten).
+
+**XP hängt weiterhin dran** ("hinter diesen Dingen sind auch XP geknüpft,
+die XP ist das spielerische Element" — ausdrückliche Nutzer-Klarstellung,
+nachdem ein erster Entwurf Anruf/Email versehentlich XP-frei geplant
+hatte). Vier neue, modest bemessene Aktionen im Regelwerk:
+`anruf_erreicht` (4 XP), `anruf_nicht_erreicht` (1 XP, belohnt den
+Versuch/die Ausdauer), `email_geschrieben` (3 XP), `email_empfangen`
+(1 XP) — bewusst **keine** Neukalibrierung der Level-Kurve, da
+gelegentliches manuelles Zusatz-Loggen ohne Quest-Bindung, kein
+substanzieller Anteil am wöchentlichen XP-Budget. `contact_activities.
+action_log_id` verknüpft optional die zugehörige XP-Buchung — dadurch
+zeigt die Chronik **eine** Zeile pro Ereignis (nicht zwei), mit der XP-Zahl
+als optionalem Badge statt als eigener Log-Zeile.
+
+**Chronik zeigt jetzt zwei getrennte Sichtbarkeits-Ebenen** statt eines
+unsortierten Gesamt-Feeds (`CRM_RELEVANT_ACTIONS`/`ACTIVITY_LINKED_ACTIONS`
+in `index.html`, direkt bei `renderContactChronikTab()`):
+- **Immer sichtbar** ("wahre CRM-Fakten", nach Nutzer-Aufzählung: "Datum
+  eines Telefonats oder auch nur des Versuchs, Email geschrieben, Email
+  empfangen, terminiert, Termin wahrgenommen, verkauft, Absagen und
+  sowas"): die neuen Anruf-/Email-Aktivitäten, Termine, Verkäufe, sowie die
+  handfesten Vertriebsschritte aus `action_log`
+  (`termin_vereinbart`/`termin_wahrgenommen`/`pitch`/`kundenausbau`/
+  `abschluss`/`empfehlung`/`bedarfsanalyse`). Die zugehörige XP-Zahl ist
+  hier nur ein optionales Badge.
+- **Nur mit eingeschaltetem Schalter sichtbar**: die reinen XP-Grind-
+  Aktionen (Ansprache, Kalttelefonie, "5 Nummern gewählt",
+  Bestandskunde kontaktiert, Fachinfo recherchiert, Gruppentermin,
+  Boss-Encounter) — diese Zeilen fehlen komplett aus der Chronik, bis der
+  Schalter aktiv ist, dann samt XP-Zahl.
+
+**Neuer persönlicher Schalter** (`profiles.chronik_show_xp`, Default
+false): Einstellungen → neue Kachel "Kontakt-Chronik" (gleiches
+Kachel-Muster wie "Kalender"/"Provision & Planungsziele"), eine Checkbox
+"XP-Werte in der Kontakt-Chronik mit anzeigen". Steuert **nur** die
+Sichtbarkeit der XP-Zahlen/-Zeilen, nicht Anruf/Email/Termin/Verkauf
+selbst — die sind immer da.
+
+**Bedienung**: neuer Knopf "Anruf/Email loggen" am Kontakt (neben "Aktion
+loggen"/"Termin eintragen"), öffnet `contactActivityModal` — Typ-Auswahl
+(Anruf/Email) über dasselbe `.view-switch`-Toggle-Muster wie überall im
+Projekt (keine nativen Radios, siehe Lehre vom selben Tag beim
+Serientermin-Ende-Feld), je nach Typ ein passendes Ergebnis-Toggle
+(Erreicht/Nicht erreicht bzw. Geschrieben/Empfangen), Notizfeld, editierbarer
+Zeitpunkt. Respektiert das normale Tages-Energie-Budget wie jede andere
+Aktion.
+
+**Bewusst noch nicht Teil dieses Patches** (siehe [[project-roadmap-prioritaeten]]):
+Team-Sichtbarkeit der Chronik bei geteilten Kontakten — der Nutzer wollte
+das explizit erst später besprechen ("wir müssen die Datenbank komplett
+neu bearbeiten", noch ohne Details) und echte Email-Integration
+(IMAP/Weiterleitung o.ä., nur das Datenfundament ist vorbereitet).
+
 ## Abenteuerlog-Seite (Kalender/Tagebuch/Foto), seit 2026-08-04 neu sortiert
 
 Reihenfolge auf `#page-tagebuch` ist jetzt bewusst: **Kalender oben →
@@ -1066,8 +1147,7 @@ Politur-Vorschlägen aus dem Audit-Bericht, vom Nutzer freigegeben):
   Hinweis zu meiner Testumgebung, kein App-Bug — keine Änderung nötig,
   vom Nutzer bestätigt ("keine Probleme mit den Emojis").
 
-Methodik-Erkenntnis aus derselben Session, siehe auch
-[[feedback_verify_live_before_reporting]]: ein vom Nutzer gemeldetes
+Methodik-Erkenntnis aus derselben Session: ein vom Nutzer gemeldetes
 "Geburtsdatum wird nicht angezeigt" stellte sich bei einer direkten
 Live-Prüfung (Supabase-REST + Playwright) als kein Bug heraus — der Nutzer
 hatte einen Test-Kontakt in der Jägerchronik gemeint, nicht sein eigenes

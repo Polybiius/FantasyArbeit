@@ -350,7 +350,7 @@
   .kc-move-btn{display:none;position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--panel-2);color:var(--muted-2);font-size:12px;line-height:1;align-items:center;justify-content:center;cursor:pointer;}
   .kc-move-btn:hover, .kc-move-btn:active{border-color:var(--arcane);color:var(--text);}
   .kanban-newlead-form{display:flex;flex-direction:column;gap:6px;margin-bottom:10px;}
-  .kanban-newlead-form input{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-sm);padding:7px 9px;color:var(--text);font-size:12.5px;}
+  .kanban-newlead-form input, .kanban-newlead-form textarea{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-sm);padding:7px 9px;color:var(--text);font-size:12.5px;font-family:inherit;resize:vertical;}
 
   @media (max-width: 760px){
     .kanban-board{flex-direction:column;align-items:stretch;overflow-x:visible;padding:20px 8px;}
@@ -1172,6 +1172,18 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
             <div class="empty-page-hint" id="azStatus"></div>
           </div>
         </div>
+
+        <div class="card" style="margin-top:18px;">
+          <h2 class="settings-header-clickable" id="settingsChronikHeader">Kontakt-Chronik <span class="settings-chevron" id="settingsChronikChevron">▾ öffnen</span></h2>
+          <div id="settingsChronikWrap" style="display:none;">
+            <div class="empty-page-hint" style="margin-bottom:8px;">Die Chronik am Kontakt zeigt immer die echten CRM-Fakten (Anrufe, Emails, Termine, Verkäufe, Abschluss/Angebot/etc.). Hier legst du fest, ob zusätzlich die dazugehörigen XP-Zahlen — das spielerische Element — sichtbar sind.</div>
+            <label class="cdl" style="display:flex;align-items:center;gap:6px;">
+              <input type="checkbox" id="chronikShowXpInput"> XP-Werte in der Kontakt-Chronik mit anzeigen
+            </label>
+            <button class="cal-nav-btn" id="chronikSettingsSaveBtn" style="width:100%;margin-top:10px;">Speichern</button>
+            <div class="empty-page-hint" id="chronikSettingsStatus"></div>
+          </div>
+        </div>
       </div>
 
       <!-- SEITE: PRODUKTE (nur Admins) -->
@@ -1473,6 +1485,50 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     <div id="contactDetailChronik" style="display:none;"></div>
     <div id="contactDetailSales" style="display:none;"></div>
     <div id="contactDetailJournal" style="display:none;"></div>
+  </div>
+</div>
+
+<!-- Anruf/Email am Kontakt loggen — echte CRM-Aktivität mit Inhalt,
+     getrennt von den reinen XP-Aktionen. Felder sind schon so angelegt,
+     wie sie eine spätere echte Email-Integration bräuchte (Betreff/
+     Inhalt/Zeitpunkt), auch wenn hier vorerst von Hand befüllt. -->
+<div class="loc-modal" id="contactActivityModal" style="display:none;">
+  <div class="loc-modal-inner">
+    <div class="loc-modal-header">
+      <span>Aktivität loggen für <span id="activityContactName"></span></span>
+      <button id="activityModalClose">✕</button>
+    </div>
+    <div class="kanban-newlead-form">
+      <div class="view-switch" style="margin-bottom:0;">
+        <button type="button" class="cal-nav-btn view-switch-btn active activity-type-btn" data-type="anruf">📞 Anruf</button>
+        <button type="button" class="cal-nav-btn view-switch-btn activity-type-btn" data-type="email">✉️ Email</button>
+      </div>
+
+      <div id="activityAnrufFields">
+        <label class="cdl" style="display:block;margin-top:8px;">Ergebnis</label>
+        <div class="view-switch" style="margin-bottom:0;">
+          <button type="button" class="cal-nav-btn view-switch-btn active activity-outcome-btn" data-outcome="erreicht">Erreicht</button>
+          <button type="button" class="cal-nav-btn view-switch-btn activity-outcome-btn" data-outcome="nicht_erreicht">Nicht erreicht</button>
+        </div>
+      </div>
+      <div id="activityEmailFields" style="display:none;">
+        <label class="cdl" style="display:block;margin-top:8px;">Betreff</label>
+        <input type="text" id="activityBetreffInput" placeholder="Betreff">
+        <div class="view-switch" style="margin-top:6px;margin-bottom:0;">
+          <button type="button" class="cal-nav-btn view-switch-btn active activity-outcome-btn" data-outcome="geschrieben">Geschrieben</button>
+          <button type="button" class="cal-nav-btn view-switch-btn activity-outcome-btn" data-outcome="empfangen">Empfangen</button>
+        </div>
+      </div>
+
+      <label class="cdl" style="display:block;margin-top:8px;">Notiz / Inhalt</label>
+      <textarea id="activityInhaltInput" rows="4" placeholder="Was wurde besprochen bzw. geschrieben?"></textarea>
+
+      <label class="cdl" style="display:block;margin-top:8px;">Zeitpunkt</label>
+      <input type="datetime-local" id="activityZeitpunktInput">
+
+      <div class="empty-page-hint" id="activityModalStatus"></div>
+    </div>
+    <button class="cal-nav-btn" id="activitySaveBtn" style="width:100%;margin-top:8px;">Speichern</button>
   </div>
 </div>
 
@@ -3721,6 +3777,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     html += `<div class="cc-actions" style="margin-top:14px;">
       <button id="cdLogActionBtn">Aktion loggen</button>
+      <button id="cdActivityBtn">Anruf/Email loggen</button>
       <button id="cdTerminBtn">Termin eintragen</button>
       ${canEdit ? `<button id="cdEditBtn">Bearbeiten</button><button id="cdDeleteBtn">Löschen</button>` : ''}
     </div>`;
@@ -3744,6 +3801,9 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('cdLogActionBtn').addEventListener('click', ()=>{
       document.getElementById('contactDetailModal').style.display='none';
       openContactActionModal(c);
+    });
+    document.getElementById('cdActivityBtn').addEventListener('click', ()=>{
+      openContactActivityModal(c);
     });
     document.getElementById('cdTerminBtn').addEventListener('click', async ()=>{
       await promptKanbanTermin(c, 'Termin');
@@ -3831,28 +3891,57 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     });
   }
 
-  // Chronik-Reiter am Kontakt: XP-Aktionen, Termine und Verkäufe zu dieser
-  // Person in einer gemeinsamen, chronologischen Zeitleiste (Salesforce-
-  // artiges "Activity"-Prinzip) — bewusst vorerst nur die eigenen Einträge,
-  // wie "Zuletzt kontaktiert" es auch tut; Team-Sichtbarkeit bei geteilten
-  // Kontakten ist eine spätere, separate Entscheidung.
+  // Chronik-Reiter am Kontakt: echte CRM-Fakten (Anrufe, Emails, Termine,
+  // Verkäufe, handfeste Vertriebsschritte) in einer gemeinsamen,
+  // chronologischen Zeitleiste (Salesforce-artiges "Activity"-Prinzip) —
+  // die reinen XP-Grind-Aktionen sind standardmäßig ausgeblendet, ebenso
+  // die "+XX XP"-Zahlen bei den CRM-Fakten selbst, bis der Nutzer das über
+  // Einstellungen → Kontakt-Chronik einschaltet (profile.chronik_show_xp).
+  // Bewusst vorerst nur die eigenen Einträge, wie "Zuletzt kontaktiert" es
+  // auch tut; Team-Sichtbarkeit bei geteilten Kontakten ist eine spätere,
+  // separate Entscheidung.
+  const CRM_RELEVANT_ACTIONS = ['termin_vereinbart','termin_wahrgenommen','pitch','kundenausbau','abschluss','empfehlung','bedarfsanalyse'];
+  const ACTIVITY_LINKED_ACTIONS = ['anruf_erreicht','anruf_nicht_erreicht','email_geschrieben','email_empfangen'];
+
   async function renderContactChronikTab(c, myEntries, cSales, fmtDate){
     const wrap = document.getElementById('contactDetailChronik');
     wrap.innerHTML = '<div class="empty-page-hint">Lade Chronik …</div>';
 
-    const { data: termineData, error: termineErr } = await sb.from('termine')
-      .select('*').eq('contact_id', c.id).eq('owner_id', profile.id);
+    const [{ data: termineData, error: termineErr }, { data: activitiesData, error: actErr }] = await Promise.all([
+      sb.from('termine').select('*').eq('contact_id', c.id).eq('owner_id', profile.id),
+      sb.from('contact_activities').select('*, action_log(xp)').eq('contact_id', c.id).eq('user_id', profile.id)
+    ]);
     if(termineErr) logSilentError('Chronik: Termine laden', termineErr);
+    if(actErr) logSilentError('Chronik: Aktivitäten laden', actErr);
+
+    const showXp = !!profile.chronik_show_xp;
+    const xpBadge = (xp) => showXp ? `<span class="lxp">+${xp} XP</span>` : '';
 
     const items = [];
+
     myEntries.forEach(e=>{
+      if(ACTIVITY_LINKED_ACTIONS.includes(e.action_key)) return; // separat über contact_activities gerendert
+      const isCrm = CRM_RELEVANT_ACTIONS.includes(e.action_key);
+      if(!isCrm && !showXp) return; // reines XP nur mit eingeschaltetem Schalter sichtbar
       items.push({ ts: new Date(e.created_at), html:
-        `<div class="log-entry"><span class="lname">${e.label}${e.context?` <span class="lctx">(${e.context})</span>`:''}</span><span class="lright"><span class="ltime">${fmtTime(e.created_at)}</span><span class="lxp">+${e.xp} XP</span></span></div>` });
+        `<div class="log-entry"><span class="lname">${e.label}${e.context?` <span class="lctx">(${e.context})</span>`:''}</span><span class="lright"><span class="ltime">${fmtTime(e.created_at)}</span>${xpBadge(e.xp)}</span></div>` });
     });
+
+    (activitiesData||[]).forEach(act=>{
+      const icon = act.type==='anruf' ? '📞' : '✉️';
+      const title = act.type==='anruf'
+        ? (act.outcome==='erreicht' ? 'Anruf – erreicht' : 'Anruf – nicht erreicht')
+        : (act.betreff || (act.outcome==='empfangen' ? 'Email empfangen' : 'Email geschrieben'));
+      const xp = act.action_log ? act.action_log.xp : null;
+      items.push({ ts: new Date(act.occurred_at), html:
+        `<div class="log-entry"><span class="lname">${icon} ${title}${act.inhalt?`<br><span class="lctx" style="white-space:pre-wrap;">${act.inhalt}</span>`:''}</span><span class="lright"><span class="ltime">${fmtTime(act.occurred_at)}</span>${xp!=null?xpBadge(xp):''}</span></div>` });
+    });
+
     (termineData||[]).forEach(t=>{
       items.push({ ts: new Date(t.start_at), html:
         `<div class="log-entry"><span class="lname">🗓️ ${t.title||'Termin'}</span><span class="lright"><span class="ltime">${fmtTime(t.start_at)}</span></span></div>` });
     });
+
     cSales.forEach(s=>{
       const p = productById(s.product_id);
       const icon = s.status==='gewonnen' ? '🏆' : '❌';
@@ -4003,6 +4092,99 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     render();
     await renderContactsPage();
   }
+
+  // ---- Anruf/Email am Kontakt loggen (echte CRM-Aktivität, getrennt von
+  // der reinen XP-Buchhaltung in action_log) ----
+  const ACTIVITY_ACTION_KEY = {
+    anruf: { erreicht: 'anruf_erreicht', nicht_erreicht: 'anruf_nicht_erreicht' },
+    email: { geschrieben: 'email_geschrieben', empfangen: 'email_empfangen' }
+  };
+  let activitySelectedType = 'anruf';
+  let activitySelectedOutcome = 'erreicht';
+  let activityCurrentContact = null;
+
+  function localDatetimeInputValue(d){
+    const local = new Date(d.getTime() - d.getTimezoneOffset()*60000);
+    return local.toISOString().slice(0,16);
+  }
+
+  function selectActivityType(type){
+    activitySelectedType = type;
+    activitySelectedOutcome = type==='anruf' ? 'erreicht' : 'geschrieben';
+    document.querySelectorAll('.activity-type-btn').forEach(b=>b.classList.toggle('active', b.dataset.type===type));
+    document.getElementById('activityAnrufFields').style.display = type==='anruf' ? 'block' : 'none';
+    document.getElementById('activityEmailFields').style.display = type==='email' ? 'block' : 'none';
+    (type==='anruf'
+      ? document.querySelectorAll('#activityAnrufFields .activity-outcome-btn')
+      : document.querySelectorAll('#activityEmailFields .activity-outcome-btn')
+    ).forEach(b=>b.classList.toggle('active', b.dataset.outcome===activitySelectedOutcome));
+  }
+
+  function openContactActivityModal(contact){
+    activityCurrentContact = contact;
+    document.getElementById('activityContactName').textContent = contact.name;
+    selectActivityType('anruf');
+    document.getElementById('activityBetreffInput').value = '';
+    document.getElementById('activityInhaltInput').value = '';
+    document.getElementById('activityModalStatus').textContent = '';
+    document.getElementById('activityZeitpunktInput').value = localDatetimeInputValue(new Date());
+    document.getElementById('contactActivityModal').style.display = 'flex';
+  }
+
+  document.querySelectorAll('.activity-type-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=> selectActivityType(btn.dataset.type));
+  });
+  document.querySelectorAll('.activity-outcome-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      activitySelectedOutcome = btn.dataset.outcome;
+      btn.parentElement.querySelectorAll('.activity-outcome-btn').forEach(b=>b.classList.toggle('active', b===btn));
+    });
+  });
+  document.getElementById('activityModalClose').addEventListener('click', ()=>{
+    document.getElementById('contactActivityModal').style.display = 'none';
+  });
+
+  document.getElementById('activitySaveBtn').addEventListener('click', async ()=>{
+    const statusEl = document.getElementById('activityModalStatus');
+    const contact = activityCurrentContact;
+    const actionKey = ACTIVITY_ACTION_KEY[activitySelectedType][activitySelectedOutcome];
+    const a = config.actions[actionKey];
+    const remaining = config.energyMax - energyUsedToday();
+    if(a && a.energy > remaining){ statusEl.textContent = 'Nicht genug Energie heute übrig.'; return; }
+
+    const zeitpunktVal = document.getElementById('activityZeitpunktInput').value;
+    const occurredAt = zeitpunktVal ? new Date(zeitpunktVal).toISOString() : new Date().toISOString();
+    const betreff = activitySelectedType==='email' ? (document.getElementById('activityBetreffInput').value.trim() || null) : null;
+    const inhalt = document.getElementById('activityInhaltInput').value.trim() || null;
+
+    let actionLogId = null;
+    if(a){
+      const row = {
+        user_id:profile.id, org_id:profile.org_id, action_key:actionKey, label:a.label,
+        xp:a.xp, energy:a.energy, skill:a.skill||null, skill2:a.skill2||null,
+        context: contact.name, location_id: contact.location_id||null, contact_id: contact.id,
+        created_at: occurredAt
+      };
+      const { data, error } = await sb.from('action_log').insert(row).select().single();
+      if(error){ reportError('Aktivität: XP-Buchung', error, statusEl); return; }
+      log.push(data);
+      actionLogId = data.id;
+    }
+
+    const { error: actErr } = await sb.from('contact_activities').insert({
+      org_id: profile.org_id, user_id: profile.id, contact_id: contact.id,
+      type: activitySelectedType, outcome: activitySelectedOutcome,
+      betreff, inhalt, occurred_at: occurredAt, action_log_id: actionLogId
+    });
+    if(actErr){ reportError('Aktivität speichern', actErr, statusEl); return; }
+
+    await checkAndAwardRecurringQuests();
+    await checkAndAwardChains();
+
+    document.getElementById('contactActivityModal').style.display = 'none';
+    render();
+    await renderContactsPage();
+  });
 
   function updateGuildLabels(){
     const labels = CLASS_GUILD_LABELS[profile.character_class] || CLASS_GUILD_LABELS.zauberer;
@@ -5447,6 +5629,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('settingsZieleStatus').textContent = '';
     renderArbeitszeitenRows();
     document.getElementById('azStatus').textContent = '';
+    document.getElementById('chronikShowXpInput').checked = !!profile.chronik_show_xp;
+    document.getElementById('chronikSettingsStatus').textContent = '';
   }
 
   const WEEKDAY_LABELS_FULL = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag'];
@@ -5511,6 +5695,22 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     settingsArbeitszeitenOpen = !settingsArbeitszeitenOpen;
     document.getElementById('settingsArbeitszeitenWrap').style.display = settingsArbeitszeitenOpen ? 'block' : 'none';
     document.getElementById('settingsArbeitszeitenChevron').textContent = settingsArbeitszeitenOpen ? '▴ schließen' : '▾ öffnen';
+  });
+
+  let settingsChronikOpen = false;
+  document.getElementById('settingsChronikHeader').addEventListener('click', ()=>{
+    settingsChronikOpen = !settingsChronikOpen;
+    document.getElementById('settingsChronikWrap').style.display = settingsChronikOpen ? 'block' : 'none';
+    document.getElementById('settingsChronikChevron').textContent = settingsChronikOpen ? '▴ schließen' : '▾ öffnen';
+  });
+
+  document.getElementById('chronikSettingsSaveBtn').addEventListener('click', async ()=>{
+    const statusEl = document.getElementById('chronikSettingsStatus');
+    const val = document.getElementById('chronikShowXpInput').checked;
+    const { error } = await sb.from('profiles').update({ chronik_show_xp: val }).eq('id', profile.id);
+    if(error){ reportError('Chronik-Einstellung speichern', error, statusEl); return; }
+    profile.chronik_show_xp = val;
+    statusEl.textContent = 'Gespeichert.';
   });
 
   let settingsProvisionOpen = false;
