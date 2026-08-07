@@ -877,6 +877,83 @@ das explizit erst später besprechen ("wir müssen die Datenbank komplett
 neu bearbeiten", noch ohne Details) und echte Email-Integration
 (IMAP/Weiterleitung o.ä., nur das Datenfundament ist vorbereitet).
 
+## Einstellungen: Registry-getriebenes Fundament, seit 2026-08-07
+
+Auf Nutzerwunsch ("ich möchte mir dir heute eine grundidee ein fundament
+für die einstellungen gießen") umgebaut, bevor die Seite über die bisher 3
+Themen-Kacheln hinauswächst — Auslöser war ein vom Nutzer gesehenes Video
+mit einer als vorbildlich empfundenen Einstellungen-UX, aus der er
+Stichworte mitbrachte (instant-apply Toggles, Save-Bar bei Identitätsfeldern,
+Gruppierung statt langer Liste, Advanced-Klappe, Suche mit Highlighting,
+Modified-Badge, Undo, Danger Zone). **Wichtig für die Zusammenarbeit:** der
+Nutzer verstand das Registry-Prinzip trotz zweier Erklärversuche nicht
+wirklich — hat aber grünes Licht gegeben, nachdem klar war, dass es
+Industriestandard ist ("wenn das best practice ist ... dann bitte"). Bei
+ähnlich abstrakten Architektur-Erklärungen künftig nicht auf vollständigem
+Verständnis bestehen, sondern die Best-Practice-Einordnung anbieten und bei
+Zustimmung einfach bauen (siehe [[feedback_defer_to_best_practice_when_confused]]).
+
+**Kernidee:** `SETTINGS_REGISTRY` (Liste aller Einstellungen) +
+`SETTINGS_GROUPS` (Themen-Kacheln: Profil, Provision & Planungsziele,
+Kalender, Kontakt-Chronik) in `index.html` — eine neue Einstellung ist EIN
+Eintrag in der Liste (`id`, `group`, `label`, `desc`, `type`
+toggle/text/number/heading/alias, `field`), Rendering/Gruppierung/Suche/
+Advanced-Klappe laufen automatisch mit, statt wie vorher pro Einstellung
+vier Code-Stellen von Hand zu pflegen (HTML, Laden, Speichern, jetzt auch
+Suche). **Bei jeder künftigen neuen Einstellung diesem Muster folgen**,
+nicht wieder Handarbeit einführen.
+
+**Zwei Speicher-Verhalten, je nach Feldtyp:**
+- **Toggles** speichern sofort bei Klick (`settingsToggleChanged()`), kein
+  Save-Button. Danach ein Toast mit "Rückgängig" (macht die DB-Änderung per
+  erneutem Update rückgängig, kein echtes Undo-System) und ein
+  Sitzungs-Badge pro Gruppen-Kopfzeile ("2 geändert") — zählt Interaktionen
+  seit Seitenaufruf, wird durch Rückgängig NICHT wieder heruntergezählt
+  (bewusst einfach gehalten, reine Rückmeldung "das hast du heute
+  angefasst").
+- **Text-/Zahlenfelder** sammeln sich in `settingsPending` und einer
+  fixierten Save-Bar unten (Speichern/Verwerfen, `#settingsSaveBar`) — taucht
+  erst auf, wenn der Wert wirklich vom geladenen Profil-Wert abweicht.
+
+**Suche** (`settingsApplySearch()`) filtert Titel+Beschreibung aller
+Registry-Einträge, hebt Treffer mit `<mark>` hervor, klappt Treffer-Gruppen
+automatisch auf. `type:'alias'`-Einträge (aktuell nur "Arbeitszeiten") sind
+reine Such-Stichworte für Custom-Widgets ohne eigenes Registry-Feld,
+`type:'heading'` sind Zwischenüberschriften innerhalb einer Gruppe
+(z.B. "Individuelle Provision" vs. "Persönliche Planungsziele" innerhalb
+der Provision-Gruppe).
+
+**Advanced-Mechanismus** (`entry.advanced:true`, "Erweitert anzeigen"-Link
+pro Gruppe) ist gebaut, aber **aktuell auf keinem einzigen Eintrag gesetzt**
+— der Nutzer wusste beim Bauen noch nicht, was da reingehört ("Zukunftsmusik").
+Nicht von selbst nachträglich Felder als advanced markieren, nur wenn der
+Nutzer das konkret anstößt.
+
+**Neue Profil-Gruppe** (`real_name`, `company`) — vorher nur einmalig im
+Profil-Onboarding editierbar, jetzt jederzeit nachträglich änderbar. Der
+**Charaktername** (`display_name`) bewusst NICHT mit reingenommen — der ist
+bereits an anderer Stelle editierbar (`#nameInput` im Header, seit
+`profileNextBtn`/Onboarding-Ära bestehender Code, Zeile ~2283 in
+`index.html`), eine zweite Editierstelle hätte nur Sync-Verwirrung gestiftet.
+
+**Danger Zone** (rot abgesetzt, `.card.settings-danger-zone`) mit
+"Account löschen"-Button — **bewusst nur die Optik/das Bestätigungs-Modal
+gebaut, das eigentliche Löschen ist NICHT angebunden** (Modal sagt das dem
+Nutzer auch explizit). Grund: vorher muss geklärt werden, was mit
+Kontakten/Dungeons (`owner_id`), Verkäufen, Tagebucheinträgen passiert, die
+dem zu löschenden Account gehören — ein eigenes, noch nicht geführtes
+Gespräch, keine Kleinigkeit nebenbei. Beim nächsten Anstoß zu diesem Thema:
+erst durchsprechen (siehe genereller Grundsatz oben), dann erst SQL/Code.
+
+**CSS-Stolperstein, falls das Muster nochmal auftaucht:** eigene
+Farb-Overrides auf bereits bestehenden Klassen (`.card`, `.cal-nav-btn`)
+greifen nur, wenn die Spezifität höher ist als die Basisregel — ein reiner
+neuer Klassenname mit gleicher Spezifität (0,1,0) verliert gegen die
+später im Stylesheet stehende Basisregel, unabhängig davon, wo im Dokument
+die neue Regel steht. Lösung: beide Klassen kombinieren
+(`.card.settings-danger-zone`, `.cal-nav-btn.settings-save-bar-save`) statt
+nur die neue Klasse allein zu verwenden.
+
 ## Abenteuerlog-Seite (Kalender/Tagebuch/Foto), seit 2026-08-04 neu sortiert
 
 Reihenfolge auf `#page-tagebuch` ist jetzt bewusst: **Kalender oben →
