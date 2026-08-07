@@ -328,6 +328,27 @@
   .settings-header-clickable:hover{color:var(--arcane);}
   .settings-chevron{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--muted);}
   .settings-subheading{font-family:'Cinzel',serif;font-weight:700;font-size:13.5px;color:var(--text);margin:0 0 6px;display:flex;align-items:center;justify-content:space-between;}
+  /* Fundament seit 2026-08-07: registry-getriebene Felder statt Handarbeit
+     pro Einstellung — siehe SETTINGS_REGISTRY/SETTINGS_GROUPS in JS. */
+  .settings-search-input{width:100%;background:#0e0c17;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;color:var(--text);font-family:'Inter',sans-serif;font-size:14px;}
+  .settings-search-input:focus{outline:none;border-color:var(--arcane);}
+  .settings-field{padding:9px 0;border-bottom:1px solid var(--border);}
+  .settings-field:last-child{border-bottom:none;}
+  .settings-field.settings-field-hidden{display:none;}
+  .settings-field mark{background:var(--amber);color:#1a1408;border-radius:3px;padding:0 2px;}
+  .settings-mod-badge{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--success);background:rgba(52,211,153,0.14);border-radius:var(--radius-pill);padding:2px 9px;}
+  .settings-advanced-toggle{cursor:pointer;color:var(--muted);font-size:11.5px;font-family:'JetBrains Mono',monospace;margin-top:10px;}
+  .settings-advanced-toggle:hover{color:var(--arcane);}
+  .settings-advanced-wrap{margin-top:6px;}
+  .settings-save-bar{position:fixed;left:0;right:0;bottom:0;z-index:900;background:var(--panel-2);border-top:1px solid var(--arcane);box-shadow:var(--shadow-raised);padding:12px 20px;display:none;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;}
+  .cal-nav-btn.settings-save-bar-save{background:linear-gradient(90deg,var(--arcane),var(--arcane-glow));border:none;color:#fff;font-weight:600;}
+  .settings-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 16px;display:flex;align-items:center;gap:14px;font-size:12.5px;color:var(--text);box-shadow:var(--shadow-raised);z-index:950;animation:settingsToastIn .15s ease;}
+  .settings-toast button{background:transparent;border:none;color:var(--arcane-glow);font-weight:600;cursor:pointer;font-size:12.5px;padding:0;}
+  @keyframes settingsToastIn{from{opacity:0;transform:translate(-50%,8px);}to{opacity:1;transform:translate(-50%,0);}}
+  .card.settings-danger-zone{border-color:var(--danger);}
+  .card.settings-danger-zone h2{color:var(--danger);}
+  .cal-nav-btn.settings-danger-btn{border-color:var(--danger);color:var(--danger);}
+  .cal-nav-btn.settings-danger-btn:hover{background:rgba(241,101,101,0.12);}
   /* Questpfad: eine Wegkarte statt Büro-Spalten — Wegpunkte im Zickzack,
      verbunden durch Pfeile. Desktop: waagerechte Route, wechselnd hoch/tief
      versetzt. Handy: dieselbe Route senkrecht gedreht, wechselnd links/rechts
@@ -1117,72 +1138,19 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       <!-- SEITE: EINSTELLUNGEN (jeder für sich selbst) -->
       <div class="page" id="page-einstellungen" style="display:none;">
         <div class="card">
-          <h2 class="settings-header-clickable" id="settingsProvisionHeader">Provision &amp; Planungsziele <span class="settings-chevron" id="settingsProvisionChevron">▾ öffnen</span></h2>
-          <div id="settingsProvisionWrap" style="display:none;">
-            <h3 class="settings-subheading">Individuelle Provision</h3>
-            <div class="empty-page-hint" style="margin-bottom:8px;">Nur bei Leben/Kranken relevant — andere Sparten nutzen den festen Faktor am Produkt.</div>
-            <div class="kanban-newlead-form">
-              <label class="cdl" style="display:block;">Leben-Satz (‰)</label>
-              <input type="number" id="settingsLvSatzInput" step="0.01" placeholder="z.B. 32">
-              <label class="cdl" style="display:block;margin-top:4px;">Kranken-MB-Satz</label>
-              <input type="number" id="settingsKvSatzInput" step="0.001" placeholder="z.B. 6">
-              <button class="cal-nav-btn" id="settingsProvisionSaveBtn" style="width:100%;margin-top:8px;">Speichern</button>
-              <div class="empty-page-hint" id="settingsProvisionStatus"></div>
-            </div>
-
-            <h3 class="settings-subheading" style="margin-top:18px;">Persönliche Planungsziele <span class="tag">Zielerreichungsgrad</span></h3>
-            <div class="empty-page-hint" style="margin-bottom:8px;">Deine eigenen Jahresziele — daraus berechnet das Kompendium später deinen Zielerreichungsgrad.</div>
-            <div class="kanban-newlead-form">
-              <label class="cdl" style="display:block;">Planung Leben-BWS</label>
-              <input type="number" id="settingsPlanLvBwsInput" step="0.01" placeholder="Ziel-Bewertungssumme Leben">
-              <label class="cdl" style="display:block;margin-top:4px;">Planung Kranken-Beitrag</label>
-              <input type="number" id="settingsPlanKvMbInput" step="0.01" placeholder="Ziel-Bewertungsbeitrag Kranken">
-              <label class="cdl" style="display:block;margin-top:4px;">Planung Bewertungspunkte</label>
-              <input type="number" id="settingsPlanBwpInput" step="0.01" placeholder="Ziel-Bewertungspunkte">
-              <label class="cdl" style="display:block;margin-top:4px;">Planung Verkaufsgespräche</label>
-              <input type="number" id="settingsPlanVksInput" step="1" placeholder="Ziel-Anzahl Verkaufsgespräche">
-              <label class="cdl" style="display:block;margin-top:4px;">Planung Fachkontakte (FA)</label>
-              <input type="number" id="settingsPlanFaInput" step="1" placeholder="Ziel-Anzahl Fachkontakte">
-              <button class="cal-nav-btn" id="settingsZieleSaveBtn" style="width:100%;margin-top:8px;">Speichern</button>
-              <div class="empty-page-hint" id="settingsZieleStatus"></div>
-            </div>
-          </div>
+          <input type="search" id="settingsSearchInput" class="settings-search-input" placeholder="🔍 Einstellungen durchsuchen…">
         </div>
-
-        <div class="card" style="margin-top:18px;">
-          <h2 class="settings-header-clickable" id="settingsArbeitszeitenHeader">Kalender <span class="settings-chevron" id="settingsArbeitszeitenChevron">▾ öffnen</span></h2>
-          <div id="settingsArbeitszeitenWrap" style="display:none;">
-            <h3 class="settings-subheading">Arbeitszeiten</h3>
-            <div class="empty-page-hint" style="margin-bottom:8px;">Wirkt sich nur auf die Wochenansicht im Kalender aus (Zeiten außerhalb werden abgedunkelt dargestellt) — Termine lassen sich trotzdem jederzeit überall eintragen.</div>
-            <div class="kanban-newlead-form" style="margin-bottom:14px;">
-              <label class="cdl" style="display:block;">Mo–Fr auf einmal setzen</label>
-              <div class="contact-add-row">
-                <input type="time" id="azBulkStart" value="09:00">
-                <input type="time" id="azBulkEnde" value="18:00">
-                <button class="cal-nav-btn" id="azBulkApplyBtn">Übernehmen</button>
-              </div>
-            </div>
-            <div id="azDaysList"></div>
-            <label class="cdl" style="display:flex;align-items:center;gap:6px;margin-top:10px;">
-              <input type="checkbox" id="azHideWeekendsInput"> Samstag/Sonntag in der Wochenansicht ganz ausblenden (statt nur grau)
-            </label>
-            <label class="cdl" style="display:flex;align-items:center;gap:6px;margin-top:6px;">
-              <input type="checkbox" id="azShowBirthdaysInput"> Geburtstage meiner Kontakte als Hinweis im Kalender anzeigen
-            </label>
-            <button class="cal-nav-btn" id="azSaveBtn" style="width:100%;margin-top:10px;">Speichern</button>
-            <div class="empty-page-hint" id="azStatus"></div>
-          </div>
+        <div id="settingsGroupsWrap"></div>
+        <div class="card settings-danger-zone" style="margin-top:18px;">
+          <h2>⚠️ Danger Zone</h2>
+          <div class="empty-page-hint" style="margin-bottom:8px;">Destruktive Aktionen — mit Vorsicht behandeln.</div>
+          <button class="cal-nav-btn settings-danger-btn" id="deleteAccountBtn">Account löschen</button>
         </div>
-
-        <div class="card" style="margin-top:18px;">
-          <h2 class="settings-header-clickable" id="settingsChronikHeader">Kontakt-Chronik <span class="settings-chevron" id="settingsChronikChevron">▾ öffnen</span></h2>
-          <div id="settingsChronikWrap" style="display:none;">
-            <div class="empty-page-hint" style="margin-bottom:8px;">Die Chronik am Kontakt zeigt immer die echten CRM-Fakten (Anrufe, Emails, Termine, Verkäufe, Abschluss/Angebot/etc.). Hier legst du fest, ob zusätzlich die dazugehörigen XP-Zahlen — das spielerische Element — sichtbar sind.</div>
-            <label class="cdl" style="display:flex;align-items:center;gap:6px;">
-              <input type="checkbox" id="chronikShowXpInput"> XP-Werte in der Kontakt-Chronik mit anzeigen
-            </label>
-            <button class="cal-nav-btn" id="chronikSettingsSaveBtn" style="width:100%;margin-top:10px;">Speichern</button>
-            <div class="empty-page-hint" id="chronikSettingsStatus"></div>
+        <div class="settings-save-bar" id="settingsSaveBar">
+          <span id="settingsSaveBarText"></span>
+          <div style="display:flex;gap:8px;">
+            <button class="cal-nav-btn" id="settingsSaveBarCancel">Verwerfen</button>
+            <button class="cal-nav-btn settings-save-bar-save" id="settingsSaveBarSave">Speichern</button>
           </div>
         </div>
       </div>
@@ -1273,6 +1241,17 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       <button id="kanbanExtraActionClose">✕</button>
     </div>
     <div class="action-btns" id="kanbanExtraActionGrid"></div>
+  </div>
+</div>
+
+<div class="loc-modal" id="deleteAccountModal" style="display:none;">
+  <div class="loc-modal-inner">
+    <div class="loc-modal-header">
+      <span>Account löschen</span>
+      <button id="deleteAccountModalClose">✕</button>
+    </div>
+    <div class="empty-page-hint" style="margin-bottom:14px;">Diese Aktion ist als Baustelle vorbereitet, aber bewusst noch nicht angebunden — vorher muss geklärt werden, was mit deinen Kontakten, Dungeons, Verkäufen und Tagebucheinträgen passiert.</div>
+    <button class="cal-nav-btn" id="deleteAccountModalOk" style="width:100%;">Verstanden</button>
   </div>
 </div>
 
@@ -5658,21 +5637,274 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     await renderProductsPage();
   });
 
-  // ---- Einstellungen (jeder für sich selbst — individuelle Provision + Planungsziele) ----
-  function renderEinstellungenPage(){
-    document.getElementById('settingsLvSatzInput').value = profile.lv_promille_satz ?? '';
-    document.getElementById('settingsKvSatzInput').value = profile.kv_mb_satz ?? '';
-    document.getElementById('settingsPlanLvBwsInput').value = profile.planung_lv_bws ?? '';
-    document.getElementById('settingsPlanKvMbInput').value = profile.planung_kv_mb ?? '';
-    document.getElementById('settingsPlanBwpInput').value = profile.planung_bwp ?? '';
-    document.getElementById('settingsPlanVksInput').value = profile.planung_vks ?? '';
-    document.getElementById('settingsPlanFaInput').value = profile.planung_fa ?? '';
-    document.getElementById('settingsProvisionStatus').textContent = '';
-    document.getElementById('settingsZieleStatus').textContent = '';
-    renderArbeitszeitenRows();
-    document.getElementById('azStatus').textContent = '';
-    document.getElementById('chronikShowXpInput').checked = !!profile.chronik_show_xp;
-    document.getElementById('chronikSettingsStatus').textContent = '';
+  // ---- Einstellungen: registry-getriebenes Fundament (seit 2026-08-07) ----
+  // Jede Einstellung ist EIN Eintrag hier statt Handarbeit an vier Stellen
+  // (HTML, Laden, Speichern, Suche) — eine neue Einstellung heißt: eine neue
+  // Zeile in SETTINGS_REGISTRY, der Rest (Rendern, Gruppierung, Suche,
+  // Advanced-Klappe) läuft automatisch mit. Toggles speichern sofort (mit
+  // Rückgängig-Toast), Text-/Zahlenfelder sammeln sich in einer Save-Bar.
+  const SETTINGS_GROUPS = [
+    { id:'profil', label:'Profil', icon:'👤' },
+    { id:'provision', label:'Provision & Planungsziele', icon:'📊' },
+    { id:'kalender', label:'Kalender', icon:'📅' },
+    { id:'chronik', label:'Kontakt-Chronik', icon:'📖' },
+  ];
+
+  const SETTINGS_REGISTRY = [
+    { id:'real_name', group:'profil', label:'Echter Name', desc:'Dein Name, wie ihn Kolleg:innen sehen — getrennt vom Charakternamen (der bleibt oben im Header editierbar).', type:'text', field:'real_name', maxlength:60, placeholder:'Dein Name' },
+    { id:'company', group:'profil', label:'Unternehmen', desc:'Optional — wo arbeitest du?', type:'text', field:'company', maxlength:80, placeholder:'Unternehmen (optional)' },
+
+    { id:'h_provision', group:'provision', type:'heading', label:'Individuelle Provision', desc:'Nur bei Leben/Kranken relevant — andere Sparten nutzen den festen Faktor am Produkt.' },
+    { id:'lv_promille_satz', group:'provision', label:'Leben-Satz (‰)', type:'number', field:'lv_promille_satz', step:'0.01', placeholder:'z.B. 32' },
+    { id:'kv_mb_satz', group:'provision', label:'Kranken-MB-Satz', type:'number', field:'kv_mb_satz', step:'0.001', placeholder:'z.B. 6' },
+    { id:'h_planung', group:'provision', type:'heading', label:'Persönliche Planungsziele', desc:'Deine eigenen Jahresziele — daraus berechnet das Kompendium später deinen Zielerreichungsgrad.' },
+    { id:'planung_lv_bws', group:'provision', label:'Planung Leben-BWS', type:'number', field:'planung_lv_bws', step:'0.01', placeholder:'Ziel-Bewertungssumme Leben' },
+    { id:'planung_kv_mb', group:'provision', label:'Planung Kranken-Beitrag', type:'number', field:'planung_kv_mb', step:'0.01', placeholder:'Ziel-Bewertungsbeitrag Kranken' },
+    { id:'planung_bwp', group:'provision', label:'Planung Bewertungspunkte', type:'number', field:'planung_bwp', step:'0.01', placeholder:'Ziel-Bewertungspunkte' },
+    { id:'planung_vks', group:'provision', label:'Planung Verkaufsgespräche', type:'number', field:'planung_vks', step:'1', placeholder:'Ziel-Anzahl Verkaufsgespräche' },
+    { id:'planung_fa', group:'provision', label:'Planung Fachkontakte (FA)', type:'number', field:'planung_fa', step:'1', placeholder:'Ziel-Anzahl Fachkontakte' },
+
+    { id:'arbeitszeiten_widget', group:'kalender', type:'alias', label:'Arbeitszeiten', desc:'Wochentage, Startzeit, Endzeit, Mo–Fr auf einmal setzen' },
+    { id:'calendar_hide_weekends', group:'kalender', label:'Wochenenden ausblenden', desc:'Samstag/Sonntag in der Wochenansicht komplett ausblenden statt nur grau.', type:'toggle', field:'calendar_hide_weekends' },
+    { id:'calendar_show_birthdays', group:'kalender', label:'Geburtstage anzeigen', desc:'Geburtstage deiner Kontakte als Hinweis im Kalender.', type:'toggle', field:'calendar_show_birthdays', defaultChecked:true },
+
+    { id:'chronik_show_xp', group:'chronik', label:'XP-Werte anzeigen', desc:'Zeigt XP-Zahlen zusätzlich zu den CRM-Fakten in der Kontakt-Chronik.', type:'toggle', field:'chronik_show_xp' },
+  ];
+
+  let settingsPending = {};       // registry id -> ungespeicherter Roh-Wert (Text-/Zahlenfelder)
+  let settingsSessionCount = {};  // group id -> Anzahl in dieser Sitzung geänderter Toggles
+  let settingsGroupOpen = {};     // group id -> aufgeklappt?
+  let settingsAdvancedOpen = {};  // group id -> Advanced-Bereich aufgeklappt?
+  let settingsToastTimer = null;
+
+  function settingsEntryValue(entry){
+    if(entry.type==='toggle'){
+      const v = profile[entry.field];
+      return entry.defaultChecked ? v !== false : !!v;
+    }
+    const v = profile[entry.field];
+    return (v===null || v===undefined) ? '' : v;
+  }
+
+  function settingsFieldHtml(entry){
+    if(entry.type==='alias') return '';
+    if(entry.type==='heading'){
+      return `<h3 class="settings-subheading" style="margin-top:14px;">${escHtml(entry.label)}</h3>${entry.desc?`<div class="empty-page-hint" style="margin-bottom:8px;">${escHtml(entry.desc)}</div>`:''}`;
+    }
+    const labelHtml = escHtml(entry.label);
+    const descHtml = escHtml(entry.desc || '');
+    if(entry.type==='toggle'){
+      return `<div class="settings-field" data-field-id="${entry.id}">
+        <label class="cdl" style="display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--text);font-size:13px;text-transform:none;letter-spacing:0;">
+          <input type="checkbox" id="setting_${entry.id}">
+          <span class="settings-field-label">${labelHtml}</span>
+        </label>
+        ${entry.desc?`<div class="settings-field-desc empty-page-hint" style="margin:2px 0 0 26px;text-align:left;padding:0;font-size:11px;">${descHtml}</div>`:''}
+      </div>`;
+    }
+    return `<div class="settings-field" data-field-id="${entry.id}">
+      <label class="cdl settings-field-label" style="display:block;">${labelHtml}</label>
+      ${entry.desc?`<div class="settings-field-desc empty-page-hint" style="margin:0 0 4px;text-align:left;padding:0;font-size:11px;">${descHtml}</div>`:''}
+      <input type="${entry.type==='number'?'number':'text'}" id="setting_${entry.id}" placeholder="${entry.placeholder?escHtml(entry.placeholder):''}" ${entry.step?`step="${entry.step}"`:''} ${entry.maxlength?`maxlength="${entry.maxlength}"`:''}>
+    </div>`;
+  }
+
+  function arbeitszeitenCustomHtml(){
+    return `<h3 class="settings-subheading">Arbeitszeiten</h3>
+      <div class="empty-page-hint" style="margin-bottom:8px;">Wirkt sich nur auf die Wochenansicht im Kalender aus (Zeiten außerhalb werden abgedunkelt dargestellt) — Termine lassen sich trotzdem jederzeit überall eintragen.</div>
+      <div class="kanban-newlead-form" style="margin-bottom:14px;">
+        <label class="cdl" style="display:block;">Mo–Fr auf einmal setzen</label>
+        <div class="contact-add-row">
+          <input type="time" id="azBulkStart" value="09:00">
+          <input type="time" id="azBulkEnde" value="18:00">
+          <button class="cal-nav-btn" id="azBulkApplyBtn">Übernehmen</button>
+        </div>
+      </div>
+      <div id="azDaysList"></div>
+      <button class="cal-nav-btn" id="azSaveBtn" style="width:100%;margin-top:10px;">Arbeitszeiten speichern</button>
+      <div class="empty-page-hint" id="azStatus"></div>`;
+  }
+
+  function buildSettingsGroupsHtml(){
+    return SETTINGS_GROUPS.map(g=>{
+      const entries = SETTINGS_REGISTRY.filter(e=>e.group===g.id);
+      const basic = entries.filter(e=>!e.advanced);
+      const adv = entries.filter(e=>e.advanced);
+      const open = !!settingsGroupOpen[g.id];
+      const advOpen = !!settingsAdvancedOpen[g.id];
+      const custom = g.id==='kalender' ? arbeitszeitenCustomHtml() : '';
+      return `<div class="card settings-group-card" style="margin-top:18px;" data-group="${g.id}">
+        <h2 class="settings-header-clickable" data-group-toggle="${g.id}">
+          <span>${g.icon} ${escHtml(g.label)} <span class="settings-chevron">${open?'▴ schließen':'▾ öffnen'}</span></span>
+          <span class="settings-mod-badge" id="settingsModBadge_${g.id}" style="display:none;"></span>
+        </h2>
+        <div class="settings-group-wrap" id="settingsGroupWrap_${g.id}" style="display:${open?'block':'none'};">
+          ${custom}
+          ${basic.map(settingsFieldHtml).join('')}
+          ${adv.length ? `<div class="settings-advanced-toggle" data-adv-toggle="${g.id}">${advOpen?'▴ Erweitert verbergen':'▾ Erweitert anzeigen'}</div>
+          <div class="settings-advanced-wrap" id="settingsAdvWrap_${g.id}" style="display:${advOpen?'block':'none'};">${adv.map(settingsFieldHtml).join('')}</div>` : ''}
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  async function settingsToggleChanged(entry, el){
+    const newVal = el.checked;
+    const oldVal = !newVal;
+    const { error } = await sb.from('profiles').update({ [entry.field]: newVal }).eq('id', profile.id);
+    if(error){ el.checked = oldVal; reportError('Einstellung speichern', error); return; }
+    profile[entry.field] = newVal;
+    if(entry.field==='calendar_hide_weekends' || entry.field==='calendar_show_birthdays') renderCalTasksNow();
+    settingsBumpModifiedBadge(entry.group);
+    settingsShowToast(`${entry.label} ${newVal?'aktiviert':'deaktiviert'}`, async ()=>{
+      el.checked = oldVal;
+      const { error: undoErr } = await sb.from('profiles').update({ [entry.field]: oldVal }).eq('id', profile.id);
+      if(undoErr){ reportError('Rückgängig machen', undoErr); return; }
+      profile[entry.field] = oldVal;
+      if(entry.field==='calendar_hide_weekends' || entry.field==='calendar_show_birthdays') renderCalTasksNow();
+    });
+  }
+
+  function settingsInputChanged(entry, el){
+    const raw = el.value;
+    const origStr = String(settingsEntryValue(entry));
+    if(raw === origStr) delete settingsPending[entry.id];
+    else settingsPending[entry.id] = raw;
+    updateSettingsSaveBar();
+  }
+
+  function settingsBumpModifiedBadge(groupId){
+    settingsSessionCount[groupId] = (settingsSessionCount[groupId] || 0) + 1;
+    const badge = document.getElementById('settingsModBadge_'+groupId);
+    if(badge){ badge.style.display = 'inline-block'; badge.textContent = settingsSessionCount[groupId] + ' geändert'; }
+  }
+
+  function settingsShowToast(msg, undoFn){
+    const old = document.getElementById('settingsToast');
+    if(old) old.remove();
+    if(settingsToastTimer) clearTimeout(settingsToastTimer);
+    const el = document.createElement('div');
+    el.className = 'settings-toast';
+    el.id = 'settingsToast';
+    const bar = document.getElementById('settingsSaveBar');
+    el.style.bottom = (bar && bar.style.display==='flex') ? '90px' : '24px';
+    el.innerHTML = `<span>${escHtml(msg)}</span>${undoFn?'<button type="button">Rückgängig</button>':''}`;
+    if(undoFn) el.querySelector('button').addEventListener('click', ()=>{ el.remove(); undoFn(); });
+    document.body.appendChild(el);
+    settingsToastTimer = setTimeout(()=>el.remove(), 5000);
+  }
+
+  function updateSettingsSaveBar(){
+    const bar = document.getElementById('settingsSaveBar');
+    const page = document.getElementById('page-einstellungen');
+    const n = Object.keys(settingsPending).length;
+    if(n===0){ bar.style.display='none'; if(page) page.style.paddingBottom=''; return; }
+    bar.style.display='flex';
+    if(page) page.style.paddingBottom='74px';
+    document.getElementById('settingsSaveBarText').textContent = n===1 ? '1 Änderung' : n+' Änderungen';
+  }
+
+  function settingsHighlight(text, q){
+    const idx = text.toLowerCase().indexOf(q);
+    if(idx===-1) return escHtml(text);
+    return escHtml(text.slice(0,idx)) + '<mark>' + escHtml(text.slice(idx, idx+q.length)) + '</mark>' + escHtml(text.slice(idx+q.length));
+  }
+
+  function settingsApplySearch(term){
+    const q = term.trim().toLowerCase();
+    document.querySelectorAll('.settings-field').forEach(fieldEl=>{
+      const entry = SETTINGS_REGISTRY.find(e=>e.id===fieldEl.dataset.fieldId);
+      if(!entry) return;
+      const matches = !q || entry.label.toLowerCase().includes(q) || (entry.desc||'').toLowerCase().includes(q);
+      fieldEl.classList.toggle('settings-field-hidden', !matches);
+      const labelEl = fieldEl.querySelector('.settings-field-label');
+      const descEl = fieldEl.querySelector('.settings-field-desc');
+      if(labelEl) labelEl.innerHTML = q ? settingsHighlight(entry.label, q) : escHtml(entry.label);
+      if(descEl) descEl.innerHTML = q ? settingsHighlight(entry.desc||'', q) : escHtml(entry.desc||'');
+    });
+    document.querySelectorAll('.settings-group-card').forEach(card=>{
+      const gid = card.dataset.group;
+      const anyVisible = !!card.querySelector('.settings-field:not(.settings-field-hidden)');
+      const extraMatch = !!(q && SETTINGS_REGISTRY.some(e=>e.group===gid && (e.type==='alias'||e.type==='heading') && (e.label.toLowerCase().includes(q) || (e.desc||'').toLowerCase().includes(q))));
+      const groupMeta = SETTINGS_GROUPS.find(g=>g.id===gid);
+      const groupLabelMatch = !!(q && groupMeta.label.toLowerCase().includes(q));
+      const show = !q || anyVisible || extraMatch || groupLabelMatch;
+      card.style.display = show ? '' : 'none';
+      const wrap = document.getElementById('settingsGroupWrap_'+gid);
+      const advWrap = document.getElementById('settingsAdvWrap_'+gid);
+      if(q && show){
+        if(wrap) wrap.style.display = 'block';
+        if(advWrap && advWrap.querySelector('.settings-field:not(.settings-field-hidden)')) advWrap.style.display = 'block';
+      } else if(!q){
+        if(wrap) wrap.style.display = settingsGroupOpen[gid] ? 'block' : 'none';
+        if(advWrap) advWrap.style.display = settingsAdvancedOpen[gid] ? 'block' : 'none';
+      }
+    });
+  }
+
+  function attachSettingsFieldListeners(){
+    SETTINGS_REGISTRY.forEach(entry=>{
+      if(entry.type==='alias' || entry.type==='heading') return;
+      const el = document.getElementById('setting_'+entry.id);
+      if(!el) return;
+      if(entry.type==='toggle'){
+        el.checked = settingsEntryValue(entry);
+        el.addEventListener('change', ()=>settingsToggleChanged(entry, el));
+      } else {
+        el.value = settingsEntryValue(entry);
+        el.addEventListener('input', ()=>settingsInputChanged(entry, el));
+      }
+    });
+    document.querySelectorAll('[data-group-toggle]').forEach(h=>{
+      const gid = h.dataset.groupToggle;
+      h.addEventListener('click', ()=>{
+        settingsGroupOpen[gid] = !settingsGroupOpen[gid];
+        document.getElementById('settingsGroupWrap_'+gid).style.display = settingsGroupOpen[gid] ? 'block' : 'none';
+        h.querySelector('.settings-chevron').textContent = settingsGroupOpen[gid] ? '▴ schließen' : '▾ öffnen';
+      });
+    });
+    document.querySelectorAll('[data-adv-toggle]').forEach(a=>{
+      const gid = a.dataset.advToggle;
+      a.addEventListener('click', ()=>{
+        settingsAdvancedOpen[gid] = !settingsAdvancedOpen[gid];
+        document.getElementById('settingsAdvWrap_'+gid).style.display = settingsAdvancedOpen[gid] ? 'block' : 'none';
+        a.textContent = settingsAdvancedOpen[gid] ? '▴ Erweitert verbergen' : '▾ Erweitert anzeigen';
+      });
+    });
+    Object.keys(settingsSessionCount).forEach(gid=>{
+      const badge = document.getElementById('settingsModBadge_'+gid);
+      if(badge && settingsSessionCount[gid] > 0){ badge.style.display='inline-block'; badge.textContent = settingsSessionCount[gid] + ' geändert'; }
+    });
+  }
+
+  function wireArbeitszeitenExtras(){
+    document.getElementById('azBulkApplyBtn').addEventListener('click', ()=>{
+      const start = document.getElementById('azBulkStart').value;
+      const ende = document.getElementById('azBulkEnde').value;
+      if(!start || !ende) return;
+      ['mon','tue','wed','thu','fri'].forEach(k=>{
+        document.getElementById('azActive_'+k).checked = true;
+        document.getElementById('azStart_'+k).disabled = false;
+        document.getElementById('azEnde_'+k).disabled = false;
+        document.getElementById('azStart_'+k).value = start;
+        document.getElementById('azEnde_'+k).value = ende;
+      });
+    });
+    document.getElementById('azSaveBtn').addEventListener('click', async ()=>{
+      const statusEl = document.getElementById('azStatus');
+      const obj = {};
+      WEEKDAY_KEYS.forEach(k=>{
+        if(!document.getElementById('azActive_'+k).checked) return;
+        const start = document.getElementById('azStart_'+k).value;
+        const ende = document.getElementById('azEnde_'+k).value;
+        if(start && ende) obj[k] = {start, end:ende};
+      });
+      const { error } = await sb.from('profiles').update({ arbeitszeiten: obj }).eq('id', profile.id);
+      if(error){ reportError('Arbeitszeiten speichern', error, statusEl); return; }
+      profile.arbeitszeiten = obj;
+      statusEl.textContent = 'Gespeichert.';
+      renderCalTasksNow();
+    });
   }
 
   const WEEKDAY_LABELS_FULL = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag'];
@@ -5695,98 +5927,61 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         document.getElementById('azEnde_'+k).disabled = !e.target.checked;
       });
     });
-    document.getElementById('azHideWeekendsInput').checked = !!profile.calendar_hide_weekends;
-    document.getElementById('azShowBirthdaysInput').checked = profile.calendar_show_birthdays !== false;
   }
 
-  document.getElementById('azBulkApplyBtn').addEventListener('click', ()=>{
-    const start = document.getElementById('azBulkStart').value;
-    const ende = document.getElementById('azBulkEnde').value;
-    if(!start || !ende) return;
-    ['mon','tue','wed','thu','fri'].forEach(k=>{
-      document.getElementById('azActive_'+k).checked = true;
-      document.getElementById('azStart_'+k).disabled = false;
-      document.getElementById('azEnde_'+k).disabled = false;
-      document.getElementById('azStart_'+k).value = start;
-      document.getElementById('azEnde_'+k).value = ende;
+  function renderEinstellungenPage(){
+    document.getElementById('settingsGroupsWrap').innerHTML = buildSettingsGroupsHtml();
+    attachSettingsFieldListeners();
+    renderArbeitszeitenRows();
+    wireArbeitszeitenExtras();
+    settingsPending = {};
+    updateSettingsSaveBar();
+    document.getElementById('settingsSearchInput').value = '';
+    settingsApplySearch('');
+  }
+
+  document.getElementById('settingsSearchInput').addEventListener('input', (e)=>settingsApplySearch(e.target.value));
+
+  document.getElementById('settingsSaveBarCancel').addEventListener('click', ()=>{
+    Object.keys(settingsPending).forEach(id=>{
+      const entry = SETTINGS_REGISTRY.find(e=>e.id===id);
+      const el = document.getElementById('setting_'+id);
+      if(el && entry) el.value = settingsEntryValue(entry);
     });
+    settingsPending = {};
+    updateSettingsSaveBar();
   });
 
-  document.getElementById('azSaveBtn').addEventListener('click', async ()=>{
-    const statusEl = document.getElementById('azStatus');
-    const obj = {};
-    WEEKDAY_KEYS.forEach(k=>{
-      if(!document.getElementById('azActive_'+k).checked) return;
-      const start = document.getElementById('azStart_'+k).value;
-      const ende = document.getElementById('azEnde_'+k).value;
-      if(start && ende) obj[k] = {start, end:ende};
+  document.getElementById('settingsSaveBarSave').addEventListener('click', async ()=>{
+    const ids = Object.keys(settingsPending);
+    if(ids.length===0) return;
+    const update = {};
+    ids.forEach(id=>{
+      const entry = SETTINGS_REGISTRY.find(e=>e.id===id);
+      let v = settingsPending[id];
+      if(entry.type==='number') v = v==='' ? null : parseFloat(v);
+      if(entry.type==='text') v = v.trim();
+      update[entry.field] = v;
     });
-    const hideWeekends = document.getElementById('azHideWeekendsInput').checked;
-    const showBirthdays = document.getElementById('azShowBirthdaysInput').checked;
-    const { error } = await sb.from('profiles').update({ arbeitszeiten: obj, calendar_hide_weekends: hideWeekends, calendar_show_birthdays: showBirthdays }).eq('id', profile.id);
-    if(error){ reportError('Arbeitszeiten speichern', error, statusEl); return; }
-    profile.arbeitszeiten = obj;
-    profile.calendar_hide_weekends = hideWeekends;
-    profile.calendar_show_birthdays = showBirthdays;
-    statusEl.textContent = 'Gespeichert.';
-    renderCalTasksNow();
-  });
-
-  let settingsArbeitszeitenOpen = false;
-  document.getElementById('settingsArbeitszeitenHeader').addEventListener('click', ()=>{
-    settingsArbeitszeitenOpen = !settingsArbeitszeitenOpen;
-    document.getElementById('settingsArbeitszeitenWrap').style.display = settingsArbeitszeitenOpen ? 'block' : 'none';
-    document.getElementById('settingsArbeitszeitenChevron').textContent = settingsArbeitszeitenOpen ? '▴ schließen' : '▾ öffnen';
-  });
-
-  let settingsChronikOpen = false;
-  document.getElementById('settingsChronikHeader').addEventListener('click', ()=>{
-    settingsChronikOpen = !settingsChronikOpen;
-    document.getElementById('settingsChronikWrap').style.display = settingsChronikOpen ? 'block' : 'none';
-    document.getElementById('settingsChronikChevron').textContent = settingsChronikOpen ? '▴ schließen' : '▾ öffnen';
-  });
-
-  document.getElementById('chronikSettingsSaveBtn').addEventListener('click', async ()=>{
-    const statusEl = document.getElementById('chronikSettingsStatus');
-    const val = document.getElementById('chronikShowXpInput').checked;
-    const { error } = await sb.from('profiles').update({ chronik_show_xp: val }).eq('id', profile.id);
-    if(error){ reportError('Chronik-Einstellung speichern', error, statusEl); return; }
-    profile.chronik_show_xp = val;
-    statusEl.textContent = 'Gespeichert.';
-  });
-
-  let settingsProvisionOpen = false;
-  document.getElementById('settingsProvisionHeader').addEventListener('click', ()=>{
-    settingsProvisionOpen = !settingsProvisionOpen;
-    document.getElementById('settingsProvisionWrap').style.display = settingsProvisionOpen ? 'block' : 'none';
-    document.getElementById('settingsProvisionChevron').textContent = settingsProvisionOpen ? '▴ schließen' : '▾ öffnen';
-  });
-
-  document.getElementById('settingsProvisionSaveBtn').addEventListener('click', async ()=>{
-    const statusEl = document.getElementById('settingsProvisionStatus');
-    const lvSatz = document.getElementById('settingsLvSatzInput').value;
-    const kvSatz = document.getElementById('settingsKvSatzInput').value;
-    const update = { lv_promille_satz: lvSatz ? parseFloat(lvSatz) : null, kv_mb_satz: kvSatz ? parseFloat(kvSatz) : null };
+    const btn = document.getElementById('settingsSaveBarSave');
+    btn.disabled = true;
     const { error } = await sb.from('profiles').update(update).eq('id', profile.id);
-    if(error){ reportError('Provision speichern', error, statusEl); return; }
+    btn.disabled = false;
+    if(error){ reportError('Einstellungen speichern', error); return; }
     Object.assign(profile, update);
-    statusEl.textContent = 'Gespeichert.';
+    settingsPending = {};
+    updateSettingsSaveBar();
+    settingsShowToast('Gespeichert.', null);
   });
 
-  document.getElementById('settingsZieleSaveBtn').addEventListener('click', async ()=>{
-    const statusEl = document.getElementById('settingsZieleStatus');
-    const val = (id)=>{ const v = document.getElementById(id).value; return v ? parseFloat(v) : null; };
-    const update = {
-      planung_lv_bws: val('settingsPlanLvBwsInput'),
-      planung_kv_mb: val('settingsPlanKvMbInput'),
-      planung_bwp: val('settingsPlanBwpInput'),
-      planung_vks: val('settingsPlanVksInput'),
-      planung_fa: val('settingsPlanFaInput'),
-    };
-    const { error } = await sb.from('profiles').update(update).eq('id', profile.id);
-    if(error){ reportError('Planungsziele speichern', error, statusEl); return; }
-    Object.assign(profile, update);
-    statusEl.textContent = 'Gespeichert.';
+  document.getElementById('deleteAccountBtn').addEventListener('click', ()=>{
+    document.getElementById('deleteAccountModal').style.display = 'flex';
+  });
+  document.getElementById('deleteAccountModalClose').addEventListener('click', ()=>{
+    document.getElementById('deleteAccountModal').style.display = 'none';
+  });
+  document.getElementById('deleteAccountModalOk').addEventListener('click', ()=>{
+    document.getElementById('deleteAccountModal').style.display = 'none';
   });
 
   // ---- Fehlerprotokoll-Seite (nur Admins) ----
