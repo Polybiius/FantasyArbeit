@@ -403,6 +403,7 @@
   .cal-nav{display:flex;gap:8px;margin-bottom:12px;}
   .cal-nav-btn{background:var(--panel-2);border:1px solid var(--border);color:var(--muted);border-radius:var(--radius-sm);padding:6px 12px;font-size:12px;cursor:pointer;font-family:'JetBrains Mono',monospace;}
   .cal-nav-btn:hover{border-color:var(--arcane);color:var(--text);}
+  .cal-nav-btn:disabled{opacity:.35;cursor:not-allowed;}
   .cal-weekday-header{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px;}
   .cal-weekday-header span{text-align:center;font-family:'Cinzel',serif;font-size:10.5px;font-weight:700;color:var(--muted-2);text-transform:uppercase;letter-spacing:.04em;}
   .cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;}
@@ -1483,6 +1484,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     </div>
     <div id="contactDetailBody"></div>
     <div id="contactDetailChronik" style="display:none;"></div>
+    <div class="cal-nav" id="chronikPaginationNav" style="display:none;margin-top:8px;margin-bottom:0;align-items:center;justify-content:center;">
+      <button class="cal-nav-btn" id="chronikPrevPageBtn">‹ zurück</button>
+      <span class="tag" id="chronikPageLabel"></span>
+      <button class="cal-nav-btn" id="chronikNextPageBtn">weiter ›</button>
+    </div>
     <div id="contactDetailSales" style="display:none;"></div>
     <div id="contactDetailJournal" style="display:none;"></div>
   </div>
@@ -3831,6 +3837,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('contactDetailChronik').style.display = tab==='chronik' ? 'block' : 'none';
     document.getElementById('contactDetailSales').style.display = tab==='sales' ? 'block' : 'none';
     document.getElementById('contactDetailJournal').style.display = tab==='journal' ? 'block' : 'none';
+    if(tab!=='chronik') document.getElementById('chronikPaginationNav').style.display = 'none';
+    else renderChronikPage();
   }
   document.getElementById('cdTabOverviewBtn').addEventListener('click', ()=> showContactDetailTab('overview'));
   document.getElementById('cdTabChronikBtn').addEventListener('click', ()=> showContactDetailTab('chronik'));
@@ -3951,9 +3959,37 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     });
 
     items.sort((a,b)=> b.ts - a.ts);
-    wrap.innerHTML = items.length ? items.map(i=>i.html).join('')
-      : '<div class="empty-page-hint">Noch keine Chronik-Einträge zu diesem Kontakt.</div>';
+    chronikItemsCache = items;
+    chronikCurrentPage = 0;
+    renderChronikPage();
   }
+
+  // Chronik-Seiten: bei vielen Einträgen (z.B. Test-Accounts oder künftig
+  // viele geloggte Telefon-NEs) würde eine einzige lange Liste das kleine
+  // Kontakt-Popup sprengen — deshalb feste Seitengröße + Weiter/Zurück wie
+  // beim Kalender-Monatswechsel (gleiches .cal-nav-Muster). Blättert nur
+  // im bereits geladenen chronikItemsCache, keine erneute DB-Abfrage nötig.
+  const CHRONIK_PAGE_SIZE = 20;
+  let chronikItemsCache = [];
+  let chronikCurrentPage = 0;
+
+  function renderChronikPage(){
+    const wrap = document.getElementById('contactDetailChronik');
+    const items = chronikItemsCache;
+    const totalPages = Math.max(1, Math.ceil(items.length / CHRONIK_PAGE_SIZE));
+    chronikCurrentPage = Math.max(0, Math.min(chronikCurrentPage, totalPages-1));
+    const pageItems = items.slice(chronikCurrentPage*CHRONIK_PAGE_SIZE, (chronikCurrentPage+1)*CHRONIK_PAGE_SIZE);
+    wrap.innerHTML = pageItems.length ? pageItems.map(i=>i.html).join('')
+      : '<div class="empty-page-hint">Noch keine Chronik-Einträge zu diesem Kontakt.</div>';
+
+    const navEl = document.getElementById('chronikPaginationNav');
+    navEl.style.display = items.length > CHRONIK_PAGE_SIZE ? 'flex' : 'none';
+    document.getElementById('chronikPageLabel').textContent = `Seite ${chronikCurrentPage+1} von ${totalPages}`;
+    document.getElementById('chronikPrevPageBtn').disabled = chronikCurrentPage===0;
+    document.getElementById('chronikNextPageBtn').disabled = chronikCurrentPage>=totalPages-1;
+  }
+  document.getElementById('chronikPrevPageBtn').addEventListener('click', ()=>{ chronikCurrentPage--; renderChronikPage(); });
+  document.getElementById('chronikNextPageBtn').addEventListener('click', ()=>{ chronikCurrentPage++; renderChronikPage(); });
 
   async function startEditContact(c){
     document.getElementById('contactFormBody').style.display = 'block';
