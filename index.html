@@ -332,10 +332,24 @@
      pro Einstellung — siehe SETTINGS_REGISTRY/SETTINGS_GROUPS in JS. */
   .settings-search-input{width:100%;background:#0e0c17;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 14px;color:var(--text);font-family:'Inter',sans-serif;font-size:14px;}
   .settings-search-input:focus{outline:none;border-color:var(--arcane);}
-  .settings-field{padding:9px 0;border-bottom:1px solid var(--border);}
-  .settings-field:last-child{border-bottom:none;}
+  .settings-field{padding:9px 0;}
   .settings-field.settings-field-hidden{display:none;}
   .settings-field mark{background:var(--amber);color:#1a1408;border-radius:3px;padding:0 2px;}
+  .settings-field-label-standalone{color:var(--muted-2);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:5px;}
+  .settings-field-desc{color:var(--muted);font-family:'Inter',sans-serif;font-size:11.5px;line-height:1.4;margin-top:3px;}
+  .settings-field-toggle .settings-field-desc{margin-left:50px;margin-top:4px;}
+  .settings-input{width:100%;box-sizing:border-box;background:#0e0c17;border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 12px;color:var(--text);font-family:'Inter',sans-serif;font-size:13.5px;}
+  .settings-input:focus{outline:none;border-color:var(--arcane);}
+  .settings-switch-row{display:flex;align-items:center;gap:12px;cursor:pointer;}
+  .settings-switch{position:relative;display:inline-block;width:38px;height:21px;flex:none;}
+  .settings-switch input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer;z-index:1;}
+  .settings-switch-track{position:absolute;inset:0;background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius-pill);transition:background .15s,border-color .15s;pointer-events:none;}
+  .settings-switch-thumb{position:absolute;top:2px;left:2px;width:15px;height:15px;background:var(--muted);border-radius:50%;transition:transform .15s,background .15s;pointer-events:none;}
+  .settings-switch input:checked ~ .settings-switch-track{background:rgba(139,92,246,0.28);border-color:var(--arcane);}
+  .settings-switch input:checked ~ .settings-switch-track .settings-switch-thumb{transform:translateX(17px);background:var(--arcane-glow);}
+  .settings-switch input:focus-visible ~ .settings-switch-track{outline:2px solid var(--arcane);outline-offset:2px;}
+  .settings-switch-label{color:var(--text);font-size:13.5px;}
+  #azDaysList input[type="checkbox"]{accent-color:var(--arcane);width:15px;height:15px;}
   .settings-mod-badge{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--success);background:rgba(52,211,153,0.14);border-radius:var(--radius-pill);padding:2px 9px;}
   .settings-advanced-toggle{cursor:pointer;color:var(--muted);font-size:11.5px;font-family:'JetBrains Mono',monospace;margin-top:10px;}
   .settings-advanced-toggle:hover{color:var(--arcane);}
@@ -5694,18 +5708,21 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const labelHtml = escHtml(entry.label);
     const descHtml = escHtml(entry.desc || '');
     if(entry.type==='toggle'){
-      return `<div class="settings-field" data-field-id="${entry.id}">
-        <label class="cdl" style="display:flex;align-items:center;gap:8px;cursor:pointer;color:var(--text);font-size:13px;text-transform:none;letter-spacing:0;">
-          <input type="checkbox" id="setting_${entry.id}">
-          <span class="settings-field-label">${labelHtml}</span>
+      return `<div class="settings-field settings-field-toggle" data-field-id="${entry.id}">
+        <label class="settings-switch-row">
+          <span class="settings-switch">
+            <input type="checkbox" id="setting_${entry.id}">
+            <span class="settings-switch-track"><span class="settings-switch-thumb"></span></span>
+          </span>
+          <span class="settings-field-label settings-switch-label">${labelHtml}</span>
         </label>
-        ${entry.desc?`<div class="settings-field-desc empty-page-hint" style="margin:2px 0 0 26px;text-align:left;padding:0;font-size:11px;">${descHtml}</div>`:''}
+        ${entry.desc?`<div class="settings-field-desc">${descHtml}</div>`:''}
       </div>`;
     }
     return `<div class="settings-field" data-field-id="${entry.id}">
-      <label class="cdl settings-field-label" style="display:block;">${labelHtml}</label>
-      ${entry.desc?`<div class="settings-field-desc empty-page-hint" style="margin:0 0 4px;text-align:left;padding:0;font-size:11px;">${descHtml}</div>`:''}
-      <input type="${entry.type==='number'?'number':'text'}" id="setting_${entry.id}" placeholder="${entry.placeholder?escHtml(entry.placeholder):''}" ${entry.step?`step="${entry.step}"`:''} ${entry.maxlength?`maxlength="${entry.maxlength}"`:''}>
+      <label class="settings-field-label settings-field-label-standalone">${labelHtml}</label>
+      ${entry.desc?`<div class="settings-field-desc" style="margin-top:0;margin-bottom:6px;">${descHtml}</div>`:''}
+      <input type="${entry.type==='number'?'number':'text'}" class="settings-input" id="setting_${entry.id}" placeholder="${entry.placeholder?escHtml(entry.placeholder):''}" ${entry.step?`step="${entry.step}"`:''} ${entry.maxlength?`maxlength="${entry.maxlength}"`:''}>
     </div>`;
   }
 
