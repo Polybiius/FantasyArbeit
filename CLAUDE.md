@@ -1036,6 +1036,18 @@ erreicht).
    Features entstanden) — noch kein Grund zum Vereinheitlichen (Rule of
    Three ist gerade erst erreicht), aber falls eine vierte dazukommt, lohnt
    sich ein gemeinsamer Helfer.
+3. **`maxlength` auf bisher unbegrenzten Freitextfeldern nachgetragen**
+   (noch selber Tag, Nutzerwunsch) — keine Abwehr gegen böswillige Nutzer
+   (siehe Begründung oben, dafür fehlt hier das Bedrohungsmodell), sondern
+   reine UX-Hygiene gegen versehentliches Riesig-Reinpasten. Namen/Orte/
+   Titel meist 60–150 Zeichen, Notizfelder 1000–3000, die 5 Tagebuch-Fragen
+   bewusst großzügig **5000 Zeichen** ("lieber ein paar Zeichen mehr als zu
+   wenig", ausdrücklicher Nutzerwunsch — Tagebuch soll sich niemals eng
+   anfühlen). Bewusst NICHT angefasst: reine Such-/Autocomplete-Felder
+   (`contactLocationSearch`, `friendSearchInput`, `termineEntry*Search`,
+   Wert wird nicht direkt gespeichert) und `configEditor` (roher
+   JSON-Editor für `rule_configs`, admin-only, kann legitim mehrere KB groß
+   sein).
 
 ## Abenteuerlog-Seite (Kalender/Tagebuch/Foto), seit 2026-08-04 neu sortiert
 

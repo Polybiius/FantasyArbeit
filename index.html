@@ -597,7 +597,7 @@
 <div class="auth-card" id="authScreen">
   <h1 class="display">Vertriebs-Quest</h1>
   <p id="authSubtitle">Melde dich an, um deinen Charakter zu sehen.</p>
-  <input type="email" id="authEmail" placeholder="E-Mail">
+  <input type="email" id="authEmail" placeholder="E-Mail" maxlength="254">
   <input type="password" id="authPassword" placeholder="Passwort">
   <button class="auth-btn" id="authSubmitBtn">Anmelden</button>
   <div class="auth-error" id="authError"></div>
@@ -841,7 +841,7 @@
 
           <div id="guildNoGuildView" style="display:none;">
             <div class="guild-create-row">
-              <input type="text" id="guildNameInput" placeholder="Name deiner neuen Gilde">
+              <input type="text" id="guildNameInput" placeholder="Name deiner neuen Gilde" maxlength="60">
               <button class="cal-nav-btn" id="guildCreateBtn">Gründen</button>
             </div>
             <div class="empty-page-hint" style="margin-top:6px;">oder einer bestehenden Gilde beitreten:</div>
@@ -875,8 +875,8 @@
 
           <div id="contactFormBody" style="display:none;">
             <div class="contact-add-row">
-              <input type="text" id="contactVornameInput" placeholder="Vorname">
-              <input type="text" id="contactNachnameInput" placeholder="Nachname">
+              <input type="text" id="contactVornameInput" placeholder="Vorname" maxlength="60">
+              <input type="text" id="contactNachnameInput" placeholder="Nachname" maxlength="60">
               <select id="contactRoleSelect"></select>
               <div class="loc-autocomplete">
                 <input type="text" id="contactLocationSearch" placeholder="Betrieb suchen …" autocomplete="off">
@@ -901,32 +901,32 @@
               </select>
             </div>
             <div class="contact-add-row" id="newBetriebForm" style="display:none;">
-              <input type="text" id="betriebNameInput" placeholder="Betrieb (Name)">
+              <input type="text" id="betriebNameInput" placeholder="Betrieb (Name)" maxlength="100">
               <select id="betriebArtSelect"></select>
-              <input type="text" id="betriebPlzInput" placeholder="Postleitzahl" style="max-width:120px;">
-              <input type="text" id="betriebStrasseInput" placeholder="Straße">
-              <input type="text" id="betriebStadtInput" placeholder="Stadt">
+              <input type="text" id="betriebPlzInput" placeholder="Postleitzahl" style="max-width:120px;" maxlength="10">
+              <input type="text" id="betriebStrasseInput" placeholder="Straße" maxlength="100">
+              <input type="text" id="betriebStadtInput" placeholder="Stadt" maxlength="80">
               <button type="button" class="cal-nav-btn" id="betriebCreateBtn">Anlegen & auswählen</button>
             </div>
             <div class="empty-page-hint" id="betriebCreateStatus"></div>
             <div class="contact-add-row">
               <input type="date" id="contactGeburtsdatumInput" title="Geburtsdatum">
-              <input type="text" id="contactTelefonInput" placeholder="Telefon">
-              <input type="text" id="contactEmailInput" placeholder="E-Mail">
+              <input type="text" id="contactTelefonInput" placeholder="Telefon" maxlength="30">
+              <input type="text" id="contactEmailInput" placeholder="E-Mail" maxlength="100">
             </div>
             <div class="contact-add-row">
-              <input type="text" id="contactWohnortStrasseInput" placeholder="Wohnort – Straße/Hausnummer">
-              <input type="text" id="contactWohnortOrtInput" placeholder="Wohnort – Ort">
+              <input type="text" id="contactWohnortStrasseInput" placeholder="Wohnort – Straße/Hausnummer" maxlength="100">
+              <input type="text" id="contactWohnortOrtInput" placeholder="Wohnort – Ort" maxlength="80">
             </div>
             <div class="contact-add-row">
-              <textarea id="contactBedarfIstInput" placeholder="Bedarf – Ist-Zustand (was er bereits hat)" rows="2"></textarea>
-              <textarea id="contactBedarfWunschInput" placeholder="Bedarf – Wunsch (was er gerne möchte)" rows="2"></textarea>
+              <textarea id="contactBedarfIstInput" placeholder="Bedarf – Ist-Zustand (was er bereits hat)" rows="2" maxlength="1000"></textarea>
+              <textarea id="contactBedarfWunschInput" placeholder="Bedarf – Wunsch (was er gerne möchte)" rows="2" maxlength="1000"></textarea>
             </div>
             <div class="contact-add-row">
               <label class="cc-role" style="align-self:center;">Nächster Kontakt (Wiedervorlage):</label>
               <input type="date" id="contactNextContactInput">
             </div>
-            <textarea id="contactNotesInput" placeholder="Allgemeine Notizen (optional)" rows="2"></textarea>
+            <textarea id="contactNotesInput" placeholder="Allgemeine Notizen (optional)" rows="2" maxlength="2000"></textarea>
             <button class="cal-nav-btn" id="contactAddBtn" style="margin-top:8px;">+ Kontakt anlegen</button>
             <div class="empty-page-hint" id="contactAddStatus"></div>
           </div>
@@ -964,8 +964,8 @@
               <div class="kanban-col-header">Neuer Lead <span class="kanban-count" id="kanbanCount_neuer_lead">0</span></div>
               <button class="cal-nav-btn" id="kanbanNewLeadBtn" style="width:100%;margin-bottom:8px;">+ Neuer Lead</button>
               <div class="kanban-newlead-form" id="kanbanNewLeadForm" style="display:none;">
-                <input type="text" id="kanbanNewLeadVorname" placeholder="Vorname">
-                <input type="text" id="kanbanNewLeadNachname" placeholder="Nachname">
+                <input type="text" id="kanbanNewLeadVorname" placeholder="Vorname" maxlength="60">
+                <input type="text" id="kanbanNewLeadNachname" placeholder="Nachname" maxlength="60">
                 <button class="cal-nav-btn" id="kanbanNewLeadSaveBtn">Anlegen</button>
                 <div class="empty-page-hint" id="kanbanNewLeadStatus"></div>
               </div>
@@ -1022,8 +1022,8 @@
         <div class="card">
           <h2>Dungeons <span class="tag">karte</span></h2>
           <div class="dungeon-add-row" id="dungeonAddRow" style="display:none;">
-            <input type="text" id="locNameInput" placeholder="Name (z.B. Klinikum Mitte)">
-            <input type="text" id="locAddressInput" placeholder="Adresse">
+            <input type="text" id="locNameInput" placeholder="Name (z.B. Klinikum Mitte)" maxlength="100">
+            <input type="text" id="locAddressInput" placeholder="Adresse" maxlength="150">
             <select id="locTypeSelect"></select>
             <button class="cal-nav-btn" id="locAddBtn">+ Ort hinzufügen</button>
           </div>
@@ -1089,7 +1089,7 @@
             <div class="journal-col">
               <div class="journal-savestate" id="jsave1"></div>
               <div class="journal-mention-wrap">
-                <textarea class="journal-ta" id="j1" placeholder="Welche Etappe habe ich heute gemeistert?
+                <textarea class="journal-ta" id="j1" maxlength="5000" placeholder="Welche Etappe habe ich heute gemeistert?
 Was war mein wichtigster Fortschritt oder Erfolg? (@Name markiert einen Kontakt)"></textarea>
                 <div class="loc-suggestions" id="jSugg1"></div>
               </div>
@@ -1097,7 +1097,7 @@ Was war mein wichtigster Fortschritt oder Erfolg? (@Name markiert einen Kontakt)
             <div class="journal-col">
               <div class="journal-savestate" id="jsave2"></div>
               <div class="journal-mention-wrap">
-                <textarea class="journal-ta" id="j2" placeholder="Welcher Herausforderung bin ich begegnet?
+                <textarea class="journal-ta" id="j2" maxlength="5000" placeholder="Welcher Herausforderung bin ich begegnet?
 Welcher Einwand, welche Situation oder welches Hindernis hat mich heute gefordert?"></textarea>
                 <div class="loc-suggestions" id="jSugg2"></div>
               </div>
@@ -1105,7 +1105,7 @@ Welcher Einwand, welche Situation oder welches Hindernis hat mich heute geforder
             <div class="journal-col">
               <div class="journal-savestate" id="jsave3"></div>
               <div class="journal-mention-wrap">
-                <textarea class="journal-ta" id="j3" placeholder="Welche Entdeckung habe ich gemacht?
+                <textarea class="journal-ta" id="j3" maxlength="5000" placeholder="Welche Entdeckung habe ich gemacht?
 Was habe ich heute über Kunden, den Markt oder mich selbst gelernt?"></textarea>
                 <div class="loc-suggestions" id="jSugg3"></div>
               </div>
@@ -1113,7 +1113,7 @@ Was habe ich heute über Kunden, den Markt oder mich selbst gelernt?"></textarea
             <div class="journal-col">
               <div class="journal-savestate" id="jsave4"></div>
               <div class="journal-mention-wrap">
-                <textarea class="journal-ta" id="j4" placeholder="Welche Spur nehme ich mit?
+                <textarea class="journal-ta" id="j4" maxlength="5000" placeholder="Welche Spur nehme ich mit?
 Welche Erkenntnis oder Strategie möchte ich künftig wieder anwenden oder vermeiden?"></textarea>
                 <div class="loc-suggestions" id="jSugg4"></div>
               </div>
@@ -1121,7 +1121,7 @@ Welche Erkenntnis oder Strategie möchte ich künftig wieder anwenden oder verme
             <div class="journal-col">
               <div class="journal-savestate" id="jsave5"></div>
               <div class="journal-mention-wrap">
-                <textarea class="journal-ta" id="j5" placeholder="Wohin führt meine nächste Etappe?
+                <textarea class="journal-ta" id="j5" maxlength="5000" placeholder="Wohin führt meine nächste Etappe?
 Was ist morgen der wichtigste konkrete Schritt?"></textarea>
                 <div class="loc-suggestions" id="jSugg5"></div>
               </div>
@@ -1178,9 +1178,9 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
           <h2>Produkte <span class="tag">nur für Admins sichtbar</span></h2>
           <div class="empty-page-hint" style="margin-bottom:8px;">Der Produktkatalog, aus dem beim Verkaufen ausgewählt wird. Nichts wird gelöscht, nur deaktiviert — alte Verkäufe zeigen weiterhin das damalige Produkt.</div>
           <div class="kanban-newlead-form" style="margin-bottom:14px;">
-            <input type="text" id="prodNameInput" placeholder="Produktname">
-            <input type="text" id="prodCategoryInput" placeholder="Kategorie (z.B. Lebensversicherungen)">
-            <input type="text" id="prodSubcategoryInput" placeholder="Unterkategorie (optional)">
+            <input type="text" id="prodNameInput" placeholder="Produktname" maxlength="100">
+            <input type="text" id="prodCategoryInput" placeholder="Kategorie (z.B. Lebensversicherungen)" maxlength="80">
+            <input type="text" id="prodSubcategoryInput" placeholder="Unterkategorie (optional)" maxlength="80">
             <button class="cal-nav-btn" id="prodAddBtn">+ Produkt anlegen</button>
             <div class="empty-page-hint" id="prodAddStatus"></div>
           </div>
@@ -1310,8 +1310,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       <button id="terminLeadClose">✕</button>
     </div>
     <div class="kanban-newlead-form">
-      <input type="text" id="terminLeadVorname" placeholder="Vorname">
-      <input type="text" id="terminLeadNachname" placeholder="Nachname">
+      <input type="text" id="terminLeadVorname" placeholder="Vorname" maxlength="60">
+      <input type="text" id="terminLeadNachname" placeholder="Nachname" maxlength="60">
       <label class="cdl" style="display:block;margin-top:4px;">Datum des Ersttermins</label>
       <input type="date" id="terminLeadDatum">
       <div class="contact-add-row">
@@ -1368,7 +1368,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       <button id="termineEntryClose">✕</button>
     </div>
     <div class="kanban-newlead-form">
-      <input type="text" id="termineEntryTitle" placeholder="Titel (z.B. Büroarbeit, Besprechung)">
+      <input type="text" id="termineEntryTitle" placeholder="Titel (z.B. Büroarbeit, Besprechung)" maxlength="150">
       <div class="contact-add-row">
         <div>
           <label class="cdl" style="display:block;">Von</label>
@@ -1525,7 +1525,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       </div>
       <div id="activityEmailFields" style="display:none;">
         <label class="cdl" style="display:block;margin-top:8px;">Betreff</label>
-        <input type="text" id="activityBetreffInput" placeholder="Betreff">
+        <input type="text" id="activityBetreffInput" placeholder="Betreff" maxlength="150">
         <div class="view-switch" style="margin-top:6px;margin-bottom:0;">
           <button type="button" class="cal-nav-btn view-switch-btn active activity-outcome-btn" data-outcome="geschrieben">Geschrieben</button>
           <button type="button" class="cal-nav-btn view-switch-btn activity-outcome-btn" data-outcome="empfangen">Empfangen</button>
@@ -1533,7 +1533,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       </div>
 
       <label class="cdl" style="display:block;margin-top:8px;">Notiz / Inhalt</label>
-      <textarea id="activityInhaltInput" rows="4" placeholder="Was wurde besprochen bzw. geschrieben?"></textarea>
+      <textarea id="activityInhaltInput" rows="4" maxlength="3000" placeholder="Was wurde besprochen bzw. geschrieben?"></textarea>
 
       <label class="cdl" style="display:block;margin-top:8px;">Zeitpunkt</label>
       <input type="datetime-local" id="activityZeitpunktInput">
