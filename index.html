@@ -531,6 +531,7 @@
   .chain-stage .reward{margin-left:auto;font-family:'JetBrains Mono',monospace;font-size:11px;}
 
   .log{max-height:260px;overflow-y:auto;display:flex;flex-direction:column-reverse;gap:6px;padding-right:4px;}
+  #contactDetailChronik{display:flex;flex-direction:column;gap:6px;}
   .log-entry{display:flex;justify-content:space-between;align-items:center;gap:10px;font-family:'JetBrains Mono',monospace;font-size:11.5px;padding:7px 10px;border-radius:var(--radius-sm);background:var(--panel-2);border:1px solid var(--border);}
   .log-entry .lname{color:var(--text);flex:1;min-width:0;}
   .log-entry .lctx{color:var(--arcane-glow);}
@@ -1462,12 +1463,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       <span id="contactDetailTitle">Kontakt</span>
       <button id="contactDetailClose">✕</button>
     </div>
-    <div class="view-switch">
+    <div class="view-switch" style="flex-wrap:wrap;">
       <button class="cal-nav-btn view-switch-btn active" id="cdTabOverviewBtn">Übersicht</button>
+      <button class="cal-nav-btn view-switch-btn" id="cdTabChronikBtn">Chronik</button>
       <button class="cal-nav-btn view-switch-btn" id="cdTabSalesBtn">Verkaufshistorie</button>
       <button class="cal-nav-btn view-switch-btn" id="cdTabJournalBtn">Tagebucheintrag</button>
     </div>
     <div id="contactDetailBody"></div>
+    <div id="contactDetailChronik" style="display:none;"></div>
     <div id="contactDetailSales" style="display:none;"></div>
     <div id="contactDetailJournal" style="display:none;"></div>
   </div>
@@ -3724,6 +3727,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     document.getElementById('contactDetailBody').innerHTML = html;
     renderContactSalesTab(c, cSales, canEdit, fmtDate);
+    renderContactChronikTab(c, myEntries, cSales, fmtDate);
 
     const journalHtml = mentions.length>0
       ? `<div class="cd-mentions">${mentions.map(d=>`<a class="cal-nav-btn" data-jump="${d}">📖 ${new Date(d+'T12:00:00').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'})}</a>`).join('')}</div>`
@@ -3758,15 +3762,18 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   document.getElementById('contactDetailClose').addEventListener('click', ()=>{
     document.getElementById('contactDetailModal').style.display='none';
   });
-  function showContactDetailTab(tab){ // 'overview' | 'sales' | 'journal'
+  function showContactDetailTab(tab){ // 'overview' | 'chronik' | 'sales' | 'journal'
     document.getElementById('cdTabOverviewBtn').classList.toggle('active', tab==='overview');
+    document.getElementById('cdTabChronikBtn').classList.toggle('active', tab==='chronik');
     document.getElementById('cdTabSalesBtn').classList.toggle('active', tab==='sales');
     document.getElementById('cdTabJournalBtn').classList.toggle('active', tab==='journal');
     document.getElementById('contactDetailBody').style.display = tab==='overview' ? 'block' : 'none';
+    document.getElementById('contactDetailChronik').style.display = tab==='chronik' ? 'block' : 'none';
     document.getElementById('contactDetailSales').style.display = tab==='sales' ? 'block' : 'none';
     document.getElementById('contactDetailJournal').style.display = tab==='journal' ? 'block' : 'none';
   }
   document.getElementById('cdTabOverviewBtn').addEventListener('click', ()=> showContactDetailTab('overview'));
+  document.getElementById('cdTabChronikBtn').addEventListener('click', ()=> showContactDetailTab('chronik'));
   document.getElementById('cdTabSalesBtn').addEventListener('click', ()=> showContactDetailTab('sales'));
   document.getElementById('cdTabJournalBtn').addEventListener('click', ()=> showContactDetailTab('journal'));
 
@@ -3822,6 +3829,41 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         await renderContactsPage();
       });
     });
+  }
+
+  // Chronik-Reiter am Kontakt: XP-Aktionen, Termine und Verkäufe zu dieser
+  // Person in einer gemeinsamen, chronologischen Zeitleiste (Salesforce-
+  // artiges "Activity"-Prinzip) — bewusst vorerst nur die eigenen Einträge,
+  // wie "Zuletzt kontaktiert" es auch tut; Team-Sichtbarkeit bei geteilten
+  // Kontakten ist eine spätere, separate Entscheidung.
+  async function renderContactChronikTab(c, myEntries, cSales, fmtDate){
+    const wrap = document.getElementById('contactDetailChronik');
+    wrap.innerHTML = '<div class="empty-page-hint">Lade Chronik …</div>';
+
+    const { data: termineData, error: termineErr } = await sb.from('termine')
+      .select('*').eq('contact_id', c.id).eq('owner_id', profile.id);
+    if(termineErr) logSilentError('Chronik: Termine laden', termineErr);
+
+    const items = [];
+    myEntries.forEach(e=>{
+      items.push({ ts: new Date(e.created_at), html:
+        `<div class="log-entry"><span class="lname">${e.label}${e.context?` <span class="lctx">(${e.context})</span>`:''}</span><span class="lright"><span class="ltime">${fmtTime(e.created_at)}</span><span class="lxp">+${e.xp} XP</span></span></div>` });
+    });
+    (termineData||[]).forEach(t=>{
+      items.push({ ts: new Date(t.start_at), html:
+        `<div class="log-entry"><span class="lname">🗓️ ${t.title||'Termin'}</span><span class="lright"><span class="ltime">${fmtTime(t.start_at)}</span></span></div>` });
+    });
+    cSales.forEach(s=>{
+      const p = productById(s.product_id);
+      const icon = s.status==='gewonnen' ? '🏆' : '❌';
+      const d = saleDate(s);
+      items.push({ ts: new Date(d+'T12:00:00'), html:
+        `<div class="log-entry"><span class="lname">${icon} ${p?p.name:'?'}</span><span class="lright"><span class="ltime">${fmtDate(d)}</span></span></div>` });
+    });
+
+    items.sort((a,b)=> b.ts - a.ts);
+    wrap.innerHTML = items.length ? items.map(i=>i.html).join('')
+      : '<div class="empty-page-hint">Noch keine Chronik-Einträge zu diesem Kontakt.</div>';
   }
 
   async function startEditContact(c){
