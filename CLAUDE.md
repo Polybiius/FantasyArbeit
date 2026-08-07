@@ -1049,6 +1049,51 @@ erreicht).
    JSON-Editor für `rule_configs`, admin-only, kann legitim mehrere KB groß
    sein).
 
+**Nachtrag noch am selben Tag: RLS-Durchgang (statische Analyse aller
+`sql/*.sql`-Policies + Live-Bestätigung per direktem PostgREST-Aufruf mit
+echtem Session-Token, nicht nur gelesen/vermutet):**
+
+- **Gefunden und bestätigt, SQL-Fix geschrieben (`sql/patch38_profile_privilege_schutz.sql`,
+  noch NICHT ausgeführt — wartet auf Go des Nutzers, wie üblich):**
+  `profiles_update_own` hat `using (id = auth.uid())` ohne eigene
+  `with check` — Postgres übernimmt dafür automatisch dieselbe Bedingung,
+  die aber nur `id` schützt, keine andere Spalte. Live bestätigt: eigener
+  Account per PATCH auf `/rest/v1/profiles` von `role:'admin'` auf
+  `'member'` gesetzt und sofort wieder zurück (beides per Read verifiziert)
+  — ein normaler Nutzer könnte sich also selbst zum Admin machen
+  (`is_admin()` liest nur `profiles.role`), ebenso `character_class`
+  (soll laut Konzept "einmalig, dauerhaft" sein) und `org_id` frei ändern.
+  Patch 38 fügt einen BEFORE-UPDATE-Trigger hinzu, der diese drei Spalten
+  blockiert, außer der Ausführende ist bereits Admin.
+- **Gefunden, noch NICHT gefixt (Priorität niedriger, Nutzer-Entscheidung
+  offen):** `user_inventory` hat dieselbe Lücke bei `item_key`/`quantity`
+  (`inventory_insert_own`/`inventory_update_own` prüfen nur `user_id`).
+  Live bestätigt: per direktem POST eine Test-Item-Zeile mit
+  `quantity:9999` angelegt, existierte danach echt in der DB. Da es keine
+  `inventory_delete`-Policy gibt, ließ sie sich nicht per API entfernen,
+  nur auf `quantity:0` zurücksetzen (unsichtbar, aber die Zeile
+  `item_key='xss_audit_testitem'` liegt noch in `user_inventory` — bei
+  Gelegenheit per SQL-Editor `delete from public.user_inventory where
+  item_key='xss_audit_testitem';` aufräumen). Auswirkung: ein Nutzer
+  könnte sich beliebige Items/Mengen selbst zuteilen, statt sie über
+  `grantItem()`/Quests zu bekommen — eher ein "Schummel"-Problem unter
+  vertrauten Kolleg:innen als ein Datenschutz-Vorfall, deshalb bewusst
+  zurückgestellt statt sofort mitgefixt.
+- **Restliche `update`-Policies ohne explizite `with check`** (contacts,
+  termine, termin_series, contact_activities, journal_entries, friends,
+  guild_members) sind trotz desselben Musters **nicht** betroffen — ihre
+  `using`-Bedingung referenziert direkt die Eigentümer-Spalte
+  (`owner_id`/`user_id`), wodurch ein Versuch, diese Spalte auf eine
+  fremde ID umzubiegen, automatisch an derselben Bedingung scheitert.
+  Nur bei `profiles` (Bedingung hängt an `id`, geschützt sind aber ganz
+  andere Spalten) und `user_inventory` (Bedingung hängt an `user_id`,
+  betroffen sind `item_key`/`quantity`) greift der Trick nicht.
+- **Noch nicht geprüft, falls das Thema weitergeht:** ob es im Frontend
+  Stellen gibt, die sich nur auf verstecktes UI verlassen (z.B. ein
+  Admin-Button einfach ausgeblendet), ohne dass eine passende RLS-Policy
+  dahintersteht — sowie Randfälle in der Business-Logik (Kanban-Übergänge,
+  Provisionsberechnung).
+
 ## Abenteuerlog-Seite (Kalender/Tagebuch/Foto), seit 2026-08-04 neu sortiert
 
 Reihenfolge auf `#page-tagebuch` ist jetzt bewusst: **Kalender oben →
