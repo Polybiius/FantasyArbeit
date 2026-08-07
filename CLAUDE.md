@@ -954,6 +954,39 @@ die neue Regel steht. Lösung: beide Klassen kombinieren
 (`.card.settings-danger-zone`, `.cal-nav-btn.settings-save-bar-save`) statt
 nur die neue Klasse allein zu verwenden.
 
+**Zwei Nachbesserungen, noch am selben Tag (2026-08-07), beide auf direktes
+Nutzer-Feedback:**
+
+1. **Optik-Politur:** native Checkboxen/zu schmale Eingabefelder/Monospace-
+   Fließtext wirkten "klobig". Ersetzt durch einen echten Pill-Schalter
+   (`.settings-switch`, folgt automatisch der Klassen-Akzentfarbe),
+   volle-Breite dunkle Inputs (`.settings-input`), normale Fließschrift
+   für Beschreibungen (`.settings-field-desc`, nicht mehr das
+   wiederverwendete `.empty-page-hint`) und weniger Trennlinien.
+2. **Startseite von Balken auf Kacheln umgebaut:** die anfängliche
+   Gruppen-Übersicht (4 volle-Breite aufklappbare Balken) fühlte sich laut
+   Nutzer nicht stimmig an ("diese großen Rechtecke... ist nicht meins") —
+   passte auch nicht ins sonstige Kachel-Vokabular der App (Dungeons,
+   Gilde, Inventar, Produkte laufen alle über `.dungeon-tile-grid`/
+   `.dungeon-tile`, "Kachel statt Liste" war schon beim Produktkatalog
+   ausdrücklicher Nutzerwunsch, 2026-08-03). Jetzt: `buildSettingsTileGridHtml()`
+   zeigt die 4 Gruppen als kompakte Icon-Kacheln (Symbol, Name, Untertitel
+   = Feldanzahl oder "N geändert"), Klick auf eine Kachel öffnet
+   `openSettingsGroupModal(gid)` — ein `.loc-modal` mit den Feldern dieser
+   EINEN Gruppe, exakt wie beim Produkt-Detail-Modal. Danger Zone bleibt
+   bewusst eine eigene rote Karte außerhalb des Kachel-Rasters (nur ein
+   Button, keine Feldliste — keine "vielen großen Rechtecke" mehr, aber
+   auch keine künstliche Vereinheitlichung um der Einheitlichkeit willen).
+   Save-Bar/Toast bekamen `z-index:1002` (über dem Modal, `z-index:1000`),
+   da Text-/Zahlenfelder jetzt im Modal liegen. Suche filtert jetzt die
+   Kacheln (zeigt nur Gruppen mit Treffern, hebt den Kachel-Namen hervor)
+   und hebt zusätzlich die passenden Felder hervor, sobald das jeweilige
+   Gruppen-Modal offen ist (`settingsHighlightFieldsInScope()`). Die
+   Arbeitszeiten-Tagesreihen (Checkbox+zwei Uhrzeiten pro Wochentag)
+   brachen im schmaleren Modal (480px statt voller Kartenbreite) hässlich
+   um — neues kompaktes `.az-day-row`-Layout (Label links, beide Uhrzeiten
+   rechts als Paar) behebt das, unabhängig von Bildschirmbreite.
+
 ## Abenteuerlog-Seite (Kalender/Tagebuch/Foto), seit 2026-08-04 neu sortiert
 
 Reihenfolge auf `#page-tagebuch` ist jetzt bewusst: **Kalender oben →

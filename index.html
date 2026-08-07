@@ -321,12 +321,8 @@
   .journal-book-name{font-family:'Cinzel',serif;font-weight:700;font-size:15px;color:var(--text);}
   .journal-book-chevron{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--muted);}
 
-  /* Einstellungen: mehrere Themen als aufklappbare Kacheln in einer Karte
-     statt alles dauerhaft sichtbar — hält die Seite übersichtlich, auch
-     wenn weitere Einstellungs-Themen dazukommen. */
-  .settings-header-clickable{cursor:pointer;}
-  .settings-header-clickable:hover{color:var(--arcane);}
-  .settings-chevron{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--muted);}
+  /* Einstellungen: Themen als Icon-Kacheln (wie Dungeons/Produkte) statt
+     langer Balken — Klick öffnet ein Modal mit den Feldern der Gruppe. */
   .settings-subheading{font-family:'Cinzel',serif;font-weight:700;font-size:13.5px;color:var(--text);margin:0 0 6px;display:flex;align-items:center;justify-content:space-between;}
   /* Fundament seit 2026-08-07: registry-getriebene Felder statt Handarbeit
      pro Einstellung — siehe SETTINGS_REGISTRY/SETTINGS_GROUPS in JS. */
@@ -350,13 +346,20 @@
   .settings-switch input:focus-visible ~ .settings-switch-track{outline:2px solid var(--arcane);outline-offset:2px;}
   .settings-switch-label{color:var(--text);font-size:13.5px;}
   #azDaysList input[type="checkbox"]{accent-color:var(--arcane);width:15px;height:15px;}
-  .settings-mod-badge{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--success);background:rgba(52,211,153,0.14);border-radius:var(--radius-pill);padding:2px 9px;}
   .settings-advanced-toggle{cursor:pointer;color:var(--muted);font-size:11.5px;font-family:'JetBrains Mono',monospace;margin-top:10px;}
   .settings-advanced-toggle:hover{color:var(--arcane);}
   .settings-advanced-wrap{margin-top:6px;}
-  .settings-save-bar{position:fixed;left:0;right:0;bottom:0;z-index:900;background:var(--panel-2);border-top:1px solid var(--arcane);box-shadow:var(--shadow-raised);padding:12px 20px;display:none;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;}
+  .settings-tile-nomatch{display:none;}
+  .az-day-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;flex-wrap:wrap;}
+  .az-day-check{display:flex;align-items:center;gap:7px;min-width:98px;color:var(--text);font-size:13px;}
+  .az-day-times{display:flex;align-items:center;gap:5px;}
+  .az-day-times input[type="time"]{width:98px;background:#0e0c17;border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 8px;color:var(--text);font-size:12.5px;}
+  .az-day-times span{color:var(--muted-2);font-size:11px;}
+  /* Save-Bar/Toast müssen über dem Gruppen-Modal (z-index 1000) schweben,
+     da Text-/Zahlenfelder jetzt darin liegen. */
+  .settings-save-bar{position:fixed;left:0;right:0;bottom:0;z-index:1002;background:var(--panel-2);border-top:1px solid var(--arcane);box-shadow:var(--shadow-raised);padding:12px 20px;display:none;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;}
   .cal-nav-btn.settings-save-bar-save{background:linear-gradient(90deg,var(--arcane),var(--arcane-glow));border:none;color:#fff;font-weight:600;}
-  .settings-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 16px;display:flex;align-items:center;gap:14px;font-size:12.5px;color:var(--text);box-shadow:var(--shadow-raised);z-index:950;animation:settingsToastIn .15s ease;}
+  .settings-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 16px;display:flex;align-items:center;gap:14px;font-size:12.5px;color:var(--text);box-shadow:var(--shadow-raised);z-index:1002;animation:settingsToastIn .15s ease;}
   .settings-toast button{background:transparent;border:none;color:var(--arcane-glow);font-weight:600;cursor:pointer;font-size:12.5px;padding:0;}
   @keyframes settingsToastIn{from{opacity:0;transform:translate(-50%,8px);}to{opacity:1;transform:translate(-50%,0);}}
   .card.settings-danger-zone{border-color:var(--danger);}
@@ -1255,6 +1258,16 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       <button id="kanbanExtraActionClose">✕</button>
     </div>
     <div class="action-btns" id="kanbanExtraActionGrid"></div>
+  </div>
+</div>
+
+<div class="loc-modal" id="settingsGroupModal" style="display:none;">
+  <div class="loc-modal-inner">
+    <div class="loc-modal-header">
+      <span id="settingsGroupModalTitle">Gruppe</span>
+      <button id="settingsGroupModalClose">✕</button>
+    </div>
+    <div id="settingsGroupModalBody"></div>
   </div>
 </div>
 
@@ -5687,9 +5700,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   let settingsPending = {};       // registry id -> ungespeicherter Roh-Wert (Text-/Zahlenfelder)
   let settingsSessionCount = {};  // group id -> Anzahl in dieser Sitzung geänderter Toggles
-  let settingsGroupOpen = {};     // group id -> aufgeklappt?
-  let settingsAdvancedOpen = {};  // group id -> Advanced-Bereich aufgeklappt?
+  let settingsAdvancedOpen = {};  // group id -> Advanced-Bereich im Modal aufgeklappt?
   let settingsToastTimer = null;
+  let settingsActiveGroupModal = null; // gerade offenes Gruppen-Modal, oder null
+  let settingsSearchTerm = '';
 
   function settingsEntryValue(entry){
     if(entry.type==='toggle'){
@@ -5742,28 +5756,55 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       <div class="empty-page-hint" id="azStatus"></div>`;
   }
 
-  function buildSettingsGroupsHtml(){
-    return SETTINGS_GROUPS.map(g=>{
-      const entries = SETTINGS_REGISTRY.filter(e=>e.group===g.id);
-      const basic = entries.filter(e=>!e.advanced);
-      const adv = entries.filter(e=>e.advanced);
-      const open = !!settingsGroupOpen[g.id];
-      const advOpen = !!settingsAdvancedOpen[g.id];
-      const custom = g.id==='kalender' ? arbeitszeitenCustomHtml() : '';
-      return `<div class="card settings-group-card" style="margin-top:18px;" data-group="${g.id}">
-        <h2 class="settings-header-clickable" data-group-toggle="${g.id}">
-          <span>${g.icon} ${escHtml(g.label)} <span class="settings-chevron">${open?'▴ schließen':'▾ öffnen'}</span></span>
-          <span class="settings-mod-badge" id="settingsModBadge_${g.id}" style="display:none;"></span>
-        </h2>
-        <div class="settings-group-wrap" id="settingsGroupWrap_${g.id}" style="display:${open?'block':'none'};">
-          ${custom}
-          ${basic.map(settingsFieldHtml).join('')}
-          ${adv.length ? `<div class="settings-advanced-toggle" data-adv-toggle="${g.id}">${advOpen?'▴ Erweitert verbergen':'▾ Erweitert anzeigen'}</div>
-          <div class="settings-advanced-wrap" id="settingsAdvWrap_${g.id}" style="display:${advOpen?'block':'none'};">${adv.map(settingsFieldHtml).join('')}</div>` : ''}
-        </div>
-      </div>`;
-    }).join('');
+  function settingsTileSubtitle(gid){
+    const n = settingsSessionCount[gid] || 0;
+    if(n>0) return n + (n===1 ? ' geändert' : ' geändert');
+    const count = SETTINGS_REGISTRY.filter(e=>e.group===gid && e.type!=='heading' && e.type!=='alias').length;
+    return count + (count===1 ? ' Einstellung' : ' Einstellungen');
   }
+
+  function buildSettingsTileGridHtml(){
+    return `<div class="card"><div class="dungeon-tile-grid">${SETTINGS_GROUPS.map(g=>`
+      <div class="dungeon-tile" data-settings-tile="${g.id}">
+        <span class="dt-icon">${g.icon}</span>
+        <span class="dt-name">${escHtml(g.label)}</span>
+        <span class="dt-count" id="settingsTileCount_${g.id}">${settingsTileSubtitle(g.id)}</span>
+      </div>`).join('')}</div></div>`;
+  }
+
+  function openSettingsGroupModal(gid){
+    settingsActiveGroupModal = gid;
+    const meta = SETTINGS_GROUPS.find(g=>g.id===gid);
+    document.getElementById('settingsGroupModalTitle').textContent = `${meta.icon} ${meta.label}`;
+    const entries = SETTINGS_REGISTRY.filter(e=>e.group===gid);
+    const basic = entries.filter(e=>!e.advanced);
+    const adv = entries.filter(e=>e.advanced);
+    const advOpen = !!settingsAdvancedOpen[gid] || (!!settingsSearchTerm && adv.some(e=>settingsFieldsMatch(e, settingsSearchTerm)));
+    const custom = gid==='kalender' ? arbeitszeitenCustomHtml() : '';
+    document.getElementById('settingsGroupModalBody').innerHTML = `
+      ${custom}
+      ${basic.map(settingsFieldHtml).join('')}
+      ${adv.length ? `<div class="settings-advanced-toggle" data-adv-toggle="${gid}">${advOpen?'▴ Erweitert verbergen':'▾ Erweitert anzeigen'}</div>
+      <div class="settings-advanced-wrap" id="settingsAdvWrap_${gid}" style="display:${advOpen?'block':'none'};">${adv.map(settingsFieldHtml).join('')}</div>` : ''}
+    `;
+    attachSettingsFieldListeners();
+    if(gid==='kalender'){ renderArbeitszeitenRows(); wireArbeitszeitenExtras(); }
+    document.querySelectorAll('[data-adv-toggle]').forEach(a=>{
+      const g2 = a.dataset.advToggle;
+      a.addEventListener('click', ()=>{
+        settingsAdvancedOpen[g2] = !settingsAdvancedOpen[g2];
+        document.getElementById('settingsAdvWrap_'+g2).style.display = settingsAdvancedOpen[g2] ? 'block' : 'none';
+        a.textContent = settingsAdvancedOpen[g2] ? '▴ Erweitert verbergen' : '▾ Erweitert anzeigen';
+      });
+    });
+    if(settingsSearchTerm) settingsHighlightFieldsInScope(document.getElementById('settingsGroupModalBody'), settingsSearchTerm);
+    document.getElementById('settingsGroupModal').style.display = 'flex';
+  }
+
+  document.getElementById('settingsGroupModalClose').addEventListener('click', ()=>{
+    document.getElementById('settingsGroupModal').style.display = 'none';
+    settingsActiveGroupModal = null;
+  });
 
   async function settingsToggleChanged(entry, el){
     const newVal = el.checked;
@@ -5792,8 +5833,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   function settingsBumpModifiedBadge(groupId){
     settingsSessionCount[groupId] = (settingsSessionCount[groupId] || 0) + 1;
-    const badge = document.getElementById('settingsModBadge_'+groupId);
-    if(badge){ badge.style.display = 'inline-block'; badge.textContent = settingsSessionCount[groupId] + ' geändert'; }
+    const el = document.getElementById('settingsTileCount_'+groupId);
+    if(el) el.textContent = settingsTileSubtitle(groupId);
   }
 
   function settingsShowToast(msg, undoFn){
@@ -5827,36 +5868,37 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     return escHtml(text.slice(0,idx)) + '<mark>' + escHtml(text.slice(idx, idx+q.length)) + '</mark>' + escHtml(text.slice(idx+q.length));
   }
 
-  function settingsApplySearch(term){
-    const q = term.trim().toLowerCase();
-    document.querySelectorAll('.settings-field').forEach(fieldEl=>{
+  function settingsFieldsMatch(entry, q){
+    return entry.label.toLowerCase().includes(q) || (entry.desc||'').toLowerCase().includes(q);
+  }
+
+  function settingsHighlightFieldsInScope(container, q){
+    container.querySelectorAll('.settings-field').forEach(fieldEl=>{
       const entry = SETTINGS_REGISTRY.find(e=>e.id===fieldEl.dataset.fieldId);
       if(!entry) return;
-      const matches = !q || entry.label.toLowerCase().includes(q) || (entry.desc||'').toLowerCase().includes(q);
+      const matches = !q || settingsFieldsMatch(entry, q);
       fieldEl.classList.toggle('settings-field-hidden', !matches);
       const labelEl = fieldEl.querySelector('.settings-field-label');
       const descEl = fieldEl.querySelector('.settings-field-desc');
       if(labelEl) labelEl.innerHTML = q ? settingsHighlight(entry.label, q) : escHtml(entry.label);
       if(descEl) descEl.innerHTML = q ? settingsHighlight(entry.desc||'', q) : escHtml(entry.desc||'');
     });
-    document.querySelectorAll('.settings-group-card').forEach(card=>{
-      const gid = card.dataset.group;
-      const anyVisible = !!card.querySelector('.settings-field:not(.settings-field-hidden)');
-      const extraMatch = !!(q && SETTINGS_REGISTRY.some(e=>e.group===gid && (e.type==='alias'||e.type==='heading') && (e.label.toLowerCase().includes(q) || (e.desc||'').toLowerCase().includes(q))));
+  }
+
+  function settingsApplySearch(term){
+    settingsSearchTerm = term.trim().toLowerCase();
+    const q = settingsSearchTerm;
+    document.querySelectorAll('[data-settings-tile]').forEach(tile=>{
+      const gid = tile.dataset.settingsTile;
       const groupMeta = SETTINGS_GROUPS.find(g=>g.id===gid);
-      const groupLabelMatch = !!(q && groupMeta.label.toLowerCase().includes(q));
-      const show = !q || anyVisible || extraMatch || groupLabelMatch;
-      card.style.display = show ? '' : 'none';
-      const wrap = document.getElementById('settingsGroupWrap_'+gid);
-      const advWrap = document.getElementById('settingsAdvWrap_'+gid);
-      if(q && show){
-        if(wrap) wrap.style.display = 'block';
-        if(advWrap && advWrap.querySelector('.settings-field:not(.settings-field-hidden)')) advWrap.style.display = 'block';
-      } else if(!q){
-        if(wrap) wrap.style.display = settingsGroupOpen[gid] ? 'block' : 'none';
-        if(advWrap) advWrap.style.display = settingsAdvancedOpen[gid] ? 'block' : 'none';
-      }
+      const match = !q || groupMeta.label.toLowerCase().includes(q) || SETTINGS_REGISTRY.some(e=>e.group===gid && settingsFieldsMatch(e, q));
+      tile.classList.toggle('settings-tile-nomatch', !match);
+      const nameEl = tile.querySelector('.dt-name');
+      if(nameEl) nameEl.innerHTML = (q && groupMeta.label.toLowerCase().includes(q)) ? settingsHighlight(groupMeta.label, q) : escHtml(groupMeta.label);
     });
+    if(settingsActiveGroupModal){
+      settingsHighlightFieldsInScope(document.getElementById('settingsGroupModalBody'), q);
+    }
   }
 
   function attachSettingsFieldListeners(){
@@ -5871,26 +5913,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         el.value = settingsEntryValue(entry);
         el.addEventListener('input', ()=>settingsInputChanged(entry, el));
       }
-    });
-    document.querySelectorAll('[data-group-toggle]').forEach(h=>{
-      const gid = h.dataset.groupToggle;
-      h.addEventListener('click', ()=>{
-        settingsGroupOpen[gid] = !settingsGroupOpen[gid];
-        document.getElementById('settingsGroupWrap_'+gid).style.display = settingsGroupOpen[gid] ? 'block' : 'none';
-        h.querySelector('.settings-chevron').textContent = settingsGroupOpen[gid] ? '▴ schließen' : '▾ öffnen';
-      });
-    });
-    document.querySelectorAll('[data-adv-toggle]').forEach(a=>{
-      const gid = a.dataset.advToggle;
-      a.addEventListener('click', ()=>{
-        settingsAdvancedOpen[gid] = !settingsAdvancedOpen[gid];
-        document.getElementById('settingsAdvWrap_'+gid).style.display = settingsAdvancedOpen[gid] ? 'block' : 'none';
-        a.textContent = settingsAdvancedOpen[gid] ? '▴ Erweitert verbergen' : '▾ Erweitert anzeigen';
-      });
-    });
-    Object.keys(settingsSessionCount).forEach(gid=>{
-      const badge = document.getElementById('settingsModBadge_'+gid);
-      if(badge && settingsSessionCount[gid] > 0){ badge.style.display='inline-block'; badge.textContent = settingsSessionCount[gid] + ' geändert'; }
     });
   }
 
@@ -5930,12 +5952,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('azDaysList').innerHTML = WEEKDAY_KEYS.map((k,i)=>{
       const v = az[k];
       const active = !!(v && v.start && v.end);
-      return `<div class="contact-add-row" style="align-items:center;">
-        <label class="cdl" style="min-width:90px;display:flex;align-items:center;gap:6px;">
+      return `<div class="az-day-row">
+        <label class="az-day-check">
           <input type="checkbox" id="azActive_${k}" ${active?'checked':''}> ${WEEKDAY_LABELS_FULL[i]}
         </label>
-        <input type="time" id="azStart_${k}" value="${active?v.start:''}" ${active?'':'disabled'}>
-        <input type="time" id="azEnde_${k}" value="${active?v.end:''}" ${active?'':'disabled'}>
+        <div class="az-day-times">
+          <input type="time" id="azStart_${k}" value="${active?v.start:''}" ${active?'':'disabled'}>
+          <span>–</span>
+          <input type="time" id="azEnde_${k}" value="${active?v.end:''}" ${active?'':'disabled'}>
+        </div>
       </div>`;
     }).join('');
     WEEKDAY_KEYS.forEach(k=>{
@@ -5947,10 +5972,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   function renderEinstellungenPage(){
-    document.getElementById('settingsGroupsWrap').innerHTML = buildSettingsGroupsHtml();
-    attachSettingsFieldListeners();
-    renderArbeitszeitenRows();
-    wireArbeitszeitenExtras();
+    document.getElementById('settingsGroupsWrap').innerHTML = buildSettingsTileGridHtml();
+    document.querySelectorAll('[data-settings-tile]').forEach(tile=>{
+      tile.addEventListener('click', ()=>openSettingsGroupModal(tile.dataset.settingsTile));
+    });
     settingsPending = {};
     updateSettingsSaveBar();
     document.getElementById('settingsSearchInput').value = '';
