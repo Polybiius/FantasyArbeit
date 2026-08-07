@@ -2633,7 +2633,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       logListEl.innerHTML = '<div class="log-empty">Noch keine Taten vollbracht. Betritt den Dungeon.</div>';
     } else {
       logListEl.innerHTML = log.slice(-150).map(e=>
-        `<div class="log-entry"><span class="lname">${e.label}${e.context?` <span class="lctx">(${e.context})</span>`:''}</span><span class="lright"><span class="ltime">${fmtTime(e.created_at)}</span><span class="lxp">+${e.xp} XP</span></span></div>`
+        `<div class="log-entry"><span class="lname">${escHtml(e.label)}${e.context?` <span class="lctx">(${escHtml(e.context)})</span>`:''}</span><span class="lright"><span class="ltime">${fmtTime(e.created_at)}</span><span class="lxp">+${e.xp} XP</span></span></div>`
       ).join('');
       // .log nutzt flex-direction:column-reverse, damit der neueste Eintrag
       // ohne JS-Array-Reverse oben steht — der Browser setzt die
@@ -2786,7 +2786,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const { data: matches, error } = await sb.from('contacts').select('id,name').ilike('name', `%${query}%`).limit(6);
     if(error) logSilentError('Kontaktvorschläge suchen', error);
     if(!matches || matches.length===0){ box.style.display='none'; box.innerHTML=''; return; }
-    box.innerHTML = matches.map(m=>`<div class="loc-sugg-item" data-id="${m.id}" data-name="${m.name.replace(/"/g,'&quot;')}">📇 ${m.name}</div>`).join('');
+    box.innerHTML = matches.map(m=>`<div class="loc-sugg-item" data-id="${m.id}" data-name="${escHtml(m.name)}">📇 ${escHtml(m.name)}</div>`).join('');
     box.style.display = 'block';
     box.querySelectorAll('[data-id]').forEach(el=>{
       el.addEventListener('click', ()=> confirmMention(ta, box, el.dataset.id, el.dataset.name));
@@ -2877,11 +2877,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const today = todayKey(new Date());
     const path = `${profile.id}/${today}.jpg`;
     const { error: upErr } = await sb.storage.from(PHOTO_BUCKET).upload(path, file, { upsert:true, contentType: file.type||'image/jpeg' });
-    if(upErr){ preview.innerHTML = `<div class="photo-hint">Fehler: ${upErr.message}</div>`; logSilentError('Foto hochladen', upErr); return; }
+    if(upErr){ preview.innerHTML = `<div class="photo-hint">Fehler: ${escHtml(upErr.message)}</div>`; logSilentError('Foto hochladen', upErr); return; }
     const { error: dbErr } = await sb.from('journal_photos').upsert({
       user_id:profile.id, org_id:profile.org_id, entry_date:today, storage_path:path
     }, { onConflict:'user_id,entry_date' });
-    if(dbErr){ preview.innerHTML = `<div class="photo-hint">Fehler: ${dbErr.message}</div>`; logSilentError('Foto-Datensatz speichern', dbErr); return; }
+    if(dbErr){ preview.innerHTML = `<div class="photo-hint">Fehler: ${escHtml(dbErr.message)}</div>`; logSilentError('Foto-Datensatz speichern', dbErr); return; }
     calPhotoDates.add(today);
     refreshDotForDate(today);
     await loadTodayPhoto();
@@ -3058,7 +3058,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     } else {
       preview.innerHTML = `<h3>${niceDate}</h3>` + tasksHtml + photoHtml + (data ? JOURNAL_LABELS.map((label,i)=>{
         const val = data['q'+(i+1)];
-        return `<div class="cpq"><span class="cplabel">${label}</span><span class="cptext">${val ? val.replace(/</g,'&lt;') : '—'}</span></div>`;
+        return `<div class="cpq"><span class="cplabel">${label}</span><span class="cptext">${val ? escHtml(val) : '—'}</span></div>`;
       }).join('') : '');
     }
     preview.classList.add('show');
@@ -3208,7 +3208,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(reqErr) logSilentError('Anfragende Profile laden', reqErr);
     listEl.innerHTML = (requesters||[]).map(r=>`
       <div class="friend-req-row">
-        <span>${CLASS_ICONS[r.character_class]||'❔'} <strong>${r.display_name}</strong> möchte dich hinzufügen</span>
+        <span>${CLASS_ICONS[r.character_class]||'❔'} <strong>${escHtml(r.display_name)}</strong> möchte dich hinzufügen</span>
         <span class="freq-actions">
           <button class="freq-accept" data-accept="${r.id}">Annehmen</button>
           <button class="freq-decline" data-decline="${r.id}">Ablehnen</button>
@@ -3242,7 +3242,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     grid.innerHTML = (friendProfiles||[]).map(m=>`
       <div class="guild-tile">
         <span class="gt-icon">${CLASS_ICONS[m.character_class]||'❔'}</span>
-        <span class="gt-name">${m.display_name}</span>
+        <span class="gt-name">${escHtml(m.display_name)}</span>
         <span class="gt-level">Level ${m.level}</span>
         <button class="friend-remove-btn" data-remove="${m.id}">Entfernen</button>
       </div>`).join('');
@@ -3295,7 +3295,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     }
     resultEl.innerHTML = `
       <div class="guild-picker-row">
-        <span>${CLASS_ICONS[match.character_class]||'❔'} ${match.display_name}</span>
+        <span>${CLASS_ICONS[match.character_class]||'❔'} ${escHtml(match.display_name)}</span>
         <button class="cal-nav-btn" id="friendConfirmAddBtn">Anfrage senden</button>
       </div>`;
     document.getElementById('friendConfirmAddBtn').addEventListener('click', async ()=>{
@@ -3495,7 +3495,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     });
     el.innerHTML = cards.map(c=>`
       <div class="stat-num-card">
-        <div class="snc-name">${c.name}</div>
+        <div class="snc-name">${escHtml(c.name)}</div>
         <div class="snc-line">${c.stueck} Stück</div>
         <div class="snc-line">${fmtEuro(c.sum)}</div>
       </div>`).join('');
@@ -3592,7 +3592,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const { data: matches, error } = await sb.from('locations').select('id,name').eq('org_id', profile.org_id).ilike('name', `%${q}%`).limit(8);
     if(error) logSilentError('Betriebsvorschläge suchen', error);
     const safeQ = q.replace(/"/g,'&quot;');
-    let html = (matches||[]).map(m=>`<div class="loc-sugg-item" data-id="${m.id}" data-name="${m.name.replace(/"/g,'&quot;')}">${m.name}</div>`).join('');
+    let html = (matches||[]).map(m=>`<div class="loc-sugg-item" data-id="${m.id}" data-name="${escHtml(m.name)}">${escHtml(m.name)}</div>`).join('');
     html += `<div class="loc-sugg-item loc-sugg-new" data-newbetrieb="${safeQ}">+ „${q}" als neuen Betrieb anlegen</div>`;
     box.innerHTML = html;
     box.style.display = 'block';
@@ -3680,7 +3680,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   async function renderContactsPage(){
     const bundle = await loadContactsBundle();
     if(bundle.error){
-      document.getElementById('dungeonWithContactsList').innerHTML = `<div class="empty-page-hint">Fehler: ${bundle.error.message}</div>`;
+      document.getElementById('dungeonWithContactsList').innerHTML = `<div class="empty-page-hint">Fehler: ${escHtml(bundle.error.message)}</div>`;
       logSilentError('Kontaktliste laden', bundle.error);
       return;
     }
@@ -3738,7 +3738,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(!contactsSubset || contactsSubset.length===0){ container.innerHTML = '<div class="empty-page-hint">Keine Kontakte.</div>'; return; }
     const rows = contactsSubset.map(c=>`
       <tr class="ctable-row" data-contact="${c.id}">
-        <td>${c.name}</td>
+        <td>${escHtml(c.name)}</td>
         <td>${bundle.roles[c.role]||c.role||'—'}</td>
         <td>${c.location_id ? locName(bundle, c.location_id) : '—'}</td>
         <td><span class="cc-status ${c.status}">${c.status}</span></td>
@@ -3772,7 +3772,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const mentions = bundle.mentionMap[c.id] || [];
     const cSales = bundle.salesMap[c.id] || [];
 
-    const field = (label, value) => value ? `<div class="cd-field"><span class="cdl">${label}</span><span class="cdv">${value}</span></div>` : '';
+    const field = (label, value) => value ? `<div class="cd-field"><span class="cdl">${label}</span><span class="cdv">${escHtml(String(value))}</span></div>` : '';
 
     let html = '';
     html += field('Berufsstatus', bundle.roles[c.role]||c.role);
@@ -3938,7 +3938,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       const isCrm = CRM_RELEVANT_ACTIONS.includes(e.action_key);
       if(!isCrm && !showXp) return; // reines XP nur mit eingeschaltetem Schalter sichtbar
       items.push({ ts: new Date(e.created_at), html:
-        `<div class="log-entry"><span class="lname">${e.label}${e.context?` <span class="lctx">(${e.context})</span>`:''}</span><span class="lright"><span class="ltime">${fmtTime(e.created_at)}</span>${xpBadge(e.xp)}</span></div>` });
+        `<div class="log-entry"><span class="lname">${escHtml(e.label)}${e.context?` <span class="lctx">(${escHtml(e.context)})</span>`:''}</span><span class="lright"><span class="ltime">${fmtTime(e.created_at)}</span>${xpBadge(e.xp)}</span></div>` });
     });
 
     (activitiesData||[]).forEach(act=>{
@@ -3948,12 +3948,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         : (act.betreff || (act.outcome==='empfangen' ? 'Email empfangen' : 'Email geschrieben'));
       const xp = act.action_log ? act.action_log.xp : null;
       items.push({ ts: new Date(act.occurred_at), html:
-        `<div class="log-entry"><span class="lname">${icon} ${title}${act.inhalt?`<br><span class="lctx" style="white-space:pre-wrap;">${act.inhalt}</span>`:''}</span><span class="lright"><span class="ltime">${fmtTime(act.occurred_at)}</span>${xp!=null?xpBadge(xp):''}</span></div>` });
+        `<div class="log-entry"><span class="lname">${icon} ${escHtml(title)}${act.inhalt?`<br><span class="lctx" style="white-space:pre-wrap;">${escHtml(act.inhalt)}</span>`:''}</span><span class="lright"><span class="ltime">${fmtTime(act.occurred_at)}</span>${xp!=null?xpBadge(xp):''}</span></div>` });
     });
 
     (termineData||[]).forEach(t=>{
       items.push({ ts: new Date(t.start_at), html:
-        `<div class="log-entry"><span class="lname">🗓️ ${t.title||'Termin'}</span><span class="lright"><span class="ltime">${fmtTime(t.start_at)}</span></span></div>` });
+        `<div class="log-entry"><span class="lname">🗓️ ${escHtml(t.title||'Termin')}</span><span class="lright"><span class="ltime">${fmtTime(t.start_at)}</span></span></div>` });
     });
 
     cSales.forEach(s=>{
@@ -4281,7 +4281,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const founderMap = {}; (founders||[]).forEach(f=>founderMap[f.id]=f.display_name);
     listEl.innerHTML = guilds.map(g=>`
       <div class="guild-join-row">
-        <div><span class="gname">${g.name}</span><br><span class="gmeta">Gegründet von ${founderMap[g.founder_id]||'?'} · ${counts[g.id]||0} Mitglieder</span></div>
+        <div><span class="gname">${escHtml(g.name)}</span><br><span class="gmeta">Gegründet von ${escHtml(founderMap[g.founder_id]||'?')} · ${counts[g.id]||0} Mitglieder</span></div>
         <button class="cal-nav-btn" data-join="${g.id}">Beitreten</button>
       </div>`).join('');
     listEl.querySelectorAll('[data-join]').forEach(btn=>{
@@ -4327,7 +4327,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       return `<div class="guild-tile">
         ${isFounder?'<span class="gt-founder">Gründer</span>':''}
         <span class="gt-icon">${icon}</span>
-        <span class="gt-name">${m.display_name}</span>
+        <span class="gt-name">${escHtml(m.display_name)}</span>
         <span class="gt-level">Level ${m.level}</span>
       </div>`;
     }).join('');
@@ -4348,7 +4348,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(candidates.length===0){ listEl.innerHTML = '<div class="empty-page-hint">Alle Kollegen sind schon Mitglied.</div>'; return; }
     listEl.innerHTML = candidates.map(m=>`
       <div class="guild-picker-row">
-        <span>${CLASS_ICONS[m.character_class]||'❔'} ${m.display_name}</span>
+        <span>${CLASS_ICONS[m.character_class]||'❔'} ${escHtml(m.display_name)}</span>
         <button class="cal-nav-btn" data-add="${m.id}">Hinzufügen</button>
       </div>`).join('');
     listEl.querySelectorAll('[data-add]').forEach(btn=>{
@@ -4397,10 +4397,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const { data: members, error: memErr } = await sb.from('profiles').select('id,display_name').eq('org_id', profile.org_id);
     if(memErr) logSilentError('Team-Mitglieder laden', memErr);
     if(!locs || locs.length===0){ listEl.innerHTML = '<div class="empty-page-hint">Noch keine Accounts angelegt.</div>'; return; }
-    const memberOptions = (members||[]).map(m=>`<option value="${m.id}">${m.display_name}</option>`).join('');
+    const memberOptions = (members||[]).map(m=>`<option value="${m.id}">${escHtml(m.display_name)}</option>`).join('');
     listEl.innerHTML = locs.map(l=>`
       <div class="account-row">
-        <span>${l.name}</span>
+        <span>${escHtml(l.name)}</span>
         <select data-assign="${l.id}">
           <option value="">— Im Pool —</option>
           ${memberOptions}
@@ -4641,7 +4641,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   let termineEditingId = null; // null = neuer Termin, sonst wird ein bestehender bearbeitet
   let termineEntryDateForSave = null;
 
-  function escHtml(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function escHtml(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
   function mondayOfWeek(d){
     const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
     const wd = (x.getDay()+6)%7; // Montag=0
@@ -5227,7 +5227,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       document.getElementById('kanbanCards_'+stage).innerHTML = list.map(c=>`
         <div class="kanban-card" draggable="true" data-contact="${c.id}" data-stage="${stage}">
           <button type="button" class="kc-move-btn" title="Verschieben">↕</button>
-          <span class="kc-name">${c.name}</span>
+          <span class="kc-name">${escHtml(c.name)}</span>
           ${c.location_id ? `<span class="kc-meta">${locName(bundle,c.location_id)}</span>` : ''}
         </div>`).join('');
     });
@@ -5322,7 +5322,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
   function populateProductSelect(catSelectEl, prodSelectEl){
     const opts = activeProducts().filter(p=>productGroupKey(p)===catSelectEl.value);
-    prodSelectEl.innerHTML = opts.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+    prodSelectEl.innerHTML = opts.map(p=>`<option value="${p.id}">${escHtml(p.name)}</option>`).join('');
   }
 
   async function recordSaleForKanban(contact, status){
@@ -5417,7 +5417,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         });
         if(error){ reportError('Verkauf eintragen', error, statusEl); return; }
         mySalesCache = null;
-        added.push(`${product.name} × ${menge}`);
+        added.push(`${escHtml(product.name)} × ${menge}`);
         listEl.innerHTML = added.map(x=>'✓ '+x).join('<br>');
         mengeEl.value = '1'; beitragEl.value = ''; beginnEl.value = ''; bwsEl.value = ''; statusEl.textContent = '';
       }
@@ -5581,7 +5581,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
           ${groups[g].map(p=>`
             <div class="dungeon-tile" data-prodtile="${p.id}" style="${p.active ? '' : 'opacity:0.5;'}">
               <span class="dt-icon">${p.active ? '📦' : '🚫'}</span>
-              <span class="dt-name">${p.name}</span>
+              <span class="dt-name">${escHtml(p.name)}</span>
               <span class="dt-count">${PROVISION_MODE_LABELS[p.provision_mode] || p.provision_mode}</span>
             </div>`).join('')}
         </div>
@@ -6035,14 +6035,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       .select('*, profiles(display_name)')
       .order('created_at', {ascending:false})
       .limit(200);
-    if(error){ listEl.innerHTML = `<div class="empty-page-hint">Fehler beim Laden des Fehlerprotokolls: ${error.message}</div>`; return; }
+    if(error){ listEl.innerHTML = `<div class="empty-page-hint">Fehler beim Laden des Fehlerprotokolls: ${escHtml(error.message)}</div>`; return; }
     if(!data || data.length===0){ listEl.innerHTML = '<div class="empty-page-hint">Keine Fehler protokolliert.</div>'; return; }
     listEl.innerHTML = data.map(e=>`
       <div class="log-entry">
-        <span class="lname"><span style="color:var(--danger)">${e.context}</span> — ${e.message}</span>
+        <span class="lname"><span style="color:var(--danger)">${escHtml(e.context)}</span> — ${escHtml(e.message)}</span>
         <span class="lright">
           <span class="ltime">${fmtTime(e.created_at)}</span>
-          <span class="ltime">${e.profiles ? e.profiles.display_name : '?'}</span>
+          <span class="ltime">${e.profiles ? escHtml(e.profiles.display_name) : '?'}</span>
         </span>
       </div>`).join('');
   }

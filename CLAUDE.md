@@ -987,6 +987,56 @@ Nutzer-Feedback:**
    um — neues kompaktes `.az-day-row`-Layout (Label links, beide Uhrzeiten
    rechts als Paar) behebt das, unabhängig von Bildschirmbreite.
 
+## Sicherheits-Durchgang: XSS-Escaping nachgerüstet, 2026-08-07
+
+Auf Nutzeranfrage ("codebasescan für key tokens api ... full security audit")
+zwei getrennte Prüfungen gemacht, statt vorschnell Infrastruktur zu bauen,
+die laut den "Technische Skalierungs-Schwellen" (siehe oben) noch nicht
+gebraucht wird — Rate Limiting z.B. bewusst NICHT gebaut (Supabase drosselt
+Login-Versuche bereits selbst, und der dort dokumentierte Auslöser —
+"eine Organisation außerhalb der eigenen bekommt Zugriff" — ist noch nicht
+erreicht).
+
+1. **Secret-Scan** (`grep -r` nach Service-Role-/Private-/API-Key-Mustern
+   über das ganze Repo): sauber. Der einzige Key im Code ist der
+   Supabase-Anon-Key — der ist absichtlich öffentlich, siehe "Tech-Stack"
+   oben (RLS statt Geheimhaltung). Diese Architektur hat strukturell gar
+   keinen Ort für ein verstecktes Backend-Geheimnis.
+2. **XSS-Escaping-Lücke, echt und verbreitet gefunden und behoben:**
+   `escHtml()` (Helferfunktion ganz oben im Skript) wurde an sehr vielen
+   Stellen, an denen Datenbank-Text per `innerHTML` gerendert wird, schlicht
+   vergessen — betraf u.a. den zentralen `field()`-Helfer in der
+   Kontaktdetail-Ansicht (Telefon/E-Mail/Wohnort/Bedarf-Ist/-Wunsch/Notizen
+   auf einen Schlag), die Kontakttabelle, Kanban-Karten, die
+   Handlungen/Chronik-Listen (`action_log.context` — hängt oft direkt am
+   Kontaktnamen), Anruf/Email-Notizen, Termin-Titel, Gilden-/Freundes-Namen,
+   zwei ältere Autocomplete-Boxen und mehr (~20 Stellen insgesamt). Ein
+   böswillig benannter Kontakt (z.B. Vorname `<img src=x
+   onerror="...">`) hätte beim Anzeigen durch jedes Team-Mitglied
+   ausgeführt werden können — echte, ausnutzbare Stored-XSS-Lücke, kein
+   theoretisches Risiko. `escHtml()` selbst war zusätzlich unvollständig
+   (escapte kein `"`/`'`, dadurch in Attribut-Kontexten wie
+   `data-name="${...}"` weiterhin ausbrechbar) — jetzt escapt es auch
+   Anführungszeichen, sicher für Text- UND Attribut-Kontexte gleichermaßen.
+   **Bei jedem neuen Rendering-Code, der Datenbank-Text per `innerHTML`
+   einfügt: `escHtml()` verwenden, keine Ausnahme** — das war hier die
+   eigentliche Lehre, nicht nur der einmalige Fix.
+   Per Playwright end-to-end gegen den echten Account verifiziert: echter
+   Testkontakt mit `<img onerror>`/`<svg onload>`/`<script>`-Payloads in
+   Vorname/Nachname/Notizen angelegt, Payload blieb in Tabelle UND
+   Detailansicht als sichtbarer Text (`&lt;img ...`) statt auszuführen,
+   `window.__xssFired` blieb bei 0, Testkontakt danach wieder gelöscht.
+   **Bewusst nicht angefasst:** Inhalte aus `rule_configs`
+   (Quest-/Questchain-Namen, Aktions-Labels) — die kommen nicht aus
+   In-App-Formularen, sondern werden vom Admin direkt per Supabase
+   SQL-Editor gepflegt, vertrauenswürdige Konfiguration, kein Nutzer-Input.
+   **Nebenbei aufgefallen, keine Handlung nötig, nur als Beobachtung:** es
+   gibt mittlerweile drei leicht unterschiedliche Autocomplete-Implementierungen
+   für Kontakt-/Ort-Suche in `index.html` (organisch bei verschiedenen
+   Features entstanden) — noch kein Grund zum Vereinheitlichen (Rule of
+   Three ist gerade erst erreicht), aber falls eine vierte dazukommt, lohnt
+   sich ein gemeinsamer Helfer.
+
 ## Abenteuerlog-Seite (Kalender/Tagebuch/Foto), seit 2026-08-04 neu sortiert
 
 Reihenfolge auf `#page-tagebuch` ist jetzt bewusst: **Kalender oben →
