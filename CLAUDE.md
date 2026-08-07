@@ -1071,19 +1071,25 @@ echtem Session-Token, nicht nur gelesen/vermutet):**
   versucht sich selbst zurück auf `admin` zu setzen — vom Trigger korrekt
   mit der eigenen Fehlermeldung ("Nur Admins dürfen die Rolle ändern.")
   abgelehnt, Rolle blieb `member`. Schutz bestätigt wirksam.
-- **Zweite, verwandte Lücke direkt beim erneuten Testen gefunden — Patch 38
-  deckte nur UPDATE ab, nicht die allererste Zeile (`sql/patch39_profile_insert_privilege_schutz.sql`,
-  noch NICHT ausgeführt — wartet auf Go):** `profiles_insert_self` prüft
-  beim Anlegen ebenfalls nur `id = auth.uid()`. Live mit demselben
-  Wegwerf-Testaccount bestätigt: ein direktes INSERT mit `role:'admin'`
-  im Payload legt sofort ein fertiges Admin-Profil an — komplett am
-  Registrierungsbildschirm vorbei (der schickt zwar immer `role:'member'`,
-  aber das ist nur eine Konvention der App, keine Absicherung auf
-  Datenbank-Ebene). Da die App offene Selbstregistrierung erlaubt (kein
-  Einladungszwang), war das nicht nur ein Kollegen-Risiko, sondern von
-  jedem Internet-Besucher aus nutzbar, der die URL kennt. Patch 39 erzwingt
-  `role='member'` und die aktuelle Standard-`org_id` per BEFORE-INSERT-
-  Trigger bei jeder neuen Zeile, unabhängig vom mitgeschickten Wert.
+- **Zweite, verwandte Lücke direkt beim erneuten Testen gefunden, gefixt,
+  ausgeführt UND nach Ausführung erneut live bestätigt — Patch 38 deckte
+  nur UPDATE ab, nicht die allererste Zeile (`sql/patch39_profile_insert_privilege_schutz.sql`,
+  seit 2026-08-07 live):** `profiles_insert_self` prüft beim Anlegen
+  ebenfalls nur `id = auth.uid()`. Erstbestätigung: ein direktes INSERT mit
+  `role:'admin'` im Payload legt sofort ein fertiges Admin-Profil an —
+  komplett am Registrierungsbildschirm vorbei (der schickt zwar immer
+  `role:'member'`, aber das ist nur eine Konvention der App, keine
+  Absicherung auf Datenbank-Ebene). Da die App offene Selbstregistrierung
+  erlaubt (kein Einladungszwang), war das nicht nur ein Kollegen-Risiko,
+  sondern von jedem Internet-Besucher aus nutzbar, der die URL kennt.
+  Patch 39 erzwingt `role='member'` und die aktuelle Standard-`org_id` per
+  BEFORE-INSERT-Trigger bei jeder neuen Zeile, unabhängig vom
+  mitgeschickten Wert. **Nach dem Einspielen erneut getestet, wieder mit
+  einem frischen Wegwerf-Account**: INSERT-Payload versuchte diesmal
+  `role:'admin'` UND eine komplett fremde `org_id` einzuschleusen — die
+  tatsächlich gespeicherte Zeile hatte trotzdem `role:'member'` und die
+  korrekte Standard-Org, `character_class` blieb wie gewollt frei wählbar.
+  Schutz bestätigt wirksam.
 - **Gefunden, noch NICHT gefixt (Priorität niedriger, Nutzer-Entscheidung
   offen):** `user_inventory` hat dieselbe Lücke bei `item_key`/`quantity`
   (`inventory_insert_own`/`inventory_update_own` prüfen nur `user_id`).
@@ -1114,15 +1120,17 @@ echtem Session-Token, nicht nur gelesen/vermutet):**
   Provisionsberechnung).
 - **Aufräumen nötig, vom Testen übrig geblieben (harmlos, aber steht noch
   in der echten DB):** eine Zeile in `user_inventory`
-  (`item_key='xss_audit_testitem'`, `quantity=0`, siehe oben) sowie ein
-  kompletter Wegwerf-Testaccount aus dem INSERT-Test von Patch 39
-  (E-Mail `patch38-audit-<Zeitstempel>@example.com`, `display_name`
-  `PatchAuditTest`, Rolle inzwischen `member`). Beides per SQL-Editor:
+  (`item_key='xss_audit_testitem'`, `quantity=0`) sowie zwei komplette
+  Wegwerf-Testaccounts — einer vom ersten INSERT-Test vor Patch 39
+  (`display_name='PatchAuditTest'`), einer von der erneuten Bestätigung
+  nach dem Einspielen (`display_name='Patch39AuditTest'`). Alles per
+  SQL-Editor in einem Rutsch:
   `delete from public.user_inventory where item_key='xss_audit_testitem';`
-  und `delete from public.profiles where display_name='PatchAuditTest';`
-  — den zugehörigen Auth-Nutzer zusätzlich unter Supabase-Dashboard →
-  Authentication → Users (nach der `@example.com`-Adresse suchen) von
-  Hand löschen, dafür gibt's keinen SQL-Zugriff ohne Service-Role-Key.
+  und `delete from public.profiles where display_name in
+  ('PatchAuditTest','Patch39AuditTest');` — die zwei zugehörigen
+  Auth-Nutzer zusätzlich unter Supabase-Dashboard → Authentication → Users
+  (nach `@example.com` suchen) von Hand löschen, dafür gibt's keinen
+  SQL-Zugriff ohne Service-Role-Key.
 
 ## Abenteuerlog-Seite (Kalender/Tagebuch/Foto), seit 2026-08-04 neu sortiert
 
