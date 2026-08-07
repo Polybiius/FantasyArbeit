@@ -4183,6 +4183,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     document.getElementById('contactActivityModal').style.display = 'none';
     render();
+    // Kontaktdetail bleibt hinter dem Aktivitäts-Popup offen (wie bei
+    // "Termin eintragen") — ohne dieses Neu-Öffnen bliebe die Chronik auf
+    // dem Stand von vor dem Speichern stehen, da showContactDetailTab()
+    // nur zwischen bereits gerenderten Tabs umschaltet, nicht neu lädt.
+    const bundle = await loadContactsBundle();
+    if(!bundle.error) openContactDetail(bundle.contacts.find(x=>x.id===contact.id) || contact, bundle);
     await renderContactsPage();
   });
 
