@@ -1396,15 +1396,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
             </div>
           </div>
           <label class="cdl" style="display:block;margin-top:8px;">Ende</label>
-          <div class="contact-add-row" style="align-items:center;">
-            <label class="cdl" style="display:flex;align-items:center;gap:4px;font-weight:normal;">
-              <input type="radio" name="termineEntryRecurrenceEndMode" id="termineEntryRecurrenceEndNie" value="nie" checked> Kein Ende
-            </label>
-            <label class="cdl" style="display:flex;align-items:center;gap:4px;font-weight:normal;">
-              <input type="radio" name="termineEntryRecurrenceEndMode" id="termineEntryRecurrenceEndDatum" value="datum"> Am
-            </label>
-            <input type="date" id="termineEntryRecurrenceUntil" disabled>
+          <div class="view-switch" style="margin-bottom:0;">
+            <button type="button" class="cal-nav-btn view-switch-btn recurrence-end-btn active" data-end="nie" style="flex:1;">Kein Ende</button>
+            <button type="button" class="cal-nav-btn view-switch-btn recurrence-end-btn" data-end="datum" style="flex:1;">Am Datum</button>
           </div>
+          <input type="date" id="termineEntryRecurrenceUntil" disabled style="margin-top:6px;">
         </div>
       </div>
       <div class="empty-page-hint" id="termineEntrySeriesNote" style="display:none;">Teil einer Serie — beim Speichern/Löschen wirst du gefragt, ob nur dieser Termin oder die ganze Serie betroffen ist.</div>
@@ -4744,7 +4740,9 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('termineEntryRecurrenceFreq').value = '';
     document.getElementById('termineEntryRecurrenceDetails').style.display = 'none';
     document.getElementById('termineEntryRecurrenceInterval').value = '1';
-    document.getElementById('termineEntryRecurrenceEndNie').checked = true;
+    recurrenceEndMode = 'nie';
+    document.querySelectorAll('.recurrence-end-btn').forEach(b=>
+      b.classList.toggle('active', b.dataset.end==='nie'));
     document.getElementById('termineEntryRecurrenceUntil').value = '';
     document.getElementById('termineEntryRecurrenceUntil').disabled = true;
     recurrenceSelectedWeekdays = new Set([(termineEntryDateForSave.getDay()+6)%7]);
@@ -4769,18 +4767,19 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('termineEntryRecurrenceIntervalUnit').textContent = RECURRENCE_UNIT_LABELS[freq] || '';
     document.getElementById('termineEntryRecurrenceWeekdays').style.display = freq==='woechentlich' ? 'block' : 'none';
   });
-  document.getElementById('termineEntryRecurrenceEndDatum').addEventListener('change', ()=>{
-    document.getElementById('termineEntryRecurrenceUntil').disabled = false;
-  });
-  document.getElementById('termineEntryRecurrenceEndNie').addEventListener('change', ()=>{
-    document.getElementById('termineEntryRecurrenceUntil').disabled = true;
+  let recurrenceEndMode = 'nie';
+  document.querySelectorAll('.recurrence-end-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      recurrenceEndMode = btn.dataset.end;
+      document.querySelectorAll('.recurrence-end-btn').forEach(b=>b.classList.toggle('active', b===btn));
+      document.getElementById('termineEntryRecurrenceUntil').disabled = recurrenceEndMode!=='datum';
+    });
   });
 
   async function createSeriesFromModal(insertedRow, startStr, endeStr){
     const freq = document.getElementById('termineEntryRecurrenceFreq').value;
     const interval = parseInt(document.getElementById('termineEntryRecurrenceInterval').value, 10) || 1;
-    const endMode = document.querySelector('input[name="termineEntryRecurrenceEndMode"]:checked').value;
-    const untilDate = endMode==='datum' ? (document.getElementById('termineEntryRecurrenceUntil').value || null) : null;
+    const untilDate = recurrenceEndMode==='datum' ? (document.getElementById('termineEntryRecurrenceUntil').value || null) : null;
     const weekdays = freq==='woechentlich' ? Array.from(recurrenceSelectedWeekdays).sort() : null;
     const startDateStr = dateKeyLocal(termineEntryDateForSave);
     const { data: seriesRow, error } = await sb.from('termin_series').insert({
