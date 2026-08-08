@@ -2084,11 +2084,12 @@ Profile, Kontakt/Dungeon, Cross-User-Zugriffsversuche) sauber isoliert und
 verifiziert, inklusive mehrerer Zwischenschritte mit temporären
 Diagnose-Funktionen (`debug_*`, alle wieder entfernt).
 
-**Bewusst noch nicht Teil von Phase 1** (siehe Konzepts-Konversation):
-Notfall-Nachfolgekette für Gildenführer (`succession_rank`, geordnete
-Liste von Teamleitern), Admin-Notfallzugriff mit Protokollierung
-(`access_audit_log`) — beides als Phase 2/3 vorgemerkt, kein Zeitdruck.
-Provisions-/Statistik-Aufteilung bei gemeinsam bearbeiteten Kontakten
+**Phase 2 (Notfall-Nachfolgekette) und Phase 3 (protokollierter
+Admin-Notfallzugriff) sind seit 2026-08-08 abends ebenfalls live** —
+eigene Abschnitte weiter unten ("Gilden-Notfall-Nachfolgekette, Phase 2"
+und "Admin-Notfallzugriff, Phase 3"). Damit ist das Gilden-
+Sichtbarkeits-Projekt komplett, kein offener Punkt mehr in diesem
+Strang. Provisions-/Statistik-Aufteilung bei gemeinsam bearbeiteten Kontakten
 bewusst zurückgestellt ("erst ein funktionierendes System, dann
 Feinschliff") — läuft aktuell einfach auf den, der den Abschluss tatsächlich
 macht.
@@ -2118,6 +2119,86 @@ Skill-Summen zurückgibt, geschützt durch `socially_visible()` (Freund
 mit drei Wegwerf-Testaccounts verifiziert: Freund bekommt korrekte Summen
 (inkl. `skill2`-40%-Anteil), ein unbeteiligter Dritter bekommt eine leere
 Liste.
+
+## Gilden-Notfall-Nachfolgekette, Phase 2 (seit 2026-08-08 abends live)
+
+Löst die in Phase 1 offen gelassene Frage: fällt ein Gildenführer durch
+Account-Löschung aus, wer übernimmt die Gilde? Kriterium bewusst simpel
+gehalten ("wahre Regeln, sobald ein konkretes Unternehmen da ist"): das
+Mitglied mit `team_rights=true`, das am längsten dabei ist (`joined_at`
+aufsteigend). Gibt es niemanden mit `team_rights`, fällt es auf das
+insgesamt längste Mitglied zurück — eine Gilde soll nie ohne Not
+führerlos werden, solange noch irgendwer drin ist. Der Nachfolger erbt
+automatisch volle Rechte (`write`/`write`/`team_rights=true`), genau wie
+ein Gildengründer.
+
+Sitzt in `handle_member_offboarding()` (`supabase/migrations/
+20260808213214_gilden_notfall_nachfolge.sql`), läuft VOR der
+bestehenden Pool-/Löschlogik im selben `BEFORE DELETE`-Trigger auf
+`auth.users`. **Wichtige technische Korrektur dabei:**
+`guilds.founder_id` war bisher `NOT NULL` mit `ON DELETE CASCADE` auf
+`profiles` — hätte beim Löschen eines Gildenführer-Accounts die
+komplette Gilde samt aller Mitgliedschaften mitgerissen (echtes
+Datenverlust-Risiko: "das sind Unternehmensdaten, tausende Kunden",
+ausdrückliche Nutzer-Vorgabe). Jetzt nullable + `ON DELETE SET NULL`
+als zusätzliches Sicherheitsnetz: bleibt im Extremfall (Gildenführer war
+das letzte Mitglied) niemand zum Nachrücken übrig, wird `founder_id`
+einfach `NULL` — die Gilde samt allen Pool-Kontakten/-Dungeons bleibt
+trotzdem bestehen, nur vorübergehend ohne Führer (siehe Phase 3 für den
+Zugriff auf so eine Gilde). Frontend brauchte keine Änderung, `founder_id`
+wird überall live gelesen.
+
+End-to-end mit Wegwerf-SQL-Testdaten gegen die echte DB verifiziert (drei
+Szenarien: Teamleiter rückt korrekt vor längerem Nicht-Teamleiter nach;
+Fallback aufs insgesamt längste Mitglied ohne `team_rights`; Gildenführer
+war letztes Mitglied → Gilde bleibt bestehen, `founder_id` wird `NULL`
+statt die Gilde zu löschen). Testdaten danach vollständig aufgeräumt.
+
+## Admin-Notfallzugriff, Phase 3 (seit 2026-08-08 abends live)
+
+Phase 1 hat Admins bewusst von der Standard-Sichtbarkeit ausgeschlossen
+("komplett privat, auch für Admins unsichtbar im Alltag"). Phase 3 gibt
+dafür einen kontrollierten Ausnahmeweg für echte Notfälle (Kollege nicht
+erreichbar, dringender Kundenvorgang): **read-only** Zugriff auf die
+privaten Kontakte/Dungeons eines Mitglieds — kein Schreibzugriff, keine
+Rechtevergabe. Bewusst **Break-Glass-Muster** (sofortiger Zugriff gegen
+Pflicht-Begründung, keine vorherige Freigabe durch eine dritte Person) —
+die Kontrolle liegt in der lückenlosen Protokollierung, nicht in einer
+Blockade vorher. **Journal-Einträge bleiben bewusst außen vor** — das
+ist weiterhin die einzige Tabelle ganz ohne Admin-Ausnahme, daran rührt
+Phase 3 nicht.
+
+Neue Tabelle `access_audit_log` (unveränderlich, nur Admin-Select, kein
+Insert/Update/Delete für normale Client-Aufrufe — Schreiben passiert
+ausschließlich innerhalb der Notfallzugriff-Funktion). Neue RPC-Funktion
+`admin_emergency_access(target_user, reason)` (`supabase/migrations/
+20260808214213_gilden_notfallzugriff_admin.sql`, SECURITY DEFINER):
+prüft `is_admin()`, erzwingt einen Pflicht-Grund, prüft dass die
+Zielperson in derselben Organisation ist, loggt den Zugriff, liefert
+dann die privaten Kontakte/Dungeons der Zielperson (nur `owner_id =
+target_user`, keine Gilden-Pool-Daten — die sind der Gilde ohnehin schon
+sichtbar) als JSON. Bewusst nur EIN Log-Eintrag pro Auslösung, nicht pro
+angesehener Zeile.
+
+Neue Admin-Seite "🚨 Notfallzugriff" in `index.html` (gleiches
+Sichtbarkeits-Muster wie "Fehlerprotokoll"/"Produkte" — `navNotfallzugriffBtn`,
+nur bei `profile.role==='admin'` sichtbar): Mitglied-Suche (gleiches
+Muster wie der Gilden-Mitglied-Picker, `real_name`/`display_name`,
+keine Volliste), Pflicht-Grund-Textfeld, Ergebnis-Anzeige, darunter eine
+Protokoll-Liste aller bisherigen Notfallzugriffe (für alle Admins
+einsehbar, admin_id/target_user_id via PostgREST-Embedding auf
+`profiles.display_name` aufgelöst).
+
+End-to-end gegen die echte DB verifiziert — per `supabase db query` +
+`set_config('request.jwt.claim.sub', ...)`, um einen echten
+Admin-RPC-Aufruf zu simulieren, ohne einen echten Login/Playwright-Lauf
+zu brauchen: positiver Zugriff liefert korrekt Kontakt+Dungeon der
+Zielperson UND schreibt den Audit-Log-Eintrag; Aufruf durch einen
+Nicht-Admin wird abgewiesen; leerer Grund wird abgewiesen. Testdaten
+danach vollständig aufgeräumt.
+
+**Damit ist das gesamte Gilden-Sichtbarkeits-Projekt (Phase 1+2+3) vom
+2026-08-08 fertig**, kein bekannter offener Punkt mehr in diesem Strang.
 
 ## Bekannte, bewusst in Kauf genommene Lücken
 
