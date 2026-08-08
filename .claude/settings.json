@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run lint*)",
+      "Bash(export PATH=\"$HOME/.local/share/nodejs-portable/bin:$PATH\"; cd /home/Polybiius/FantasyArbeit; npm run lint*)",
+      "Bash(export PATH=\"$HOME/.local/share/nodejs-portable/bin:$PATH\" && npm run lint*)",
+      "Bash(git fetch *)",
+      "Bash(flatpak list*)"
+    ]
+  }
+}
