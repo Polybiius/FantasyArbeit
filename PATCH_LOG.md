@@ -78,3 +78,18 @@ benennen.
 on conflict (patch_number) do nothing;` enthalten — Titel 1:1 aus der
 Kopfzeile übernehmen. Sonst zeigt die App das Changelog-Popup für diesen
 Patch nicht an, auch wenn er sonst korrekt läuft.
+
+## Ende dieses manuellen Systems: Patch 39 war der letzte hier dokumentierte
+
+**Seit 2026-08-08** gibt es eine echte Supabase-CLI-Migrationstoolchain
+(siehe CLAUDE.md, Abschnitt "Supabase-CLI-Migrationstoolchain") — der
+gesamte Stand von Patch 1–39 wurde als eine Baseline-Migration
+eingefroren (`supabase/migrations/20260808145403_remote_schema.sql`).
+**Neue Schema-Änderungen entstehen ab jetzt nicht mehr als
+`sql/patchN_....sql`, sondern als `supabase/migrations/<Zeitstempel>_
+<name>.sql`** (per `supabase migration new ...`) und werden per
+`supabase db push` eingespielt (durch Claude Code, aber erst nach
+explizitem Go des Nutzers). Diese Datei bleibt als Archiv der Patches
+1–39 stehen, wird aber nicht weitergeführt — die `schema_patches`-Insert-
+Konvention für das Changelog-Popup gilt für neue Migrationen unverändert
+weiter.
