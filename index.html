@@ -183,6 +183,7 @@
   .guild-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:14px;}
   .guild-tile{background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius-md);padding:16px 10px;text-align:center;display:flex;flex-direction:column;align-items:center;gap:6px;box-shadow:var(--shadow-rest);}
   .guild-tile .gt-icon{font-size:34px;}
+  .guild-tile .gt-avatar{width:64px;height:51px;image-rendering:pixelated;cursor:pointer;}
   .guild-tile .gt-name{font-weight:600;font-size:13px;color:var(--text);}
   .guild-tile .gt-level{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--arcane-glow);}
   .guild-tile .gt-founder{font-size:10px;color:var(--muted-2);text-transform:uppercase;letter-spacing:.05em;}
@@ -892,6 +893,16 @@
             </div>
 
             <button type="button" class="cal-nav-btn" id="guildRightsSaveBtn" style="margin-top:16px;">Speichern</button>
+          </div>
+        </div>
+
+        <div class="loc-modal" id="friendSigilModal" style="display:none;">
+          <div class="loc-modal-inner">
+            <div class="loc-modal-header">
+              <span id="friendSigilName">Sigil</span>
+              <button type="button" id="friendSigilCloseBtn">✕</button>
+            </div>
+            <svg id="friendSigilSvg" width="530" height="530" viewBox="-95 -65 530 530" style="display:block;margin:0 auto;width:100%;max-width:420px;height:auto;"></svg>
           </div>
         </div>
       </div>
@@ -2365,8 +2376,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // hart auf 10 Zeichen gekappt ("Fachwissen" → "chwissen" etc.); der Nutzer
   // will die Wörter vollständig lesen können, das viewBox ist deshalb bewusst
   // großzügig bemessen statt möglichst knapp.
-  function drawSigil(skillXp, totalXp, skillsMap){
-    const svg = document.getElementById('sigil');
+  function drawSigil(skillXp, totalXp, skillsMap, svgId='sigil'){
+    const svg = document.getElementById(svgId);
     const cx=160, cy=160, r=105;
     const keys = Object.keys(skillsMap);
     const n = keys.length;
@@ -3264,21 +3275,54 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     });
   }
 
+  const AVATAR_PROFILE_FIELDS = 'id,display_name,character_class,level,gender,skin_tone,hair_style,equipped_weapon,equipped_armor,equipped_accessory';
+
+  // Bewegter Avatar statt statischem Emoji auf einer Gilden-/Freundes-Kachel
+  // (dieselbe Sprite-Technik wie überall sonst, siehe createSpriteRenderer)
+  // -- Klick öffnet das Sigil (Skill-Aufschlüsselung) der Person.
+  function mountAvatarTile(canvas, p){
+    const renderer = createSpriteRenderer(canvas, 1);
+    renderer.setLayers(layersForCharacterProfile(p));
+    canvas.addEventListener('click', ()=> openFriendSigil(p.id, p.display_name));
+  }
+
+  async function openFriendSigil(userId, name){
+    document.getElementById('friendSigilName').textContent = name;
+    document.getElementById('friendSigilModal').style.display = 'flex';
+    const { data, error } = await sb.rpc('friend_skill_totals', { target_user: userId });
+    if(error){ logSilentError('Skill-Summen laden', error); return; }
+    const skillXp = {};
+    Object.keys(config.skills).forEach(k=>skillXp[k]=0);
+    let totalXp = 0;
+    (data||[]).forEach(row=>{
+      if(row.skill_key in skillXp) skillXp[row.skill_key] = Number(row.xp_sum);
+      totalXp += Number(row.xp_sum);
+    });
+    drawSigil(skillXp, totalXp, config.skills, 'friendSigilSvg');
+  }
+
+  document.getElementById('friendSigilCloseBtn').addEventListener('click', ()=>{
+    document.getElementById('friendSigilModal').style.display='none';
+  });
+
   async function renderFriendGrid(){
     const { data: rows, error } = await sb.from('friends').select('owner_id,friend_id').or(`owner_id.eq.${profile.id},friend_id.eq.${profile.id}`).eq('status','accepted');
     if(error) logSilentError('Freundesliste laden', error);
     const ids = [...new Set((rows||[]).map(r => r.owner_id===profile.id ? r.friend_id : r.owner_id))];
     const grid = document.getElementById('friendGrid');
     if(ids.length===0){ grid.innerHTML = '<div class="empty-page-hint">Noch keine Freunde.</div>'; return; }
-    const { data: friendProfiles, error: profErr } = await sb.from('profiles').select('id,display_name,character_class,level').in('id', ids);
+    const { data: friendProfiles, error: profErr } = await sb.from('profiles').select(AVATAR_PROFILE_FIELDS).in('id', ids);
     if(profErr) logSilentError('Freundes-Profile laden', profErr);
     grid.innerHTML = (friendProfiles||[]).map(m=>`
       <div class="guild-tile">
-        <span class="gt-icon">${CLASS_ICONS[m.character_class]||'❔'}</span>
+        <canvas class="gt-avatar" data-avatar="${m.id}" title="Sigil ansehen"></canvas>
         <span class="gt-name">${escHtml(m.display_name)}</span>
         <span class="gt-level">Level ${m.level}</span>
         <button class="friend-remove-btn" data-remove="${m.id}">Entfernen</button>
       </div>`).join('');
+    grid.querySelectorAll('[data-avatar]').forEach(canvas=>{
+      mountAvatarTile(canvas, (friendProfiles||[]).find(p=>p.id===canvas.dataset.avatar));
+    });
     grid.querySelectorAll('[data-remove]').forEach(btn=>{
       btn.addEventListener('click', ()=> removeFriend(btn.dataset.remove));
     });
@@ -4368,20 +4412,22 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const grid = document.getElementById('guildGrid');
     if(ids.length===0){ grid.innerHTML=''; return; }
     const rightsMap = {}; (members||[]).forEach(m=>rightsMap[m.member_id]=m);
-    const { data: memberProfiles, error: profErr } = await sb.from('profiles').select('id,display_name,character_class,level').in('id', ids);
+    const { data: memberProfiles, error: profErr } = await sb.from('profiles').select(AVATAR_PROFILE_FIELDS).in('id', ids);
     if(profErr) logSilentError('Gildenmitglieder-Profile laden', profErr);
     const amFounder = currentGuild && currentGuild.founder_id===profile.id;
     grid.innerHTML = (memberProfiles||[]).map(m=>{
-      const icon = CLASS_ICONS[m.character_class] || '❔';
       const isFounder = currentGuild && currentGuild.founder_id===m.id;
       return `<div class="guild-tile">
         ${isFounder?'<span class="gt-founder">Gründer</span>':''}
-        <span class="gt-icon">${icon}</span>
+        <canvas class="gt-avatar" data-avatar="${m.id}" title="Sigil ansehen"></canvas>
         <span class="gt-name">${escHtml(m.display_name)}</span>
         <span class="gt-level">Level ${m.level}</span>
         ${(amFounder && !isFounder) ? `<button type="button" class="cal-nav-btn gt-rights-btn" data-rights="${m.id}">Rechte</button>` : ''}
       </div>`;
     }).join('');
+    grid.querySelectorAll('[data-avatar]').forEach(canvas=>{
+      mountAvatarTile(canvas, (memberProfiles||[]).find(p=>p.id===canvas.dataset.avatar));
+    });
     if(amFounder){
       grid.querySelectorAll('[data-rights]').forEach(btn=>{
         btn.addEventListener('click', ()=>{
