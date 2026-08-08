@@ -731,6 +731,7 @@
       <button class="nav-btn" data-page="einstellungen">⚙️ Einstellungen</button>
       <button class="nav-btn" data-page="produkte" id="navProdukteBtn" style="display:none;">📦 Produkte</button>
       <button class="nav-btn" data-page="fehlerprotokoll" id="navFehlerprotokollBtn" style="display:none;">🛠 Fehlerprotokoll</button>
+      <button class="nav-btn" data-page="notfallzugriff" id="navNotfallzugriffBtn" style="display:none;">🚨 Notfallzugriff</button>
     </nav>
 
     <div class="content">
@@ -1240,6 +1241,29 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
           <h2>Fehlerprotokoll <span class="tag">nur für Admins sichtbar</span></h2>
           <div class="empty-page-hint" style="margin-bottom:8px;">Jeder fehlgeschlagene Speicher-/Ladevorgang der letzten Zeit, egal von welchem Team-Mitglied — damit nichts unbemerkt verloren geht.</div>
           <div id="errorLogList"></div>
+        </div>
+      </div>
+
+      <!-- SEITE: NOTFALLZUGRIFF (nur Admins) -->
+      <div class="page" id="page-notfallzugriff" style="display:none;">
+        <div class="card">
+          <h2>Notfallzugriff <span class="tag">nur für Admins sichtbar</span></h2>
+          <div class="empty-page-hint" style="margin-bottom:8px;">Nur für echte Notfälle (z.B. ein Kollege ist nicht erreichbar, ein Kunde braucht dringend eine Antwort): zeigt die privaten Kontakte/Dungeons eines Mitglieds an — rein lesend, jeder Zugriff wird unten unveränderlich protokolliert.</div>
+          <input type="text" id="eaMemberSearch" placeholder="Name suchen …" autocomplete="off" style="margin-bottom:12px;">
+          <div id="eaMemberList"></div>
+          <div id="eaRequestForm" style="display:none;margin-top:14px;">
+            <div class="settings-field-desc" style="margin-bottom:6px;">Zielperson: <strong id="eaTargetName"></strong> · <a href="#" id="eaChangeTarget">andere Person wählen</a></div>
+            <div class="settings-field-desc" style="margin-bottom:6px;">Grund (Pflicht, wird protokolliert)</div>
+            <textarea id="eaReasonInput" class="settings-input" rows="2" maxlength="500" placeholder="z.B. Kollege im Urlaub, Kunde X braucht dringend eine Antwort"></textarea>
+            <button class="cal-nav-btn" id="eaRequestBtn" style="margin-top:8px;">Zugriff anfordern</button>
+            <div class="empty-page-hint" id="eaRequestStatus"></div>
+          </div>
+          <div id="eaResultWrap" style="margin-top:18px;"></div>
+        </div>
+        <div class="card" style="margin-top:18px;">
+          <h2>Protokoll</h2>
+          <div class="empty-page-hint" style="margin-bottom:8px;">Jeder ausgelöste Notfallzugriff — unveränderlich, für alle Admins einsehbar.</div>
+          <div id="eaAuditLogList"></div>
         </div>
       </div>
 
@@ -2309,6 +2333,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('adminToggleBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
     document.getElementById('charRespawnBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
     document.getElementById('navFehlerprotokollBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
+    document.getElementById('navNotfallzugriffBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
     document.getElementById('navProdukteBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
     if(profile.role==='admin'){
       document.getElementById('classSwitcher').style.display='flex';
@@ -6265,19 +6290,135 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       </div>`).join('');
   }
 
+  // ---- Notfallzugriff-Seite (nur Admins, Phase 3 Gilden-Sichtbarkeit) ----
+  // Break-Glass-Muster: sofortiger, read-only Zugriff auf die privaten
+  // Kontakte/Dungeons eines Mitglieds gegen Pflicht-Begründung, kontrolliert
+  // durch lückenlose Protokollierung statt durch eine vorherige Freigabe.
+  let eaSelectedMemberId = null;
+  let eaSelectedMemberName = '';
+
+  function renderEmergencyAccessPage(){
+    if(profile.role!=='admin') return;
+    eaSelectedMemberId = null;
+    eaSelectedMemberName = '';
+    document.getElementById('eaMemberSearch').value = '';
+    document.getElementById('eaMemberSearch').style.display = 'block';
+    document.getElementById('eaMemberList').style.display = 'block';
+    document.getElementById('eaMemberList').innerHTML = '<div class="empty-page-hint">Namen eingeben, um eine Person zu finden.</div>';
+    document.getElementById('eaRequestForm').style.display = 'none';
+    document.getElementById('eaReasonInput').value = '';
+    document.getElementById('eaRequestStatus').textContent = '';
+    document.getElementById('eaResultWrap').innerHTML = '';
+    renderEmergencyAuditLog();
+  }
+
+  let eaSearchTimer = null;
+  document.getElementById('eaMemberSearch').addEventListener('input', (e)=>{
+    clearTimeout(eaSearchTimer);
+    const q = e.target.value.trim();
+    const listEl = document.getElementById('eaMemberList');
+    if(!q){ listEl.innerHTML = '<div class="empty-page-hint">Namen eingeben, um eine Person zu finden.</div>'; return; }
+    eaSearchTimer = setTimeout(()=> searchEaCandidates(q), 250);
+  });
+
+  async function searchEaCandidates(q){
+    const listEl = document.getElementById('eaMemberList');
+    const { data, error } = await sb.from('profiles')
+      .select('id,display_name,real_name,character_class')
+      .eq('org_id', profile.org_id)
+      .or(`real_name.ilike.%${q}%,display_name.ilike.%${q}%`)
+      .limit(15);
+    if(error){ logSilentError('Notfallzugriff: Person suchen', error); return; }
+    if(!data || data.length===0){ listEl.innerHTML = '<div class="empty-page-hint">Keine Treffer.</div>'; return; }
+    listEl.innerHTML = data.map(m=>`
+      <div class="guild-picker-row">
+        <span>${CLASS_ICONS[m.character_class]||'❔'} ${escHtml(m.real_name || m.display_name)}${m.real_name ? ` <span style="opacity:.6">(${escHtml(m.display_name)})</span>` : ''}</span>
+        <button class="cal-nav-btn" data-select="${m.id}">Auswählen</button>
+      </div>`).join('');
+    listEl.querySelectorAll('[data-select]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const m = data.find(x=>x.id===btn.dataset.select);
+        eaSelectedMemberId = m.id;
+        eaSelectedMemberName = m.real_name || m.display_name;
+        document.getElementById('eaMemberSearch').style.display = 'none';
+        document.getElementById('eaMemberList').style.display = 'none';
+        document.getElementById('eaTargetName').textContent = eaSelectedMemberName;
+        document.getElementById('eaRequestForm').style.display = 'block';
+        document.getElementById('eaReasonInput').value = '';
+        document.getElementById('eaRequestStatus').textContent = '';
+        document.getElementById('eaResultWrap').innerHTML = '';
+      });
+    });
+  }
+
+  document.getElementById('eaChangeTarget').addEventListener('click', (e)=>{
+    e.preventDefault();
+    renderEmergencyAccessPage();
+  });
+
+  document.getElementById('eaRequestBtn').addEventListener('click', async ()=>{
+    const reason = document.getElementById('eaReasonInput').value.trim();
+    const statusEl = document.getElementById('eaRequestStatus');
+    if(!reason){ statusEl.textContent = 'Bitte einen Grund angeben.'; return; }
+    if(!eaSelectedMemberId){ statusEl.textContent = 'Bitte zuerst eine Person auswählen.'; return; }
+    statusEl.textContent = 'Lädt …';
+    const { data, error } = await sb.rpc('admin_emergency_access', { p_target_user: eaSelectedMemberId, p_reason: reason });
+    if(error){ reportError('Notfallzugriff auslösen', error, statusEl); return; }
+    statusEl.textContent = 'Zugriff protokolliert.';
+    const contacts = (data && data.contacts) || [];
+    const locations = (data && data.locations) || [];
+    document.getElementById('eaResultWrap').innerHTML = `
+      <h2 style="margin-top:0;">Kontakte (${contacts.length})</h2>
+      ${contacts.length===0 ? '<div class="empty-page-hint">Keine privaten Kontakte.</div>' : contacts.map(c=>`
+        <div class="log-entry">
+          <span class="lname">${escHtml(c.name||((c.vorname||'')+' '+(c.nachname||'')))}</span>
+          <span class="lright">
+            ${c.telefon ? `<span class="ltime">📞 ${escHtml(c.telefon)}</span>` : ''}
+            ${c.email ? `<span class="ltime">✉️ ${escHtml(c.email)}</span>` : ''}
+          </span>
+        </div>`).join('')}
+      <h2>Dungeons (${locations.length})</h2>
+      ${locations.length===0 ? '<div class="empty-page-hint">Keine privaten Dungeons.</div>' : locations.map(l=>`
+        <div class="log-entry">
+          <span class="lname">${escHtml(l.name)}</span>
+          <span class="lright"><span class="ltime">${escHtml(l.type||'')}</span></span>
+        </div>`).join('')}
+    `;
+    renderEmergencyAuditLog();
+  });
+
+  async function renderEmergencyAuditLog(){
+    const listEl = document.getElementById('eaAuditLogList');
+    if(profile.role!=='admin') return;
+    listEl.innerHTML = '<div class="empty-page-hint">Lädt …</div>';
+    const { data, error } = await sb.from('access_audit_log')
+      .select('*, admin:admin_id(display_name), target:target_user_id(display_name)')
+      .order('created_at', {ascending:false})
+      .limit(100);
+    if(error){ listEl.innerHTML = `<div class="empty-page-hint">Fehler beim Laden des Protokolls: ${escHtml(error.message)}</div>`; return; }
+    if(!data || data.length===0){ listEl.innerHTML = '<div class="empty-page-hint">Noch kein Notfallzugriff ausgelöst.</div>'; return; }
+    listEl.innerHTML = data.map(e=>`
+      <div class="log-entry">
+        <span class="lname">${escHtml(e.admin ? e.admin.display_name : '?')} → ${escHtml(e.target ? e.target.display_name : '?')}: ${escHtml(e.reason)}</span>
+        <span class="lright"><span class="ltime">${fmtTime(e.created_at)}</span></span>
+      </div>`).join('');
+  }
+
   // ---- Seitennavigation ----
-  const VALID_PAGES = ['charakter','handlungen','inventar','gilde','dungeons','kontakte','tagebuch','kanban','statistik','einstellungen','fehlerprotokoll','produkte'];
+  const VALID_PAGES = ['charakter','handlungen','inventar','gilde','dungeons','kontakte','tagebuch','kanban','statistik','einstellungen','fehlerprotokoll','produkte','notfallzugriff'];
 
   function showPage(pageName, updateHash){
     if(!VALID_PAGES.includes(pageName)) pageName = 'charakter';
     if(pageName==='fehlerprotokoll' && profile.role!=='admin') pageName = 'charakter';
     if(pageName==='produkte' && profile.role!=='admin') pageName = 'charakter';
+    if(pageName==='notfallzugriff' && profile.role!=='admin') pageName = 'charakter';
     document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active', b.dataset.page===pageName));
     document.querySelectorAll('.page').forEach(p=>p.style.display='none');
     document.getElementById('page-'+pageName).style.display='block';
     if(updateHash!==false) location.hash = pageName;
     if(pageName==='dungeons'){ ensureDungeonMap(); if(dungeonMap) setTimeout(()=>dungeonMap.invalidateSize(),150); }
     if(pageName==='fehlerprotokoll') renderErrorLog();
+    if(pageName==='notfallzugriff') renderEmergencyAccessPage();
     if(pageName==='produkte') renderProductsPage();
     if(pageName==='einstellungen') renderEinstellungenPage();
     if(pageName==='statistik'){ renderStatTabs(); renderStatistikPage(); }
