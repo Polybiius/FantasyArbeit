@@ -860,6 +860,7 @@
 
         <div class="card guild-picker" id="guildPickerCard" style="display:none;margin-top:18px;">
           <h2>Mitglied auswählen</h2>
+          <input type="text" id="guildPickerSearch" placeholder="Name suchen …" autocomplete="off" style="margin-bottom:12px;">
           <div id="guildPickerList"></div>
         </div>
 
@@ -4524,27 +4525,50 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   document.getElementById('guildAddBtn').addEventListener('click', ()=> renderGuildPicker());
 
-  async function renderGuildPicker(){
+  function renderGuildPicker(){
     const card = document.getElementById('guildPickerCard');
     card.style.display='block';
-    const { data: orgMembers, error } = await sb.from('profiles').select('id,display_name,character_class').eq('org_id', profile.org_id);
-    if(error) logSilentError('Kollegen laden', error);
+    const searchInput = document.getElementById('guildPickerSearch');
+    searchInput.value = '';
+    document.getElementById('guildPickerList').innerHTML = '<div class="empty-page-hint">Namen eingeben, um einen Kollegen zu finden.</div>';
+    searchInput.focus();
+  }
+
+  let guildPickerSearchTimer = null;
+  document.getElementById('guildPickerSearch').addEventListener('input', (e)=>{
+    clearTimeout(guildPickerSearchTimer);
+    const q = e.target.value.trim();
+    const listEl = document.getElementById('guildPickerList');
+    if(!q){ listEl.innerHTML = '<div class="empty-page-hint">Namen eingeben, um einen Kollegen zu finden.</div>'; return; }
+    guildPickerSearchTimer = setTimeout(()=> searchGuildCandidates(q), 250);
+  });
+
+  async function searchGuildCandidates(q){
+    const listEl = document.getElementById('guildPickerList');
+    // Suche bewusst ueber real_name UND display_name -- im B2B-Alltag kennt
+    // man Kollegen am echten Namen, nicht am Charakternamen (real_name ist
+    // aber optional, bei alten Profilen vor Patch 24 evtl. leer).
+    const { data: orgMembers, error } = await sb.from('profiles')
+      .select('id,display_name,real_name,character_class')
+      .eq('org_id', profile.org_id)
+      .or(`real_name.ilike.%${q}%,display_name.ilike.%${q}%`)
+      .limit(15);
+    if(error){ logSilentError('Kollegen suchen', error); return; }
     const { data: existing, error: existErr } = await sb.from('guild_members').select('member_id').eq('guild_id', currentGuild.id);
     if(existErr) logSilentError('Bestehende Gildenmitglieder laden', existErr);
     const existingIds = new Set((existing||[]).map(e=>e.member_id));
     const candidates = (orgMembers||[]).filter(m=>!existingIds.has(m.id));
-    const listEl = document.getElementById('guildPickerList');
-    if(candidates.length===0){ listEl.innerHTML = '<div class="empty-page-hint">Alle Kollegen sind schon Mitglied.</div>'; return; }
+    if(candidates.length===0){ listEl.innerHTML = '<div class="empty-page-hint">Keine Treffer.</div>'; return; }
     listEl.innerHTML = candidates.map(m=>`
       <div class="guild-picker-row">
-        <span>${CLASS_ICONS[m.character_class]||'❔'} ${escHtml(m.display_name)}</span>
+        <span>${CLASS_ICONS[m.character_class]||'❔'} ${escHtml(m.real_name || m.display_name)}${m.real_name ? ` <span style="opacity:.6">(${escHtml(m.display_name)})</span>` : ''}</span>
         <button class="cal-nav-btn" data-add="${m.id}">Hinzufügen</button>
       </div>`).join('');
     listEl.querySelectorAll('[data-add]').forEach(btn=>{
       btn.addEventListener('click', async ()=>{
         const { error } = await sb.from('guild_members').insert({ member_id:btn.dataset.add, guild_id:currentGuild.id, org_id:profile.org_id });
         if(error){ reportError('Mitglied zur Gilde hinzufügen', error); return; }
-        card.style.display='none';
+        document.getElementById('guildPickerCard').style.display='none';
         await renderGuildMembers(currentGuild.id);
         // Direkt das Rechte-Modal öffnen -- das ist der Beitritts-Moment,
         // in dem auch mitgebrachte private Dungeons einmalig geprüft werden.
