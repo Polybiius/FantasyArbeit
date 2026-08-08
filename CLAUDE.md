@@ -2093,6 +2093,32 @@ bewusst zurückgestellt ("erst ein funktionierendes System, dann
 Feinschliff") — läuft aktuell einfach auf den, der den Abschluss tatsächlich
 macht.
 
+**Direkter Folgeauftrag, noch am selben Tag: bewegter Avatar + Sigil auf
+Freundes-/Gilden-Kacheln.** Löst einen offenen Punkt aus der
+Konzepts-Konversation selbst ein ("wenn man auf den Freund klickt, sieht
+man auch das Sigil der Fähigkeiten"). Die Kacheln in `friendGrid` UND
+`guildGrid` (`renderFriendGrid()`/`renderGuildMembers()`) zeigen jetzt
+`<canvas class="gt-avatar">` statt des statischen Klassen-Emojis —
+dieselbe `createSpriteRenderer()`/`layersForCharacterProfile()`-Technik
+wie auf der eigenen Charakterseite, gespeist aus den ohnehin schon
+organisationsweit lesbaren `profiles`-Feldern (Aussehen ist nie geheim
+gewesen). Klick auf den Avatar (`mountAvatarTile()` → `openFriendSigil()`)
+öffnet ein neues `friendSigilModal` mit eigenem `<svg id="friendSigilSvg">`
+— `drawSigil()` bekam dafür einen vierten, optionalen Parameter (Ziel-SVG-
+Id, Default weiterhin `'sigil'`), keine Verhaltensänderung auf der eigenen
+Charakterseite.
+
+Für die Skill-Zahlen selbst reicht Sichtbarkeit von Level/Klasse nicht —
+die liegen im privaten `action_log`. Bewusst **keine** breite SELECT-Policy
+auf `action_log` (würde auch `context`/`meta`/`location_id`/`contact_id`
+offenlegen, potenziell CRM-Notizen) — stattdessen eine schmale neue
+RPC-Funktion `friend_skill_totals(target_user)`, die nur die aggregierten
+Skill-Summen zurückgibt, geschützt durch `socially_visible()` (Freund
+[`friends.status='accepted'`] ODER gemeinsame Gilde ODER man selbst). Live
+mit drei Wegwerf-Testaccounts verifiziert: Freund bekommt korrekte Summen
+(inkl. `skill2`-40%-Anteil), ein unbeteiligter Dritter bekommt eine leere
+Liste.
+
 ## Bekannte, bewusst in Kauf genommene Lücken
 
 - "Zuletzt kontaktiert" an einem Kontakt zeigt nur **eigene** Log-Einträge des
