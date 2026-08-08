@@ -861,6 +861,39 @@
           <h2>Mitglied auswählen</h2>
           <div id="guildPickerList"></div>
         </div>
+
+        <div class="loc-modal" id="guildMemberRightsModal" style="display:none;">
+          <div class="loc-modal-inner">
+            <div class="loc-modal-header">
+              <span id="guildRightsMemberName">Mitglied</span>
+              <button type="button" id="guildRightsCloseBtn">✕</button>
+            </div>
+            <div class="settings-field-desc" style="margin-bottom:6px;">Kontakte</div>
+            <div class="view-switch" id="guildRightsContactsSwitch" style="margin-bottom:0;">
+              <button type="button" class="cal-nav-btn view-switch-btn" data-val="read">Lesen</button>
+              <button type="button" class="cal-nav-btn view-switch-btn" data-val="write">Lesen + Schreiben</button>
+            </div>
+            <div class="settings-field-desc" style="margin:14px 0 6px;">Dungeons</div>
+            <div class="view-switch" id="guildRightsDungeonsSwitch" style="margin-bottom:0;">
+              <button type="button" class="cal-nav-btn view-switch-btn" data-val="read">Nutzen</button>
+              <button type="button" class="cal-nav-btn view-switch-btn" data-val="write">Nutzen + Anlegen</button>
+            </div>
+            <label class="settings-switch-row" style="margin-top:16px;">
+              <span class="settings-switch">
+                <input type="checkbox" id="guildRightsTeamCheck">
+                <span class="settings-switch-track"><span class="settings-switch-thumb"></span></span>
+              </span>
+              <span class="settings-switch-label">Teamrechte (darf Mitglieder mitverwalten)</span>
+            </label>
+
+            <div id="guildRightsPoolSection" style="margin-top:18px;">
+              <div class="settings-field-desc" style="margin-bottom:6px;">Eigene Dungeons dieses Mitglieds, noch nicht im Gilden-Pool:</div>
+              <div id="guildRightsPoolList"></div>
+            </div>
+
+            <button type="button" class="cal-nav-btn" id="guildRightsSaveBtn" style="margin-top:16px;">Speichern</button>
+          </div>
+        </div>
       </div>
 
       <!-- SEITE: KONTAKTE -->
@@ -3627,9 +3660,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       const results = await res.json();
       if(!results || results.length===0){ statusEl.textContent = 'Adresse nicht gefunden — bitte prüfen.'; return; }
       const { lat, lon } = results[0];
+      const guildId = await myDungeonPoolGuildId();
       const { data: inserted, error } = await sb.from('locations').insert({
         org_id:profile.org_id, name, type, lat:parseFloat(lat), lng:parseFloat(lon),
-        address:fullAddress, plz, strasse, stadt, created_by:profile.id, owner_id:profile.id
+        address:fullAddress, plz, strasse, stadt, created_by:profile.id, owner_id:profile.id, guild_id:guildId
       }).select().single();
       if(error){ reportError('Betrieb anlegen', error, statusEl); return; }
 
@@ -4300,8 +4334,22 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(!name) return;
     const { data: guild, error } = await sb.from('guilds').insert({ org_id:profile.org_id, name, founder_id:profile.id }).select().single();
     if(error){ reportError('Gilde gründen', error); return; }
-    const { error: memErr } = await sb.from('guild_members').insert({ member_id:profile.id, guild_id:guild.id, org_id:profile.org_id });
+    // Gründer bekommt von Anfang an volle Rechte in der eigenen Gilde --
+    // keine Sinn ergebende Einschränkung gegen sich selbst.
+    const { error: memErr } = await sb.from('guild_members').insert({
+      member_id:profile.id, guild_id:guild.id, org_id:profile.org_id,
+      contacts_access:'write', dungeons_access:'write', team_rights:true
+    });
     if(memErr){ reportError('Als Gildenmitglied eintragen', memErr); return; }
+    // Eigene, bisher private Dungeons (angelegt oder besessen) wandern
+    // automatisch in den Pool der neuen Gilde -- es ist die eigene Welt
+    // des Gründers, dafür braucht es keine gesonderte Prüfung wie beim
+    // Beitritt eines fremden Mitglieds.
+    const { error: locErr } = await sb.from('locations')
+      .update({ guild_id: guild.id })
+      .or(`owner_id.eq.${profile.id},created_by.eq.${profile.id}`)
+      .is('guild_id', null);
+    if(locErr) logSilentError('Eigene Dungeons in neue Gilde übernehmen', locErr);
     await loadGuildState();
   });
 
@@ -4314,13 +4362,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   });
 
   async function renderGuildMembers(guildId){
-    const { data: members, error } = await sb.from('guild_members').select('member_id').eq('guild_id', guildId);
+    const { data: members, error } = await sb.from('guild_members').select('member_id,contacts_access,dungeons_access,team_rights').eq('guild_id', guildId);
     if(error) logSilentError('Gildenmitglieder laden', error);
     const ids = (members||[]).map(m=>m.member_id);
     const grid = document.getElementById('guildGrid');
     if(ids.length===0){ grid.innerHTML=''; return; }
+    const rightsMap = {}; (members||[]).forEach(m=>rightsMap[m.member_id]=m);
     const { data: memberProfiles, error: profErr } = await sb.from('profiles').select('id,display_name,character_class,level').in('id', ids);
     if(profErr) logSilentError('Gildenmitglieder-Profile laden', profErr);
+    const amFounder = currentGuild && currentGuild.founder_id===profile.id;
     grid.innerHTML = (memberProfiles||[]).map(m=>{
       const icon = CLASS_ICONS[m.character_class] || '❔';
       const isFounder = currentGuild && currentGuild.founder_id===m.id;
@@ -4329,8 +4379,101 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         <span class="gt-icon">${icon}</span>
         <span class="gt-name">${escHtml(m.display_name)}</span>
         <span class="gt-level">Level ${m.level}</span>
+        ${(amFounder && !isFounder) ? `<button type="button" class="cal-nav-btn gt-rights-btn" data-rights="${m.id}">Rechte</button>` : ''}
       </div>`;
     }).join('');
+    if(amFounder){
+      grid.querySelectorAll('[data-rights]').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          const m = memberProfiles.find(p=>p.id===btn.dataset.rights);
+          openGuildRightsModal(btn.dataset.rights, m ? m.display_name : '', rightsMap[btn.dataset.rights] || {});
+        });
+      });
+    }
+  }
+
+  // ---- Gilden-Rechte-Modal: Kontakt-/Dungeon-Zugriff pro Mitglied,
+  // plus einmalige Aufnahme mitgebrachter privater Dungeons in den Pool.
+  let guildRightsMemberId = null;
+
+  function setViewSwitchActive(containerId, value){
+    document.getElementById(containerId).querySelectorAll('.view-switch-btn').forEach(b=>{
+      b.classList.toggle('active', b.dataset.val===value);
+    });
+  }
+
+  function openGuildRightsModal(memberId, memberName, rights){
+    guildRightsMemberId = memberId;
+    document.getElementById('guildRightsMemberName').textContent = memberName;
+    setViewSwitchActive('guildRightsContactsSwitch', rights.contacts_access || 'read');
+    setViewSwitchActive('guildRightsDungeonsSwitch', rights.dungeons_access || 'read');
+    document.getElementById('guildRightsTeamCheck').checked = !!rights.team_rights;
+    document.getElementById('guildMemberRightsModal').style.display='flex';
+    loadGuildRightsPoolList(memberId);
+  }
+
+  document.querySelectorAll('#guildRightsContactsSwitch .view-switch-btn, #guildRightsDungeonsSwitch .view-switch-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      btn.parentElement.querySelectorAll('.view-switch-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+
+  document.getElementById('guildRightsCloseBtn').addEventListener('click', ()=>{
+    document.getElementById('guildMemberRightsModal').style.display='none';
+  });
+
+  document.getElementById('guildRightsSaveBtn').addEventListener('click', async ()=>{
+    const contactsVal = document.querySelector('#guildRightsContactsSwitch .view-switch-btn.active')?.dataset.val || 'read';
+    const dungeonsVal = document.querySelector('#guildRightsDungeonsSwitch .view-switch-btn.active')?.dataset.val || 'read';
+    const teamRights = document.getElementById('guildRightsTeamCheck').checked;
+    const { error } = await sb.from('guild_members').update({
+      contacts_access: contactsVal, dungeons_access: dungeonsVal, team_rights: teamRights
+    }).eq('guild_id', currentGuild.id).eq('member_id', guildRightsMemberId);
+    if(error){ reportError('Gilden-Rechte speichern', error); return; }
+    document.getElementById('guildMemberRightsModal').style.display='none';
+    await renderGuildMembers(currentGuild.id);
+  });
+
+  // Dungeons, die das Mitglied selbst angelegt/besessen hat, bevor es der
+  // Gilde beitrat -- noch nicht Teil des Gilden-Pools (guild_id NULL).
+  // Der Gildenführer entscheidet hier einmalig pro Dungeon, ob er
+  // aufgenommen wird (Liste mit Toggle, wie besprochen).
+  async function loadGuildRightsPoolList(memberId){
+    const listEl = document.getElementById('guildRightsPoolList');
+    listEl.innerHTML = '<div class="empty-page-hint">Lade …</div>';
+    const { data: locs, error } = await sb.from('locations').select('id,name,type')
+      .or(`owner_id.eq.${memberId},created_by.eq.${memberId}`).is('guild_id', null);
+    if(error){ logSilentError('Private Dungeons des Mitglieds laden', error); listEl.innerHTML=''; return; }
+    if(!locs || locs.length===0){ listEl.innerHTML = '<div class="empty-page-hint">Keine privaten Dungeons zum Aufnehmen.</div>'; return; }
+    listEl.innerHTML = locs.map(l=>`
+      <label class="settings-switch-row" style="margin-bottom:8px;">
+        <span class="settings-switch">
+          <input type="checkbox" data-pool-loc="${l.id}">
+          <span class="settings-switch-track"><span class="settings-switch-thumb"></span></span>
+        </span>
+        <span class="settings-switch-label">${escHtml(l.name)}</span>
+      </label>`).join('');
+    listEl.querySelectorAll('[data-pool-loc]').forEach(cb=>{
+      cb.addEventListener('change', async ()=>{
+        const newGuildId = cb.checked ? currentGuild.id : null;
+        const { error: updErr } = await sb.from('locations').update({ guild_id: newGuildId }).eq('id', cb.dataset.poolLoc);
+        if(updErr){ reportError('Dungeon in Gilden-Pool aufnehmen', updErr); cb.checked = !cb.checked; }
+      });
+    });
+  }
+
+  // Ermittelt, in welche guild_id ein neu angelegter Dungeon automatisch
+  // einsortiert wird: die eigene Gilde (falls Gründer), die Gilde eines
+  // Mitglieds mit Dungeon-Schreibrecht, oder gar keine (privat).
+  async function myDungeonPoolGuildId(){
+    const { data: membership, error } = await sb.from('guild_members').select('guild_id,dungeons_access').eq('member_id', profile.id).maybeSingle();
+    if(error){ logSilentError('Gilden-Mitgliedschaft für Dungeon-Anlage prüfen', error); return null; }
+    if(!membership) return null;
+    if(membership.dungeons_access === 'write') return membership.guild_id;
+    const { data: guild, error: gErr } = await sb.from('guilds').select('founder_id').eq('id', membership.guild_id).maybeSingle();
+    if(gErr){ logSilentError('Gilde für Dungeon-Anlage laden', gErr); return null; }
+    return (guild && guild.founder_id === profile.id) ? membership.guild_id : null;
   }
 
   document.getElementById('guildAddBtn').addEventListener('click', ()=> renderGuildPicker());
@@ -4357,6 +4500,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         if(error){ reportError('Mitglied zur Gilde hinzufügen', error); return; }
         card.style.display='none';
         await renderGuildMembers(currentGuild.id);
+        // Direkt das Rechte-Modal öffnen -- das ist der Beitritts-Moment,
+        // in dem auch mitgebrachte private Dungeons einmalig geprüft werden.
+        const added = candidates.find(c=>c.id===btn.dataset.add);
+        openGuildRightsModal(btn.dataset.add, added ? added.display_name : '', { contacts_access:'read', dungeons_access:'read', team_rights:false });
       });
     });
   }
@@ -4450,9 +4597,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       const results = await res.json();
       if(!results || results.length===0){ statusEl.textContent = 'Adresse nicht gefunden.'; return; }
       const { lat, lon } = results[0];
+      const guildId = await myDungeonPoolGuildId();
       const { error } = await sb.from('locations').insert({
         org_id:profile.org_id, name, type, lat:parseFloat(lat), lng:parseFloat(lon),
-        address, created_by:profile.id
+        address, created_by:profile.id, guild_id:guildId
       });
       if(error){ reportError('Dungeon anlegen', error, statusEl); return; }
       document.getElementById('locNameInput').value = '';

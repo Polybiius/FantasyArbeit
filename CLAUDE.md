@@ -1617,14 +1617,10 @@ prüfbar statt im Kopf vorausgeplant werden zu müssen.
   Details. Vor dem Umbauen erst klären, wie genau (ersetzt der tägliche
   Gratis-Trank die Quest-Vergabe, oder kommt beides zusammen — `grantItem()`
   für Quest-Belohnungen existiert bereits und ist unabhängig nutzbar).
-- **Gilden-basierte Sichtbarkeit** (statt des heutigen organisationsweiten
-  `contactsVisibility`-Schalters): war am 2026-07-30 als aktive, dringliche
-  Baustelle besprochen (Grundidee, zwei Beispiel-Szenarien B2B/B2C, zwei
-  offene Detailfragen), wurde am 2026-07-31 vom Nutzer bewusst zurückgestuft
-  — auf **viel später** verschoben, nicht mehr aktiv. Vor dem Wiederaufnehmen:
-  falls der Chat-Verlauf vom 2026-07-30 verfügbar ist, dort nachlesen (Details
-  wurden hier bewusst nicht mehr mitgeschleppt). Nicht von selbst wieder
-  anfangen, nur wenn der Nutzer es explizit anstößt.
+- **Gilden-basierte Sichtbarkeit** — Phase 1 seit 2026-08-08 live gebaut,
+  siehe eigener Abschnitt "Gilden-basierte Sichtbarkeit, Phase 1" weiter
+  unten. Phase 2 (Notfall-Nachfolgekette) und Phase 3 (protokollierter
+  Admin-Notfallzugriff) bleiben offen, kein Zeitdruck.
 - **BWS-Verrechnung (Phase 2 des Produktkatalogs)** — Formel jetzt bekannt,
   **noch nicht gebaut** (kein SQL/Code bisher). Am 2026-08-03 hat der Nutzer
   seine bestehende Excel (`~/Schreibtisch/Projekt.xlsm`, 14 Blätter:
@@ -2023,13 +2019,82 @@ Quest-Baum-Datei mitbringt, geht es darum, sie ins `recurringQuests`/
 bestehende Beispiele in `sql/patch2_journal.sql` ff. bzw. direkt in der
 Supabase-Tabelle `rule_configs`.
 
+## Gilden-basierte Sichtbarkeit, Phase 1 (seit 2026-08-08 live)
+
+Löst die früher hier gelistete Lücke ("jedes Org-Mitglied sieht alle
+Dungeons") und ersetzt für Kontakte den alten organisationsweiten
+`contactsVisibility`-Schalter als primären Mechanismus. Entstanden aus
+einer sehr ausführlichen Grundsatz-Konversation mit dem Nutzer (siehe
+Git-Historie desselben Tages) — Auslöser war ein echtes, beobachtetes
+Problem: Kolleg:innen, die sich neu anmeldeten, sahen sofort alle
+Dungeons/Kontakte des Nutzers.
+
+**Grundprinzip:** Bottom-up, jeder Mitarbeiter startet komplett privat
+("wie sein eigenes Programm"), auch für den Admin unsichtbar im Alltag.
+Sichtbarkeit entsteht ausschließlich durch **Gilden-Mitgliedschaft**
+(`guilds`/`guild_members`, existierte als reine RPG-Sozialfunktion schon
+vorher) — kein Alleingang mehr auf Basis eines globalen Schalters.
+
+**Zwei komplett unabhängige Freigabe-Achsen pro Gildenmitglied**
+(`guild_members.contacts_access`/`dungeons_access`, je `'read'`/`'write'`,
+Standard `'read'` bei Einladung), **plus `team_rights`** (bool, für
+spätere Mitverwaltung, in Phase 1 noch nicht ausgewertet):
+- **Kontakte** sind der eigentliche Kern (das CRM) — Freigabe gilt
+  pauschal für ALLE Kontakte eines Mitglieds auf einmal, unabhängig davon,
+  ob sie einem Dungeon zugeordnet sind oder nicht. **Wichtige Korrektur
+  während der Konzeptions-Diskussion:** ursprünglich fälschlich als von
+  Dungeons abhängig modelliert (Kontakt erbt Sichtbarkeit vom Dungeon) —
+  falsch, weil dungeon-lose Kontakte (z.B. niedergelassene Ärzte in
+  eigener Praxis, kein Krankenhaus-Dungeon) sonst nie hätten geteilt
+  werden können. Kontakte haben deshalb **kein eigenes `guild_id`-Feld**,
+  die Prüfung läuft direkt über Eigentümer+Gilde (`guild_contact_permission()`).
+- **Dungeons** sind bewusst nur die spielerische Organisationsschicht
+  obendrüber ("Gimmick", O-Ton Nutzer) — `locations.guild_id` (NULL =
+  privat). Neue Dungeons eines Mitglieds mit `dungeons_access='write'`
+  landen automatisch im Pool seiner Gilde (`myDungeonPoolGuildId()` in
+  `index.html`, an beiden Anlege-Stellen). Bringt ein neu eingeladenes
+  Mitglied bereits bestehende private Dungeons mit, entscheidet **nur
+  beim Beitritt** einmalig der Gildenführer, ob sie in den Pool
+  aufgenommen werden (Liste mit Toggle im Rechte-Modal,
+  `loadGuildRightsPoolList()`) — danach kein formaler Prüfpunkt mehr,
+  läuft informell im Team.
+
+**Bedienung:** "Hinzufügen" beim Gilden-Mitglied-Picker öffnet direkt das
+neue `guildMemberRightsModal` (Kontakt-/Dungeon-Zugriff als
+`.view-switch`-Toggle, Teamrechte als `.settings-switch`-Pill, plus die
+Aufnahme-Liste) — derselbe Button (`data-rights`) auf jeder Mitglieder-Kachel
+lässt den Gründer die Rechte jederzeit im Nachgang ändern. Gilde gründen
+setzt automatisch die eigenen Rechte auf voll (`write`/`write`/`true`) und
+übernimmt eigene bestehende Dungeons automatisch in den neuen Pool (keine
+Prüfung nötig, es ist die eigene Welt des Gründers).
+
+**Wichtiger RLS-Stolperstein, der viel Debugging gekostet hat (unbedingt
+bei künftigen ähnlichen Policies im Kopf behalten):** eine `FOR UPDATE`-
+Policy mit korrektem `USING`/`WITH CHECK` reicht NICHT aus, wenn die Zeile
+nicht ZUSÄTZLICH auch über eine bestehende `SELECT`-Policy sichtbar ist —
+Postgres verlangt beides, die UPDATE-eigene `USING`-Klausel ersetzt die
+Sichtbarkeits-Prüfung nicht. Selbst eine testweise auf `USING(true) WITH
+CHECK(true)` vereinfachte Update-Policy schlug fehl (0 betroffene Zeilen,
+kein Fehler), bis `locations_select_org` um dieselbe
+`guild_founder_of_member()`-Bedingung erweitert wurde, die die
+Aufnahme-Policy schon nutzte — der Gildenführer musste den noch nicht
+aufgenommenen, privaten Dungeon eines Mitglieds erst SEHEN können, bevor
+er ihn per UPDATE aufnehmen konnte. Per Wegwerf-Testaccounts (Signup,
+Profile, Kontakt/Dungeon, Cross-User-Zugriffsversuche) sauber isoliert und
+verifiziert, inklusive mehrerer Zwischenschritte mit temporären
+Diagnose-Funktionen (`debug_*`, alle wieder entfernt).
+
+**Bewusst noch nicht Teil von Phase 1** (siehe Konzepts-Konversation):
+Notfall-Nachfolgekette für Gildenführer (`succession_rank`, geordnete
+Liste von Teamleitern), Admin-Notfallzugriff mit Protokollierung
+(`access_audit_log`) — beides als Phase 2/3 vorgemerkt, kein Zeitdruck.
+Provisions-/Statistik-Aufteilung bei gemeinsam bearbeiteten Kontakten
+bewusst zurückgestellt ("erst ein funktionierendes System, dann
+Feinschliff") — läuft aktuell einfach auf den, der den Abschluss tatsächlich
+macht.
+
 ## Bekannte, bewusst in Kauf genommene Lücken
 
-- Aktuell sieht JEDES Organisationsmitglied ALLE Accounts/Locations
-  (`locations_select_org`-Policy hat keine Besitzer-Einschränkung) — laut
-  Nutzer eigentlich falsches Verhalten, aber die geplante Lösung (gilden-
-  basierte Sichtbarkeit, siehe "Bewusst aufgeschobene Ideen") ist bewusst auf
-  später verschoben. Bis dahin: kein Alleingang, nicht von selbst reparieren.
 - "Zuletzt kontaktiert" an einem Kontakt zeigt nur **eigene** Log-Einträge des
   gerade eingeloggten Nutzers, nicht die von Kollegen — auch wenn der Kontakt
   auf "shared" steht. Grund: `action_log` bleibt grundsätzlich privat; es gibt
