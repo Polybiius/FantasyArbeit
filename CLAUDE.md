@@ -82,9 +82,10 @@ nicht per Code-Änderung.
   SQL-Patch manuell im Supabase SQL-Editor ausgeführt. Das ändert sich jetzt mit
   Claude Code: Commits/Pushes laufen seit 2026-07-31 automatisch durch Claude
   Code (ein GitHub Personal Access Token liegt im `credential.helper store` des
-  Nutzers, dadurch kein `ksshaskpass`-Problem mehr). **SQL-Patches laufen
-  weiterhin manuell** über den Supabase SQL-Editor beim Nutzer — dafür hat
-  Claude Code keinen Zugriff/Zugangsdaten.
+  Nutzers, dadurch kein `ksshaskpass`-Problem mehr). **SQL-Patches liefen bis
+  2026-08-08 manuell** über den Supabase SQL-Editor beim Nutzer — seitdem gibt
+  es eine echte Migrations-Toolchain, siehe eigener Abschnitt
+  "Supabase-CLI-Migrationstoolchain" unten.
 - **Frontend-Framework-Frage (React/Vue/etc.), geklärt am 2026-08-03:** die
   "eine `index.html`, kein Framework"-Linie oben war ursprünglich eine
   praktische Zwangslage aus der Zeit vor Claude Code (Copy-Paste in GitHubs
@@ -344,7 +345,66 @@ Funktionen benutzen statt eigene Fehlerbehandlung zu erfinden.**
   über `action_log_id` mit der zugehörigen XP-Buchung verknüpft. Gleiches
   RLS-Muster wie `termine`.
 
-### Sicherheitsmodell (RLS), zum Verständnis
+### Supabase-CLI-Migrationstoolchain, seit 2026-08-08
+
+Löst das in CLAUDE.md selbst lange angekündigte Ziel ein ("dieses Muster
+[nummerierte SQL-Dateien + manueller SQL-Editor] beibehalten, bis eine
+echte Migrations-Toolchain eingeführt wird") — auf Nutzerwunsch
+eingerichtet, nachdem die Dashboard-Warnung `42P01: relation
+"supabase_migrations.schema_migrations" does not exist` den Anstoß gab.
+
+**Setup:** Supabase-CLI liegt als normale Dev-Abhängigkeit im
+`package.json` (`npm install` holt sie automatisch mit, wie ESLint —
+bewusst NICHT wie Playwright als separates portables Tool außerhalb des
+Repos, weil dies echtes Projekt-Werkzeug ist, kein reines
+Claude-Code-Testwerkzeug). Projekt ist per `supabase link --project-ref
+aaqbbkcghxldsbhqwcyh` verknüpft. Login lief einmalig über `supabase
+login` im echten Terminal des Nutzers (öffnet Browser-OAuth) — der
+dabei lokal gespeicherte Zugang wird von der Claude-Code-Sandbox
+automatisch mitverwendet (gleiches Benutzerkonto, gleiches `$HOME`),
+kein Token wurde je durch den Chat geschickt.
+
+**Baseline:** der komplette bisherige DB-Stand (20 Tabellen, entspricht
+Patch 1–39) wurde per `supabase db pull` einmalig als erste Migration
+eingefroren (`supabase/migrations/20260808145403_remote_schema.sql`),
+danach die Frage "Update remote migration history table?" mit Ja
+bestätigt — das trägt in der bisher fehlenden
+`supabase_migrations.schema_migrations`-Tabelle nur einen Vermerk
+"dieser Stand ist bereits abgedeckt" ein, ändert keine echten Daten.
+Behebt nebenbei die eingangs erwähnte Dashboard-Warnung.
+
+**Wichtiger technischer Stolperstein:** `supabase db pull`/`db diff`
+brauchen im Hintergrund Docker (lokale Schatten-Datenbank zum
+Diffen) — das ist in der Claude-Code-Sandbox (VS-Code-Flatpak) nicht
+erreichbar, selbst wenn Docker/Podman auf dem eigentlichen System
+läuft (gleiche Einschränkung wie beim `flatpak`-Befehl selbst). Der
+Nutzer hat deshalb den einmaligen `db pull` in seinem eigenen echten
+Terminal ausgeführt, dort ist Docker vorhanden (Docker 29.6.2 UND
+Podman 5.8.4 laut Nutzer-Check).
+**`supabase db push` braucht dagegen KEIN Docker** (nur eine direkte
+Postgres-Verbindung, keine lokale Diff-Datenbank) — funktioniert
+deshalb direkt aus der Claude-Code-Sandbox heraus, per Testmigration
+verifiziert (`20260808150221_claude_push_test.sql`, folgenlos, nur
+`SELECT 1`).
+
+**Neuer Workflow für künftige Schema-Änderungen:**
+`supabase migration new <name>` legt eine zeitgestempelte Datei unter
+`supabase/migrations/` an (ersetzt `sql/patchN_....sql` als Ablageort
+für alles Neue — die alten `sql/`-Dateien + `PATCH_LOG.md` bleiben als
+historisches Archiv der Patches 1–39 unangetastet liegen, werden aber
+nicht fortgeführt). `supabase db push` wendet sie auf die echte
+Datenbank an.
+
+**Verbindliche Regel, vom Nutzer am 2026-08-08 ausdrücklich so
+festgelegt (kein Blankoscheck wie bei `git push`):** Claude Code führt
+`supabase db push` für echte inhaltliche Änderungen **immer erst nach
+explizitem Go des Nutzers** aus — Migration schreiben, erklären was sie
+bewirkt, warten, dann erst pushen. Gilt uneingeschränkt weiter: bei
+destruktiven Operationen (`DROP`, `DELETE`) explizit warnen, siehe
+allgemeine Regel weiter unten. `supabase/.temp/` ist gitignored (rein
+lokaler Verbindungs-Cache, keine Geheimnisse drin, aber maschinenspezifisch).
+
+## Sicherheitsmodell (RLS), zum Verständnis
 
 Fast jede Tabelle hat `org_id` und eine RLS-Policy, die auf eine Hilfsfunktion
 `public.current_org_id()` zurückgreift (liest `org_id` aus `profiles` für
