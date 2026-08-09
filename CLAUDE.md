@@ -335,7 +335,9 @@ Funktionen benutzen statt eigene Fehlerbehandlung zu erfinden.**
   nicht eine Organisation). Trägt sich pro künftigem Patch selbst ein.
 - `termine` — echter Termin-Kalender (seit Patch 33, live, siehe eigener
   Abschnitt "Echter Termin-Kalender" oben). `owner_id`, optionale
-  `contact_id`/`location_id`, Freitext-`title`, `start_at`/`end_at`. Rein
+  `contact_id`/`location_id`, Freitext-`title`, `start_at`/`end_at`, seit
+  Patch 40 zusätzlich optionales `kanal` (`'online'|'buero'|'betrieb'`,
+  siehe Abschnitt "Questbaum-Übersetzung, erster Schritt" unten). Rein
   persönlich, aber mit Admin-Leserechte-Ausnahme (anders als
   `journal_entries`). Keine Überschneidungs-Prüfung, Doppelbuchungen sind
   einfach unabhängige Zeilen.
@@ -2084,7 +2086,63 @@ vermutlich in Obsidian Canvas oder einer Tabelle. Wenn der Nutzer eine
 Quest-Baum-Datei mitbringt, geht es darum, sie ins `recurringQuests`/
 `questChains`-JSON-Schema im Regelwerk zu übersetzen — Format siehe
 bestehende Beispiele in `sql/patch2_journal.sql` ff. bzw. direkt in der
-Supabase-Tabelle `rule_configs`.
+Supabase-Tabelle `rule_configs`. **Erster echter Schritt dieser
+Übersetzung seit 2026-08-09 abends live**, siehe nächster Abschnitt.
+
+## Questbaum-Übersetzung, erster Schritt: Termin-Kanal + Vertriebsserien (Patch 40, 2026-08-09)
+
+Der Obsidian-Questbaum (siehe `Questbaum.canvas`,
+[[reference_obsidian_vault_questbaum]] in Claudes Erinnerung) wurde in
+derselben Session gemeinsam mit dem Nutzer auf Messbarkeit gegen das echte
+System geprüft — die meisten Äste (Sach-/Leben-/Kranken-/Finanzierung-
+Abschlüsse, Krankenhausakquise, Empfehlungsmanagement, Bestandskundenausbau)
+waren schon vorher 1:1 aus bestehenden Daten ableitbar. Zwei konkrete
+Lücken wurden in diesem Patch geschlossen:
+
+**1. `termine.kanal`/`termin_series.kanal`** (nullable, Werte
+`'online'|'buero'|'betrieb'`, kein DB-Constraint — gleiches Muster wie
+`contacts.status`, Prüfung im Frontend): neuer `.view-switch`
+(💻 Online/🏢 Büro/🏥 Im Betrieb, `.kanal-toggle-btn`) in allen drei
+Termin-Popups (`terminLeadModal`, `kanbanTerminModal`,
+`termineEntryModal`), erneutes Klicken des aktiven Buttons wählt ab
+(bleibt optional). Wird beim Speichern mitgeschrieben, bei
+Serienterminen über `termin_series.kanal` an jede materialisierte
+Zeile weitergegeben (`topUpSeries()`). Sichtbar als Icon-Präfix in der
+Wochenansicht (`renderDayEvents()`) und als Badge in der Kontakt-Chronik
+(`kanalBadgeHtml()`, KANAL_LABELS-Konstante) — damit landet die
+Information nicht nur "es gab einen Termin am Datum X", sondern auch
+"online/vor Ort/im Betrieb", wie vom Nutzer für die CRM-Dokumentation
+gewünscht. **Bewusst nur drei Kanäle, nicht vier**: eine ursprünglich im
+Questbaum separate "Praxis"-Kategorie wurde mit "Im Betrieb"
+zusammengelegt, da nur diese drei Werte am Termin selbst erfasst
+werden — Krankenhaus vs. Praxis ließe sich bei Bedarf später über
+`locations.type` des verknüpften Betriebs ableiten, kein eigenes Feld
+nötig.
+
+**2. Telefonakquise-/Termine-Serien als Konstanz-Anzeige** (neue
+"Konstanz"-Kachel auf der Verkaufsstatistik-Seite, unter den KPI-Karten):
+`computeDailyThresholdStreak()`/`computeWeeklyThresholdStreak()`, reine
+Funktionen direkt neben `computeJournalStreak()` (gleiches Prinzip: kein
+Speichern, live aus dem bereits geladenen eigenen `action_log`
+berechnet). Zeigt die aktuelle Serie für **beide** Schwellen aus dem
+Questbaum gleichzeitig — "X Tage in Folge ≥10 Nummern gewählt · Y Tage
+in Folge ≥20" (Aktion `telefon_5`, ×5 pro Log-Eintrag) und "X Wochen in
+Folge ≥5 Termine wahrgenommen · Y Wochen in Folge ≥7" (Aktion
+`termin_wahrgenommen`). Bewusst **kein** eigener Quest-/Belohnungs-
+Mechanismus, nur Sichtbarkeit — genau wie die Tagebuch-Serie ein reiner
+Fortschritts-Spiegel ist, keine XP-Quelle für sich.
+
+**Bewusst nicht Teil dieses Patches**, auf ausdrücklichen Nutzerwunsch:
+der "Vertriebstrichter" (10 Ansprachen→6 Termine→3 Abschlüsse) aus dem
+Questbaum ist eine reine persönliche Planungs-Daumenregel, kein
+Spielziel — wurde deshalb aus dem Obsidian-Baum wieder entfernt statt
+übersetzt zu werden, siehe Erinnerung `feedback_heuristic_vs_quest`.
+
+End-to-end mit Playwright gegen den echten Account verifiziert
+(`~/.local/share/playwright-portable/check_termin_kanal.mjs`): Kanal
+speichern → korrekter DB-Wert → Icon in der Wochenansicht →
+Vorbelegung beim erneuten Öffnen zum Bearbeiten, Testtermin danach
+aufgeräumt.
 
 ## Gilden-basierte Sichtbarkeit, Phase 1 (seit 2026-08-08 live)
 
