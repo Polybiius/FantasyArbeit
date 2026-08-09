@@ -1296,7 +1296,16 @@ Aktion `pitch`), wurde dafür entkoppelt: ein Angebot verschicken ist kein
 Treffen. Derselbe `promptKanbanTermin()`-Baustein sitzt zusätzlich als
 "Termin eintragen"-Button im Kontaktformular (`cdTerminBtn`) — bequemer
 Nachtrag, falls beim Verschieben übersprungen wurde, ausdrücklicher
-Nutzerwunsch ("das hat was Bequemliches").
+Nutzerwunsch ("das hat was Bequemliches"). **Seit 2026-08-09 abends:**
+steht die Karte gerade auf Gewonnen/Verloren, holt derselbe Button sie
+jetzt zusätzlich auf Ersttermin zurück (gleiche `kundenausbau`-Aktion wie
+beim Ziehen im Kanban, kein neuer Kontakt) — vorher passierte das nur beim
+Ziehen im Board, nicht über diesen Button, was der Nutzer als Bug meldete.
+**Offen, beim nächsten Gespräch klären:** der Nutzer wollte zusätzlich,
+dass so ein Rücksprung im Hintergrund mitzählt, welcher Termin es der
+Reihe nach für den Kontakt ist (3., 4., 5. …, da Ersttermin+Zweittermin
+schon vor dem ersten Gewinn stattfanden) — Formulierung war unklar,
+nicht geraten/gebaut, aktiv nachfragen.
 
 **Bewusst noch nicht gebaut (Phase 2, siehe "Bewusst aufgeschobene Ideen"-
 Prinzip):** wiederkehrende Termine, Erinnerungen, Tagesansicht. Nicht von
@@ -1672,6 +1681,46 @@ verifizieren (selbst nachmessen, nicht nur rendern und hoffen) — erst danach
 das Ergebnis dem Nutzer zeigen. Kein Rückfall auf reines Augenmaß.
 
 ## Bewusst aufgeschobene Ideen (NICHT vergessen, aber NICHT von selbst bauen)
+- **Datei-Upload bei Kontakten** — vom Nutzer am 2026-08-09 nur als
+  Stichwort genannt ("bei Kunden Dateien hochladen können"), noch ohne
+  Details (welche Dateitypen, wo sichtbar, wer darf hochladen/löschen).
+  Naheliegendes Vorbild im Code: `journal_photos` (privater Storage-Bucket,
+  signierte URLs) — technisch übertragbar, aber Sichtbarkeits-/
+  Berechtigungsfrage ist bei Kontakt-Dateien eine andere (Kontakte können
+  geteilt sein, Fotos im Tagebuch nicht). Erst durchsprechen, bevor gebaut
+  wird (Kernstruktur-Regel).
+- **Outlook-artige abhakbare Aufgaben** — vom Nutzer am 2026-08-09 als
+  Ausbau-Wunsch genannt: "ähnlich wie in Outlook Aufgaben, die wir abhaken
+  können". Es gibt bereits eine Teilbasis dafür (`tasksForDate()`,
+  Geburtstage + Wiedervorlage als nicht-blockierende Kalender-Hinweise,
+  siehe "Kalender-Aufgaben" oben) — aber komplett **abgeleitet, nicht
+  abhakbar** (kein eigener Erledigt-Zustand, keine frei anlegbaren
+  Aufgaben ohne Kontakt-Bezug). Ein echtes Abhak-System bräuchte
+  vermutlich eine neue Tabelle (eigener Zustand "erledigt am") statt der
+  bisherigen Ableitungs-Philosophie — Kernstruktur-Frage, erst
+  durchsprechen.
+- **Gamification-Ausschalter (reines CRM verkaufen)** — vom Nutzer am
+  2026-08-09: eine Einstellung, mit der sich das gesamte Gamification-Thema
+  (XP/Level/Klassen/Quests/Gilde/Charakter) organisationsweit abschalten
+  lässt, um das System auch als reines CRM ohne Spiel-Schicht verkaufen zu
+  können. Passt konzeptionell zu dem am 2026-08-03 skizzierten
+  `enabledModules`-Schlüssel in `rule_configs` (siehe "Frontend-Framework-
+  Frage" oben) — dort ging es um einzelne Bausteine (Kanban/Dungeon/
+  Tagebuch An/Aus), das hier wäre der radikalste Fall davon (alles
+  Spielerische auf einmal aus). Noch nicht durchdacht: was aus CRM-Sicht
+  überhaupt übrig bleibt (Kontakte/Kanban/Kalender/Statistik ja, aber
+  Charakterseite/Gilde/Inventar dann komplett weg?) — braucht ein
+  eigenes Gespräch, bevor irgendwas gebaut wird.
+- **Verkaufsstatistik (Arkanes Kompendium) an die Gilde binden** — vom
+  Nutzer am 2026-08-09: die aktuelle Berechnung (`aggregateStats()`,
+  Verkaufsstatistik-Seite) läuft ausschließlich über die **eigenen**
+  gewonnenen Verkäufe (`created_by = profile.id`) — der Nutzer möchte,
+  dass diese Zahlen später auch auf Gilden-Ebene aggregiert werden
+  (Team-Leistung sichtbar machen), naheliegend nach dem bereits gebauten
+  Gilden-Sichtbarkeits-Modell (Phase 1-3, siehe eigener Abschnitt). Noch
+  nicht durchdacht: ob das eine neue Ansicht ist (Gilden-Dashboard) oder
+  ein Umschalter auf der bestehenden Seite, und ob alle Gildenmitglieder
+  das sehen dürfen oder nur der Gildenführer/Team-Rechte-Inhaber.
 - **Lern-/Zertifikatsystem für den Zauberer** — vom Nutzer am 2026-08-03 nur
   als Name angekündigt, noch ohne jegliche inhaltliche Details. **Wichtig:
   der Name "Grimoire" ist dafür reserviert** — deshalb heißt die
