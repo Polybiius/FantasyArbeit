@@ -2090,9 +2090,9 @@ eigene Abschnitte weiter unten ("Gilden-Notfall-Nachfolgekette, Phase 2"
 und "Admin-Notfallzugriff, Phase 3"). Damit ist das Gilden-
 Sichtbarkeits-Projekt komplett, kein offener Punkt mehr in diesem
 Strang. Provisions-/Statistik-Aufteilung bei gemeinsam bearbeiteten Kontakten
-bewusst zurückgestellt ("erst ein funktionierendes System, dann
-Feinschliff") — läuft aktuell einfach auf den, der den Abschluss tatsächlich
-macht.
+war zunächst nur zurückgestellt, ist aber am 2026-08-09 auf Nutzerwunsch
+("zu weit in der Zukunft") komplett gestrichen worden — läuft einfach auf
+den, der den Abschluss tatsächlich macht, keine Idee mehr für später.
 
 **Direkter Folgeauftrag, noch am selben Tag: bewegter Avatar + Sigil auf
 Freundes-/Gilden-Kacheln.** Löst einen offenen Punkt aus der
@@ -2153,6 +2153,21 @@ Szenarien: Teamleiter rückt korrekt vor längerem Nicht-Teamleiter nach;
 Fallback aufs insgesamt längste Mitglied ohne `team_rights`; Gildenführer
 war letztes Mitglied → Gilde bleibt bestehen, `founder_id` wird `NULL`
 statt die Gilde zu löschen). Testdaten danach vollständig aufgeräumt.
+
+**Nachtrag 2026-08-09: End-to-End-Test des eigentlichen Offboardings
+(Mitarbeiter-Abgang, `supabase/migrations/
+20260808211342_mitarbeiter_offboarding_gildenpool.sql`) nachgeholt** — war
+bis dahin nur per Schema-Existenz geprüft, nicht per echter
+`auth.users`-Löschung. Per Wegwerf-SQL-Testdaten (`supabase db query
+--linked -f ...`) drei Szenarien verifiziert, alle korrekt: gildenlos
+(Kontakte/Dungeons/Verkäufe komplett weg, per CASCADE über den gelöschten
+Kontakt), normales Gildenmitglied (Kontakt/Dungeon landen im Pool,
+`sales.created_by` wird `NULL`, Verkauf selbst bleibt bestehen), und —
+das eigentlich ungetestete Zusammenspiel — Gildenführer mit eigenen
+Kontakten: Nachfolge UND Pooling der eigenen Daten laufen korrekt im
+selben Trigger-Durchlauf. Testdaten vollständig aufgeräumt, 0 Reste
+verifiziert. Damit ist der Mitarbeiter-Offboarding-Strang komplett
+getestet, kein offener Punkt mehr.
 
 ## Admin-Notfallzugriff, Phase 3 (seit 2026-08-08 abends live)
 
