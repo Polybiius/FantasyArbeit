@@ -3995,6 +3995,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       openContactActivityModal(c);
     });
     document.getElementById('cdTerminBtn').addEventListener('click', async ()=>{
+      document.getElementById('contactDetailModal').style.display='none';
       await promptKanbanTermin(c, 'Termin');
     });
     const editBtn = document.getElementById('cdEditBtn');
@@ -4165,8 +4166,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     wrap.innerHTML = pageItems.length ? pageItems.map(i=>i.html).join('')
       : '<div class="empty-page-hint">Noch keine Chronik-Einträge zu diesem Kontakt.</div>';
 
+    // renderContactChronikTab() läuft async nach — wird sie erst fertig,
+    // NACHDEM der Nutzer schon zurück auf "Übersicht" gewechselt hat, darf
+    // sie die Seitenleiste hier nicht mehr einblenden (sonst "Seite 1 von 2"
+    // auf dem falschen Tab, Bugreport 2026-08-09).
     const navEl = document.getElementById('chronikPaginationNav');
-    navEl.style.display = items.length > CHRONIK_PAGE_SIZE ? 'flex' : 'none';
+    const chronikTabActive = document.getElementById('contactDetailChronik').style.display !== 'none';
+    navEl.style.display = (chronikTabActive && items.length > CHRONIK_PAGE_SIZE) ? 'flex' : 'none';
     document.getElementById('chronikPageLabel').textContent = `Seite ${chronikCurrentPage+1} von ${totalPages}`;
     document.getElementById('chronikPrevPageBtn').disabled = chronikCurrentPage===0;
     document.getElementById('chronikNextPageBtn').disabled = chronikCurrentPage>=totalPages-1;
