@@ -3996,7 +3996,22 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     });
     document.getElementById('cdTerminBtn').addEventListener('click', async ()=>{
       document.getElementById('contactDetailModal').style.display='none';
-      await promptKanbanTermin(c, 'Termin');
+      // Karte steht auf Gewonnen/Verloren -> "Termin eintragen" holt sie
+      // zurück auf den Ersttermin (kein neuer Kontakt, derselbe Datensatz),
+      // gleiche Kundenausbau-Logik wie beim Ziehen im Kanban
+      // (moveKanbanCard()), nur ohne den dortigen kanbanBundleCache-Umweg,
+      // da c hier schon vorliegt.
+      if(c.kanban_stage==='gewonnen' || c.kanban_stage==='verloren'){
+        const ok = await logKanbanAction(c, 'kundenausbau');
+        if(!ok) return;
+        const { error } = await sb.from('contacts').update({ kanban_stage:'ersttermin_vereinbart' }).eq('id', c.id);
+        if(error){ reportError('Kanban-Spalte aktualisieren', error); return; }
+        c.kanban_stage = 'ersttermin_vereinbart';
+        await promptKanbanTermin(c, 'Ersttermin');
+        await renderContactsPage();
+      } else {
+        await promptKanbanTermin(c, 'Termin');
+      }
     });
     const editBtn = document.getElementById('cdEditBtn');
     if(editBtn) editBtn.addEventListener('click', ()=>{ document.getElementById('contactDetailModal').style.display='none'; startEditContact(c); });
@@ -5127,6 +5142,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('calMonthView').style.display = mode==='monat' ? 'block' : 'none';
     document.getElementById('calWeekView').style.display = mode==='woche' ? 'block' : 'none';
     if(mode==='woche') renderWeekView(true);
+    else renderCalendar();
   }
   document.getElementById('calViewMonthBtn').addEventListener('click', ()=> setCalViewMode('monat'));
   document.getElementById('calViewWeekBtn').addEventListener('click', ()=> setCalViewMode('woche'));
