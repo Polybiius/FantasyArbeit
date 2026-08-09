@@ -1602,6 +1602,73 @@ tatsächlichen Handgriff liegen), Mirror-Frage früh an einem einzelnen Frame
 prüfen statt erst am fertigen Sheet — beides jetzt interaktiv im Sprite-Labor
 prüfbar statt im Kopf vorausgeplant werden zu müssen.
 
+## Pixel-Art-Referenzmasken-System, seit 2026-08-09
+
+Ausgangslage: der Nutzer kündigte einen großen Ausbau an (3 Charaktere,
+~30 neue Kleidungsteile je Körperteil, "vieles mehr") und äußerte dabei
+explizit Misstrauen ("du bist sehr unzuverlässig in diesem Thema … du
+brauchst irgendein Raster, ein Gitter, eine Basis, eine Struktur"). Der
+Sprite-Bogen (siehe oben) hatte vorher gezeigt, dass freihändig pro Frame
+platzierte Pixel-Art mehrere Korrekturrunden braucht — Claude "sieht" ein
+gezeichnetes Ergebnis nicht automatisch richtig, ohne es aktiv nachzumessen.
+
+**Kernidee, als drei Python-Module fest in `Design/` verankert** (nicht
+mehr Wegwerf-`python3 -c`-Einzeiler wie im ersten Versuch):
+
+- **`Design/reference_masks.py`** — zieht aus bereits korrekt sitzenden
+  Original-Assets (Hemd/Corset, Hose/Rock, Stiefel/Socken, Handschuhe, je
+  m/w) die exakte Alpha-Maske jedes der 8 Lauf-Frames. `SLOT_SOURCES` ist
+  die einzige Stelle, die bei einem neuen Slot (z.B. Kopfbedeckung, Rücken)
+  erweitert werden muss — keine Code-Änderung sonst nötig. `load_reference_mask(slot,
+  gender, frame)` liefert die Maske als numpy-Array, `build_all()` schreibt
+  zusätzlich Sichtkontroll-PNGs + `reference_masks.json` nach
+  `Design/reference_masks/` (gitignored wie der Rest von `Design/`, reine
+  Alpha-Silhouetten ohne Farbinhalt aus dem lizenzierten Originalpaket).
+- **`Design/check_alignment.py`** — automatischer Grenz-Check statt reinem
+  Augenmaß. `check_anchor_preserved()` prüft, ob ein definiertes Ankerband
+  (z.B. die obersten 4 Zeilen = Schulteransatz) gegenüber dem Original nicht
+  schrumpft/wandert. `check_no_intrusion()` prüft, ob ein neues Teil in einen
+  fremden Nachbar-Slot hineinschneidet (z.B. ein verlängertes Hemd in die
+  Stiefel). `run_report()`/`report_all_pass()` faßt das über alle 8 Frames
+  zusammen.
+- **`Design/frame_grid_preview.py`** — Sicht-Werkzeug: `grid_frame()`
+  rendert einen einzelnen Frame stark vergrößert mit Koordinatenraster (alle
+  4px beschriftet), damit Claude tatsächlich nachmisst statt zu schätzen;
+  `run_cycle_strip()` zeigt alle 8 Frames nebeneinander für den schnellen
+  Sitz-Vergleich (vorher/nachher).
+
+**Zwei Testläufe gegen den männlichen Basiskörper durchgeführt (Ergebnis dem
+Nutzer als Artifact gezeigt, 2026-08-09):**
+1. **Umfärbung bei identischer Maske** (Hemd beige→dunkelgrün) — sitzt
+   erwartungsgemäß perfekt über alle 8 Frames, bestätigt nur, dass die
+   Maskenextraktion/Pipeline technisch funktioniert.
+2. **Neue Silhouette** (Hemd→lange Tunika, Saum entlang der bereits
+   korrekten Hosen-Maske bis kurz vor die Stiefel verlängert) — **beide
+   automatischen Checks bestanden in allen 8 Frames** (Schulteransatz
+   unverändert, kein Hineinschneiden in die Stiefel), aber der sichtbare
+   Effekt war schwächer als erhofft (nur ein kleiner Zipfel an der Hüfte,
+   weil der Saum bewusst konservativ vor den Stiefeln gestoppt wurde).
+
+**Ehrlicher Status, nicht beschönigen:**
+- **Zuverlässig:** Umfärbungen/Muster bei gleicher Maske, und Formen, die
+  sich direkt aus einer bereits korrekten Nachbarmaske ableiten lassen
+  (länger/kürzer entlang einer bestehenden Kontur) — automatisch geprüfbar.
+- **Weiterhin Handarbeit mit Sichtprüfung, nur jetzt mit harten Leitplanken:**
+  wirklich neue Silhouetten (lockerer Schnitt, neue Ärmelform, Kragen,
+  Kapuze) — die Checks verhindern nur, dass der Ankerbereich verrutscht oder
+  in einen Nachbar-Slot schneidet, nicht dass die Form selbst gut aussieht.
+- **Noch nicht getestet:** weiblicher Basiskörper, die Slots Hände/Kopf/Rücken,
+  ob lockere/wehende Formen (Umhänge, Röcke) sich überhaupt in dieses Schema
+  pressen lassen.
+
+**Für jedes künftige neue Kleidungsteil verbindlich:** nicht mehr freihändig
+pro Frame zeichnen/positionieren. Erst `reference_masks.py` für den
+betroffenen Slot/das betroffene Geschlecht ziehen (neuer Slot: einfach in
+`SLOT_SOURCES` ergänzen), neue Form gegen die Maske ableiten oder zumindest
+mit `check_alignment.py` gegenprüfen, mit `frame_grid_preview.py` visuell
+verifizieren (selbst nachmessen, nicht nur rendern und hoffen) — erst danach
+das Ergebnis dem Nutzer zeigen. Kein Rückfall auf reines Augenmaß.
+
 ## Bewusst aufgeschobene Ideen (NICHT vergessen, aber NICHT von selbst bauen)
 - **Lern-/Zertifikatsystem für den Zauberer** — vom Nutzer am 2026-08-03 nur
   als Name angekündigt, noch ohne jegliche inhaltliche Details. **Wichtig:
