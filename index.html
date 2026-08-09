@@ -1189,6 +1189,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
           <h2 id="statistikHeaderTitle">Kompendium</h2>
           <div class="stat-tabs" id="statTabs"></div>
           <div class="stat-hero-grid" id="statHeroGrid"></div>
+          <div class="card" id="statStreakCard" style="margin-top:18px;">
+            <h2 style="font-size:15px;">Konstanz</h2>
+            <div class="empty-page-hint" id="statCallStreakHint" style="margin-bottom:4px;"></div>
+            <div class="empty-page-hint" id="statTerminStreakHint"></div>
+          </div>
           <div class="stat-chart-card" id="statChartCard" style="display:none;">
             <div class="stat-legend" id="statLegend"></div>
             <div id="statBarRows"></div>
@@ -1393,6 +1398,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
           <input type="time" id="terminLeadEnde">
         </div>
       </div>
+      <label class="cdl" style="display:block;margin-top:4px;">Kanal (optional)</label>
+      <div class="view-switch" id="terminLeadKanalSwitch" style="margin-bottom:0;">
+        <button type="button" class="cal-nav-btn view-switch-btn kanal-toggle-btn" data-kanal="online" style="flex:1;">💻 Online</button>
+        <button type="button" class="cal-nav-btn view-switch-btn kanal-toggle-btn" data-kanal="buero" style="flex:1;">🏢 Büro</button>
+        <button type="button" class="cal-nav-btn view-switch-btn kanal-toggle-btn" data-kanal="betrieb" style="flex:1;">🏥 Im Betrieb</button>
+      </div>
       <div class="empty-page-hint" id="terminLeadStatus"></div>
     </div>
     <button class="cal-nav-btn" id="terminLeadSaveBtn" style="width:100%;margin-top:8px;">Anlegen</button>
@@ -1422,6 +1433,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
           <input type="time" id="kanbanTerminEnde">
         </div>
       </div>
+      <label class="cdl" style="display:block;margin-top:4px;">Kanal (optional)</label>
+      <div class="view-switch" id="kanbanTerminKanalSwitch" style="margin-bottom:0;">
+        <button type="button" class="cal-nav-btn view-switch-btn kanal-toggle-btn" data-kanal="online" style="flex:1;">💻 Online</button>
+        <button type="button" class="cal-nav-btn view-switch-btn kanal-toggle-btn" data-kanal="buero" style="flex:1;">🏢 Büro</button>
+        <button type="button" class="cal-nav-btn view-switch-btn kanal-toggle-btn" data-kanal="betrieb" style="flex:1;">🏥 Im Betrieb</button>
+      </div>
       <div class="empty-page-hint" id="kanbanTerminStatus"></div>
     </div>
     <button class="cal-nav-btn" id="kanbanTerminSaveBtn" style="width:100%;margin-top:8px;">Termin speichern</button>
@@ -1447,6 +1464,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
           <label class="cdl" style="display:block;">Bis</label>
           <input type="time" id="termineEntryEnde">
         </div>
+      </div>
+      <label class="cdl" style="display:block;margin-top:4px;">Kanal (optional)</label>
+      <div class="view-switch" id="termineEntryKanalSwitch" style="margin-bottom:0;">
+        <button type="button" class="cal-nav-btn view-switch-btn kanal-toggle-btn" data-kanal="online" style="flex:1;">💻 Online</button>
+        <button type="button" class="cal-nav-btn view-switch-btn kanal-toggle-btn" data-kanal="buero" style="flex:1;">🏢 Büro</button>
+        <button type="button" class="cal-nav-btn view-switch-btn kanal-toggle-btn" data-kanal="betrieb" style="flex:1;">🏥 Im Betrieb</button>
       </div>
       <label class="cdl" style="display:block;margin-top:4px;">Kontakt (optional)</label>
       <div class="loc-autocomplete">
@@ -2495,6 +2518,40 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       cursor = addDaysToKey(cursor, -1);
     }
     return { streak, todayDone };
+  }
+
+  // Telefonakquise-/Termine-Serien (Questbaum: "Konstanz statt Rohvolumen").
+  // Reine Funktionen ohne DB-Zugriff, gleiches Prinzip wie
+  // computeJournalStreak() — Tages-/Wochen-Schwellenwert aus dem bereits
+  // geladenen eigenen action_log ableiten, dann dieselbe
+  // "läuft die Serie noch" / "ist sie gerissen"-Logik anwenden.
+  function computeDailyThresholdStreak(entries, actionKey, perEntryQty, threshold, todayStr){
+    const totals = new Map();
+    entries.filter(e=>e.action_key===actionKey).forEach(e=>{
+      const key = todayKey(e.created_at);
+      totals.set(key, (totals.get(key)||0) + perEntryQty);
+    });
+    const qualifyingDays = new Set([...totals.entries()].filter(([,v])=>v>=threshold).map(([k])=>k));
+    return computeJournalStreak(qualifyingDays, todayStr);
+  }
+  // Wochen-Pendant dazu — arbeitet auf Montags-Datumsschlüsseln statt
+  // Tagesschlüsseln, addDaysToKey(...,-7) springt zuverlässig eine Woche
+  // zurück, unabhängig von Monats-/Jahresgrenzen.
+  function computeWeeklyThresholdStreak(entries, actionKey, threshold, todayDate){
+    const weekTotals = new Map();
+    entries.filter(e=>e.action_key===actionKey).forEach(e=>{
+      const wk = dateKeyLocal(mondayOfWeek(new Date(e.created_at)));
+      weekTotals.set(wk, (weekTotals.get(wk)||0)+1);
+    });
+    const currentWeekKey = dateKeyLocal(mondayOfWeek(todayDate));
+    const thisWeekDone = (weekTotals.get(currentWeekKey)||0) >= threshold;
+    let cursor = thisWeekDone ? currentWeekKey : addDaysToKey(currentWeekKey, -7);
+    let streak = 0;
+    while((weekTotals.get(cursor)||0) >= threshold){
+      streak++;
+      cursor = addDaysToKey(cursor, -7);
+    }
+    return { streak, thisWeekDone };
   }
 
   // Täglicher Gratis-Manatrank: hängt am Kalendertag, nicht am Login-Moment —
@@ -3627,6 +3684,22 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     ].join('');
     renderStatCategoryChart(agg.byCategory);
     renderStatNumberCards(agg.byCategory);
+    renderStatStreaks();
+  }
+
+  // Live aus dem eigenen action_log berechnet, nichts gespeichert — Pendant
+  // zur Tagebuch-Serie, nur für die Telefonakquise-/Termine-Ketten aus dem
+  // Questbaum ("Konstanz statt Rohvolumen", 2026-08-09).
+  function renderStatStreaks(){
+    const todayStr = todayKey(new Date());
+    const s10 = computeDailyThresholdStreak(log, 'telefon_5', 5, 10, todayStr);
+    const s20 = computeDailyThresholdStreak(log, 'telefon_5', 5, 20, todayStr);
+    document.getElementById('statCallStreakHint').textContent =
+      `📞 Telefonakquise: ${s10.streak} Tage in Folge ≥10 Nummern gewählt · ${s20.streak} Tage in Folge ≥20 Nummern gewählt`;
+    const w5 = computeWeeklyThresholdStreak(log, 'termin_wahrgenommen', 5, new Date());
+    const w7 = computeWeeklyThresholdStreak(log, 'termin_wahrgenommen', 7, new Date());
+    document.getElementById('statTerminStreakHint').textContent =
+      `🗓️ Termine: ${w5.streak} Wochen in Folge ≥5 wahrgenommen · ${w7.streak} Wochen in Folge ≥7 wahrgenommen`;
   }
 
   function renderStatTabs(){
@@ -4057,7 +4130,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     (termineData||[]).forEach(t=>{
       items.push({ ts: new Date(t.start_at), html:
-        `<div class="log-entry"><span class="lname">🗓️ ${escHtml(t.title||'Termin')}</span><span class="lright"><span class="ltime">${fmtTime(t.start_at)}</span></span></div>` });
+        `<div class="log-entry"><span class="lname">🗓️ ${escHtml(t.title||'Termin')}${t.kanal?` ${kanalBadgeHtml(t.kanal)}`:''}</span><span class="lright"><span class="ltime">${fmtTime(t.start_at)}</span></span></div>` });
     });
 
     cSales.forEach(s=>{
@@ -4779,6 +4852,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       const closeBtn = document.getElementById('terminLeadClose');
       document.getElementById('terminLeadLocName').textContent = loc.name;
       vornameEl.value = ''; nachnameEl.value = ''; datumEl.value = ''; startEl.value = ''; endeEl.value = ''; statusEl.textContent = '';
+      resetKanalSwitch('terminLeadKanalSwitch'); terminLeadKanal = null;
       modal.style.display = 'flex';
 
       function finish(){
@@ -4798,7 +4872,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         }).select().single();
         if(cErr){ reportError('Kontakt anlegen', cErr, statusEl); return; }
         await logKanbanAction(contact, 'termin_vereinbart');
-        await insertTermineIfTimeGiven(contact, 'Ersttermin', datum, startEl.value, endeEl.value);
+        await insertTermineIfTimeGiven(contact, 'Ersttermin', datum, startEl.value, endeEl.value, terminLeadKanal);
         await renderContactsPage();
         finish();
       };
@@ -4810,7 +4884,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // (überspringbar), nur wenn Start UND Ende ausgefüllt sind, entsteht ein
   // Kalendertermin. Ohne Zeit bleibt nur das Datum wie bisher an
   // contacts.naechster_kontakt hängen.
-  async function insertTermineIfTimeGiven(contact, label, datum, startStr, endeStr){
+  async function insertTermineIfTimeGiven(contact, label, datum, startStr, endeStr, kanal){
     if(!datum || !startStr || !endeStr) return;
     const [y,m,d] = datum.split('-').map(Number);
     const [sh,sm] = startStr.split(':').map(Number);
@@ -4820,7 +4894,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(endAt<=startAt) return;
     const { error } = await sb.from('termine').insert({
       org_id:profile.org_id, owner_id:profile.id, contact_id:contact.id,
-      title:`${label}: ${contact.name}`, start_at:startAt.toISOString(), end_at:endAt.toISOString()
+      title:`${label}: ${contact.name}`, start_at:startAt.toISOString(), end_at:endAt.toISOString(), kanal:kanal||null
     });
     if(error) logSilentError('Termin aus Kanban speichern', error);
   }
@@ -4843,6 +4917,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
       titleEl.textContent = `${label} für ${contact.name}`;
       datumEl.value=''; startEl.value=''; endeEl.value=''; statusEl.textContent='';
+      resetKanalSwitch('kanbanTerminKanalSwitch'); kanbanTerminKanal = null;
       modal.style.display = 'flex';
 
       function finish(){
@@ -4861,7 +4936,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         if(endAt<=startAt){ statusEl.textContent = 'Ende muss nach dem Start liegen.'; return; }
         const { error } = await sb.from('termine').insert({
           org_id:profile.org_id, owner_id:profile.id, contact_id:contact.id,
-          title:`${label}: ${contact.name}`, start_at:startAt.toISOString(), end_at:endAt.toISOString()
+          title:`${label}: ${contact.name}`, start_at:startAt.toISOString(), end_at:endAt.toISOString(), kanal:kanbanTerminKanal||null
         });
         if(error){ reportError('Termin speichern', error, statusEl); return; }
         finish();
@@ -4883,6 +4958,39 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   let termineLocationSelectedId = null;
   let termineEditingId = null; // null = neuer Termin, sonst wird ein bestehender bearbeitet
   let termineEntryDateForSave = null;
+
+  // Termin-Kanal (Patch 40): Online/Büro/Im Betrieb, optional. Drei
+  // unabhängige .kanal-toggle-btn-Gruppen (terminLeadModal/kanbanTerminModal/
+  // termineEntryModal) teilen sich dieselbe Klasse, deshalb container-scoped
+  // statt global gequeryt. Erneutes Klicken des aktiven Buttons wählt ab
+  // (Feld bleibt optional).
+  const KANAL_LABELS = { online:'💻 Online', buero:'🏢 Büro', betrieb:'🏥 Im Betrieb' };
+  const KANAL_ICONS = { online:'💻', buero:'🏢', betrieb:'🏥' };
+  function kanalBadgeHtml(kanal){ return kanal && KANAL_LABELS[kanal] ? `<span class="lctx">${KANAL_LABELS[kanal]}</span>` : ''; }
+  let terminLeadKanal = null;
+  let kanbanTerminKanal = null;
+  let termineEntryKanal = null;
+  function wireKanalSwitch(containerId, setter){
+    document.querySelectorAll(`#${containerId} .kanal-toggle-btn`).forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const wasActive = btn.classList.contains('active');
+        document.querySelectorAll(`#${containerId} .kanal-toggle-btn`).forEach(b=>b.classList.remove('active'));
+        if(wasActive){ setter(null); return; }
+        btn.classList.add('active');
+        setter(btn.dataset.kanal);
+      });
+    });
+  }
+  function resetKanalSwitch(containerId){
+    document.querySelectorAll(`#${containerId} .kanal-toggle-btn`).forEach(b=>b.classList.remove('active'));
+  }
+  function setKanalSwitch(containerId, kanal){
+    document.querySelectorAll(`#${containerId} .kanal-toggle-btn`).forEach(b=>
+      b.classList.toggle('active', b.dataset.kanal===kanal));
+  }
+  wireKanalSwitch('terminLeadKanalSwitch', v=>terminLeadKanal=v);
+  wireKanalSwitch('kanbanTerminKanalSwitch', v=>kanbanTerminKanal=v);
+  wireKanalSwitch('termineEntryKanalSwitch', v=>termineEntryKanal=v);
 
   function escHtml(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
   function mondayOfWeek(d){
@@ -4964,7 +5072,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         return {
           org_id: series.org_id, owner_id: series.owner_id,
           contact_id: series.contact_id, location_id: series.location_id,
-          title: series.title, series_id: series.id,
+          title: series.title, series_id: series.id, kanal: series.kanal||null,
           start_at: new Date(d.getFullYear(),d.getMonth(),d.getDate(),sh,sm).toISOString(),
           end_at: new Date(d.getFullYear(),d.getMonth(),d.getDate(),eh,em).toISOString()
         };
@@ -5085,7 +5193,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       el.style.height = Math.max(18, durMin*pxPerMin)+'px';
       el.style.left = `calc(${col*widthPct}% + 2px)`;
       el.style.width = `calc(${widthPct}% - 4px)`;
-      el.innerHTML = `<span class="we-title">${escHtml(ev.row.title)}</span><span class="we-time">${timeHHMM(ev.start)}–${timeHHMM(ev.end)}</span>`;
+      const kanalIcon = ev.row.kanal && KANAL_ICONS[ev.row.kanal] ? KANAL_ICONS[ev.row.kanal]+' ' : '';
+      el.innerHTML = `<span class="we-title">${kanalIcon}${escHtml(ev.row.title)}</span><span class="we-time">${timeHHMM(ev.start)}–${timeHHMM(ev.end)}</span>`;
       el.dataset.eventId = ev.id;
       dayCol.appendChild(el);
     });
@@ -5236,6 +5345,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     termineContactSelectedId = opts.editing ? (opts.editing.contact_id || null) : null;
     termineLocationSelectedId = opts.editing ? (opts.editing.location_id || null) : null;
     termineEntryDateForSave = opts.editing ? new Date(opts.editing.start_at) : opts.date;
+    termineEntryKanal = opts.editing ? (opts.editing.kanal || null) : null;
+    setKanalSwitch('termineEntryKanalSwitch', termineEntryKanal);
 
     document.getElementById('termineEntryDateLabel').textContent =
       termineEntryDateForSave.toLocaleDateString('de-DE', {weekday:'long', day:'2-digit', month:'2-digit', year:'numeric'});
@@ -5300,7 +5411,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const { data: seriesRow, error } = await sb.from('termin_series').insert({
       org_id: profile.org_id, owner_id: profile.id,
       contact_id: termineContactSelectedId, location_id: termineLocationSelectedId,
-      title: insertedRow.title, start_time: startStr, end_time: endeStr,
+      title: insertedRow.title, start_time: startStr, end_time: endeStr, kanal: insertedRow.kanal||null,
       freq, interval_n: interval, weekdays, start_date: startDateStr, until_date: untilDate,
       generated_until: startDateStr
     }).select().single();
@@ -5368,7 +5479,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const endAt = new Date(d.getFullYear(), d.getMonth(), d.getDate(), eh, em);
     if(endAt<=startAt){ statusEl.textContent = 'Ende muss nach dem Start liegen.'; return; }
 
-    const payload = { title, start_at:startAt.toISOString(), end_at:endAt.toISOString(), contact_id:termineContactSelectedId, location_id:termineLocationSelectedId };
+    const payload = { title, start_at:startAt.toISOString(), end_at:endAt.toISOString(), contact_id:termineContactSelectedId, location_id:termineLocationSelectedId, kanal:termineEntryKanal||null };
     let error;
     if(termineEditingId){
       const editingRow = weekTermine.find(t=>t.id===termineEditingId);
@@ -5376,7 +5487,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         const scope = await askSeriesScope('Diesen Termin oder die ganze Serie ändern?');
         if(!scope) return;
         if(scope==='all'){
-          const { error: seriesErr } = await sb.from('termin_series').update({ start_time:startStr, end_time:endeStr }).eq('id', editingRow.series_id);
+          const { error: seriesErr } = await sb.from('termin_series').update({ start_time:startStr, end_time:endeStr, kanal:termineEntryKanal||null }).eq('id', editingRow.series_id);
           if(seriesErr){ reportError('Serie ändern', seriesErr, statusEl); return; }
           const startOfToday = new Date(); startOfToday.setHours(0,0,0,0);
           const { data: futureRows, error: futErr } = await sb.from('termine').select('id,start_at')
@@ -5386,7 +5497,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
             const rd = new Date(row.start_at);
             const ns = new Date(rd.getFullYear(), rd.getMonth(), rd.getDate(), sh, sm);
             const ne = new Date(rd.getFullYear(), rd.getMonth(), rd.getDate(), eh, em);
-            return sb.from('termine').update({ title, start_at:ns.toISOString(), end_at:ne.toISOString(), contact_id:termineContactSelectedId, location_id:termineLocationSelectedId }).eq('id', row.id);
+            return sb.from('termine').update({ title, start_at:ns.toISOString(), end_at:ne.toISOString(), contact_id:termineContactSelectedId, location_id:termineLocationSelectedId, kanal:termineEntryKanal||null }).eq('id', row.id);
           }));
         } else {
           ({ error } = await sb.from('termine').update(payload).eq('id', termineEditingId));
