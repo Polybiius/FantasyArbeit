@@ -1287,6 +1287,60 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         </div>
       </div>
 
+      <!-- Echte Kontakt-Unterseite statt Popup (seit 2026-08-10) — eigene URL
+           (#kontakt/<id>), damit Rechtsklick "In neuem Tab öffnen" überall
+           funktioniert, wo ein Kontaktname auftaucht. Layout "Variante 2"
+           (Kennzahlen-Leiste), mit dem Nutzer per Wireframe-Vergleich
+           abgestimmt. Verträge sind bewusst IMMER sichtbar (keine eigene
+           Reiter mehr), nur Chronik/Dateien/Tagebuch bleiben Reiter.
+           Muss wie jede andere Seite INNERHALB von .content stehen, sonst
+           sitzt sie außerhalb des Sidebar-Layouts und rutscht unter die
+           Navigation statt daneben (genau der Bug vom ersten Wurf). -->
+      <div class="page" id="page-kontakt-detail" style="display:none;">
+        <button type="button" class="cal-nav-btn" id="kdBackBtn" style="margin-bottom:14px;">← Zurück zu Kontakte</button>
+
+        <div class="card" id="kdNotFound" style="display:none;">
+          <div class="empty-page-hint">Kontakt nicht gefunden oder kein Zugriff.</div>
+        </div>
+
+        <div id="kdContent" style="display:none;">
+          <div class="card">
+            <div class="id-row">
+              <span id="contactDetailTitle" class="kd-name">Kontakt</span>
+              <span id="kdStatusPill" class="tag"></span>
+            </div>
+            <div class="empty-page-hint" id="kdSubline" style="margin-top:2px;"></div>
+            <div class="empty-page-hint" id="kdContactLine" style="margin-top:6px;"></div>
+            <div class="cc-actions" style="margin-top:14px;" id="kdActionsRow"></div>
+          </div>
+
+          <div class="card" id="kdStatStrip" style="margin-top:14px;"></div>
+
+          <div class="card" style="margin-top:14px;">
+            <h2 style="margin-top:0;">Verträge</h2>
+            <div id="contactDetailSales"></div>
+          </div>
+
+          <div class="card" style="margin-top:14px;">
+            <div class="view-switch" style="flex-wrap:wrap;">
+              <button class="cal-nav-btn view-switch-btn active" id="cdTabOverviewBtn">Übersicht</button>
+              <button class="cal-nav-btn view-switch-btn" id="cdTabChronikBtn">Chronik</button>
+              <button class="cal-nav-btn view-switch-btn" id="cdTabJournalBtn">Tagebucheintrag</button>
+              <button class="cal-nav-btn view-switch-btn" id="cdTabFilesBtn">Dateien</button>
+            </div>
+            <div id="contactDetailBody"></div>
+            <div id="contactDetailChronik" style="display:none;"></div>
+            <div class="cal-nav" id="chronikPaginationNav" style="display:none;margin-top:8px;margin-bottom:0;align-items:center;justify-content:center;">
+              <button class="cal-nav-btn" id="chronikPrevPageBtn">‹ zurück</button>
+              <span class="tag" id="chronikPageLabel"></span>
+              <button class="cal-nav-btn" id="chronikNextPageBtn">weiter ›</button>
+            </div>
+            <div id="contactDetailJournal" style="display:none;"></div>
+            <div id="contactDetailFiles" style="display:none;"></div>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 </div>
@@ -1581,57 +1635,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       <button id="changelogClose">✕</button>
     </div>
     <div id="changelogList"></div>
-  </div>
-</div>
-
-<!-- Echte Kontakt-Unterseite statt Popup (seit 2026-08-10) — eigene URL
-     (#kontakt/<id>), damit Rechtsklick "In neuem Tab öffnen" überall
-     funktioniert, wo ein Kontaktname auftaucht. Layout "Variante 2"
-     (Kennzahlen-Leiste), mit dem Nutzer per Wireframe-Vergleich
-     abgestimmt. Verträge sind bewusst IMMER sichtbar (keine eigene
-     Reiter mehr), nur Chronik/Dateien/Tagebuch bleiben Reiter. -->
-<div class="page" id="page-kontakt-detail" style="display:none;">
-  <button type="button" class="cal-nav-btn" id="kdBackBtn" style="margin-bottom:14px;">← Zurück zu Kontakte</button>
-
-  <div class="card" id="kdNotFound" style="display:none;">
-    <div class="empty-page-hint">Kontakt nicht gefunden oder kein Zugriff.</div>
-  </div>
-
-  <div id="kdContent" style="display:none;">
-    <div class="card">
-      <div class="id-row">
-        <span id="contactDetailTitle" class="kd-name">Kontakt</span>
-        <span id="kdStatusPill" class="tag"></span>
-      </div>
-      <div class="empty-page-hint" id="kdSubline" style="margin-top:2px;"></div>
-      <div class="empty-page-hint" id="kdContactLine" style="margin-top:6px;"></div>
-      <div class="cc-actions" style="margin-top:14px;" id="kdActionsRow"></div>
-    </div>
-
-    <div class="card" id="kdStatStrip" style="margin-top:14px;"></div>
-
-    <div class="card" style="margin-top:14px;">
-      <h2 style="margin-top:0;">Verträge</h2>
-      <div id="contactDetailSales"></div>
-    </div>
-
-    <div class="card" style="margin-top:14px;">
-      <div class="view-switch" style="flex-wrap:wrap;">
-        <button class="cal-nav-btn view-switch-btn active" id="cdTabOverviewBtn">Übersicht</button>
-        <button class="cal-nav-btn view-switch-btn" id="cdTabChronikBtn">Chronik</button>
-        <button class="cal-nav-btn view-switch-btn" id="cdTabJournalBtn">Tagebucheintrag</button>
-        <button class="cal-nav-btn view-switch-btn" id="cdTabFilesBtn">Dateien</button>
-      </div>
-      <div id="contactDetailBody"></div>
-      <div id="contactDetailChronik" style="display:none;"></div>
-      <div class="cal-nav" id="chronikPaginationNav" style="display:none;margin-top:8px;margin-bottom:0;align-items:center;justify-content:center;">
-        <button class="cal-nav-btn" id="chronikPrevPageBtn">‹ zurück</button>
-        <span class="tag" id="chronikPageLabel"></span>
-        <button class="cal-nav-btn" id="chronikNextPageBtn">weiter ›</button>
-      </div>
-      <div id="contactDetailJournal" style="display:none;"></div>
-      <div id="contactDetailFiles" style="display:none;"></div>
-    </div>
   </div>
 </div>
 
