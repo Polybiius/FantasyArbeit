@@ -1180,19 +1180,11 @@ echtem Session-Token, nicht nur gelesen/vermutet):**
   Admin-Button einfach ausgeblendet), ohne dass eine passende RLS-Policy
   dahintersteht — sowie Randfälle in der Business-Logik (Kanban-Übergänge,
   Provisionsberechnung).
-- **Aufräumen nötig, vom Testen übrig geblieben (harmlos, aber steht noch
-  in der echten DB):** eine Zeile in `user_inventory`
-  (`item_key='xss_audit_testitem'`, `quantity=0`) sowie zwei komplette
-  Wegwerf-Testaccounts — einer vom ersten INSERT-Test vor Patch 39
-  (`display_name='PatchAuditTest'`), einer von der erneuten Bestätigung
-  nach dem Einspielen (`display_name='Patch39AuditTest'`). Alles per
-  SQL-Editor in einem Rutsch:
-  `delete from public.user_inventory where item_key='xss_audit_testitem';`
-  und `delete from public.profiles where display_name in
-  ('PatchAuditTest','Patch39AuditTest');` — die zwei zugehörigen
-  Auth-Nutzer zusätzlich unter Supabase-Dashboard → Authentication → Users
-  (nach `@example.com` suchen) von Hand löschen, dafür gibt's keinen
-  SQL-Zugriff ohne Service-Role-Key.
+- ~~Aufräumen nötig, vom Testen übrig geblieben~~ — **erledigt.** Die
+  Testzeile in `user_inventory` (`item_key='xss_audit_testitem'`) und die
+  zwei Wegwerf-Testprofile (`PatchAuditTest`/`Patch39AuditTest`) samt
+  ihrer `@example.com`-Auth-Nutzer sind nicht mehr in der DB (zuletzt am
+  2026-08-10 per `supabase db query --linked` gegengeprüft, 0 Treffer).
 
 ## Abenteuerlog-Seite (Kalender/Tagebuch/Foto), seit 2026-08-04 neu sortiert
 
