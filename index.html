@@ -414,6 +414,8 @@
      funktioniert dadurch, ohne das Zeilen-Layout zu verändern. */
   .ctable-row-link{color:inherit;text-decoration:none;}
   .ctable-row-link::after{content:'';position:absolute;inset:0;}
+  .cd-file-name{color:var(--arcane);text-decoration:none;font-weight:600;cursor:pointer;}
+  .cd-file-name:hover{text-decoration:underline;}
 
   /* Kontakt-Seite (seit 2026-08-10, ersetzt das frühere Popup) */
   .id-row{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;}
@@ -1635,6 +1637,18 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       <button id="changelogClose">✕</button>
     </div>
     <div id="changelogList"></div>
+  </div>
+</div>
+
+<!-- Datei-Vorschau: PDF/Bild direkt im Modal ansehen, ohne herunterzuladen
+     (seit 2026-08-10, Nutzerwunsch "direkt aufmachen und reingucken"). -->
+<div class="loc-modal" id="filePreviewModal" style="display:none;">
+  <div class="loc-modal-inner" style="max-width:900px;">
+    <div class="loc-modal-header">
+      <span id="filePreviewTitle">Datei</span>
+      <button id="filePreviewClose">✕</button>
+    </div>
+    <div id="filePreviewBody"></div>
   </div>
 </div>
 
@@ -4230,17 +4244,36 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       html += '<div class="empty-page-hint">Noch keine Dateien zu diesem Kontakt.</div>';
     } else {
       html += files.map(f => `<div class="cc-notes" data-file="${f.id}">
-        <span>${escHtml(f.filename)}</span> <span class="tag">${fmtFileSize(f.size_bytes)}</span>
+        <a href="#" class="cd-file-name" data-view="${f.id}">${escHtml(f.filename)}</a> <span class="tag">${fmtFileSize(f.size_bytes)}</span>
         <button class="cal-nav-btn" data-download="${f.id}" style="margin-left:8px;">Herunterladen</button>
         ${canEdit ? `<button class="cal-nav-btn" data-delete-file="${f.id}" style="margin-left:6px;">Löschen</button>` : ''}
       </div>`).join('');
     }
     wrap.innerHTML = html;
 
+    // Klick auf den Dateinamen zeigt PDF/Bild direkt im Modal (iframe bzw.
+    // img) statt es herunterzuladen -- Nutzerwunsch "direkt aufmachen und
+    // reingucken", bewusst kein eigener dritter Button. Alle vier
+    // erlaubten Dateitypen (PDF/JPEG/PNG/WEBP) können Browser nativ inline
+    // darstellen, kein externes Viewer-Skript nötig.
+    wrap.querySelectorAll('[data-view]').forEach(el=>{
+      el.addEventListener('click', async (e)=>{
+        e.preventDefault();
+        const f = files.find(x=>x.id===el.dataset.view);
+        const { data: signed, error: signErr } = await sb.storage.from(CONTACT_FILE_BUCKET).createSignedUrl(f.storage_path, 3600);
+        if(signErr){ reportError('Datei ansehen', signErr); return; }
+        document.getElementById('filePreviewTitle').textContent = f.filename;
+        const bodyEl = document.getElementById('filePreviewBody');
+        bodyEl.innerHTML = f.mime_type === 'application/pdf'
+          ? `<iframe src="${signed.signedUrl}" style="width:100%;height:75vh;border:1px solid var(--border);border-radius:var(--radius-sm);"></iframe>`
+          : `<img src="${signed.signedUrl}" style="max-width:100%;max-height:75vh;display:block;margin:0 auto;">`;
+        document.getElementById('filePreviewModal').style.display = 'flex';
+      });
+    });
     wrap.querySelectorAll('[data-download]').forEach(btn=>{
       btn.addEventListener('click', async ()=>{
         const f = files.find(x=>x.id===btn.dataset.download);
-        const { data: signed, error: signErr } = await sb.storage.from(CONTACT_FILE_BUCKET).createSignedUrl(f.storage_path, 3600);
+        const { data: signed, error: signErr } = await sb.storage.from(CONTACT_FILE_BUCKET).createSignedUrl(f.storage_path, 3600, { download: f.filename });
         if(signErr){ reportError('Datei herunterladen', signErr); return; }
         window.open(signed.signedUrl, '_blank');
       });
@@ -6219,6 +6252,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   document.getElementById('changelogClose').addEventListener('click', ()=>{
     document.getElementById('changelogModal').style.display = 'none';
+  });
+
+  document.getElementById('filePreviewClose').addEventListener('click', ()=>{
+    document.getElementById('filePreviewModal').style.display = 'none';
+    document.getElementById('filePreviewBody').innerHTML = '';
   });
 
   document.getElementById('prodAddBtn').addEventListener('click', async ()=>{

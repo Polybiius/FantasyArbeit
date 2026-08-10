@@ -2500,6 +2500,17 @@ Per Playwright end-to-end erneut verifiziert (echter Upload landet in der
 Liste, Löschen räumt Storage + Tabellenzeile wieder auf, keine
 Konsolenfehler).
 
+**Direkter Folgeauftrag, noch am selben Tag: Datei-Vorschau statt nur
+Download.** Klick auf den **Dateinamen** (jetzt ein Link, `.cd-file-name`)
+öffnet `filePreviewModal` mit PDF im `<iframe>` bzw. Bild im `<img>` —
+alle vier erlaubten Typen (PDF/JPEG/PNG/WEBP) stellt der Browser nativ
+inline dar, kein Viewer-Skript nötig. **Bewusst kein dritter Button**
+("Ansehen") — Nutzer wollte "Herunterladen"/"Löschen" unverändert lassen,
+erste Fassung mit extra Button wurde direkt wieder verworfen. Download
+bekam dabei nebenbei eine Verbesserung: `createSignedUrl(..., {download:
+f.filename})` erzwingt jetzt den echten Dateinamen beim Speichern statt
+des internen UUID-Pfads.
+
 ## Kontakt-Seite statt Popup (Patch 43, 2026-08-10)
 
 **Auslöser:** Nutzer-Frust über ein früher genutztes CRM im sozialen
