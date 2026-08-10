@@ -2550,6 +2550,22 @@ zu Kontakte, Kanban-Karten-Link ebenfalls ein echter Link und
 funktioniert. Kein horizontales Overflow auf 390px Mobile-Breite, keine
 Konsolen-/Seitenfehler in beiden Durchläufen.
 
+**Nachbesserung, noch am selben Tag:** die neue Seite stand beim ersten
+Wurf an der alten Modal-Position im HTML (nach `</div></div></div>` des
+`.content`/Sidebar-Wrappers, zwischen den übrigen `.loc-modal`-Popups) —
+technisch ein `.page`-Element, aber strukturell außerhalb des
+Sidebar-Layouts. Ergebnis: die Kontaktkarte rutschte auf Desktop unter
+die komplette Navigationsleiste statt daneben zu sitzen ("Anordnung
+gerade noch grauenhaft", Nutzer-Feedback nach dem ersten Screenshot).
+Fix: den ganzen `#page-kontakt-detail`-Block innerhalb von `.content`
+platziert, direkt neben den anderen `.page`-Geschwistern (nach
+`#page-notfallzugriff`) — sitzt seitdem korrekt neben der Sidebar, wie
+jede andere Seite auch. **Lehre:** eine neue `.page` muss strukturell
+(nicht nur per Klassenname) im selben Container wie die bestehenden
+Seiten stehen, sonst greift das Sidebar-Layout nicht — beim nächsten Mal
+vor dem ersten Screenshot direkt gegenprüfen, nicht erst nach
+Nutzer-Beschwerde.
+
 ## Bekannte, bewusst in Kauf genommene Lücken
 
 - "Zuletzt kontaktiert" an einem Kontakt zeigt nur **eigene** Log-Einträge des
