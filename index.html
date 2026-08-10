@@ -4004,6 +4004,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   async function openContactPage(id){
     currentContactPageId = id;
+    // Kontakt-Seite hat keinen eigenen Nav-Button -- gehört zu "Kontakte"
+    // (Register/Arkanes Register/Kriegsarchiv/Jägerchronik je Klasse),
+    // deshalb hier denselben Nav-Highlight-Schritt wie showPage('kontakte')
+    // nachbauen. Ohne das blieb beim Direktaufruf/Reload einer #kontakt/...
+    // -URL der zuletzt aktive Button hängen, meist "Charakter" (Standard
+    // im HTML), statt dass die Navigation zum tatsächlichen Seiteninhalt passt.
+    document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active', b.dataset.page==='kontakte'));
     document.querySelectorAll('.page').forEach(p=>p.style.display='none');
     document.getElementById('page-kontakt-detail').style.display='block';
     document.getElementById('kdContent').style.display='none';

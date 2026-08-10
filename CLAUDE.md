@@ -2511,6 +2511,21 @@ bekam dabei nebenbei eine Verbesserung: `createSignedUrl(..., {download:
 f.filename})` erzwingt jetzt den echten Dateinamen beim Speichern statt
 des internen UUID-Pfads.
 
+**Bugfix, noch am selben Tag: Nav-Highlight bei Direktaufruf/Reload
+einer Kontakt-Seite.** `openContactPage()` setzte anders als `showPage()`
+nie `.nav-btn.active` — beim Neuladen direkt auf `#kontakt/<id>` (z.B.
+weil der Nutzer während eines laufenden Deploys neu lädt) blieb deshalb
+der im HTML hart hinterlegte Default ("🧙 Charakter") als aktiv markiert
+stehen, obwohl inhaltlich die Kontakt-Seite angezeigt wurde — Navigation
+und Seiteninhalt liefen auseinander. Fix: `openContactPage()` markiert
+jetzt genauso wie `showPage('kontakte')` den Kontakte-Button
+(`data-page="kontakte"`) als aktiv — automatisch mit dem richtigen
+Klassenlabel, da das nur die Textbeschriftung ändert
+(Register/Arkanes Register/Kriegsarchiv/Jägerchronik), nicht den
+`data-page`-Wert selbst. Per Playwright verifiziert: kompletter
+Seiten-Reload direkt auf eine `#kontakt/...`-URL markiert exakt einen
+Button korrekt, kein Nachziehen mehr nötig.
+
 ## Kontakt-Seite statt Popup (Patch 43, 2026-08-10)
 
 **Auslöser:** Nutzer-Frust über ein früher genutztes CRM im sozialen
