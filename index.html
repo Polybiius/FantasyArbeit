@@ -4262,27 +4262,35 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       const statusEl = document.getElementById('cdFileStatus');
       const picked = Array.from(fileInput.files || []);
       fileInput.value = '';
+      let hadError = false;
       for(const file of picked){
         if(!CONTACT_FILE_ALLOWED_TYPES.includes(file.type)){
           statusEl.textContent = `${file.name}: nicht unterstützter Dateityp.`;
-          continue;
+          hadError = true; continue;
         }
         if(file.size > CONTACT_FILE_MAX_BYTES){
           statusEl.textContent = `${file.name}: größer als 10 MB.`;
-          continue;
+          hadError = true; continue;
         }
         statusEl.textContent = `Lade ${file.name} hoch…`;
         const path = `${c.id}/${crypto.randomUUID()}_${file.name}`;
         const { error: upErr } = await sb.storage.from(CONTACT_FILE_BUCKET).upload(path, file, { contentType: file.type });
-        if(upErr){ reportError('Datei hochladen', upErr, statusEl); continue; }
+        if(upErr){ reportError('Datei hochladen', upErr, statusEl); hadError = true; continue; }
         const { error: insErr } = await sb.from('contact_files').insert({
           org_id: profile.org_id, contact_id: c.id, uploaded_by: profile.id,
           storage_path: path, filename: file.name, mime_type: file.type, size_bytes: file.size
         });
-        if(insErr){ reportError('Datei speichern', insErr, statusEl); continue; }
+        if(insErr){ reportError('Datei speichern', insErr, statusEl); hadError = true; continue; }
       }
-      statusEl.textContent = '';
+      // Wichtig: die Fehlermeldung NICHT vor dem Neuzeichnen löschen (das
+      // hatte sie bisher unsichtbar gemacht, bevor der Nutzer sie lesen
+      // konnte -- "Datei einfach verschwunden", Bugreport 2026-08-10).
+      const lastMessage = hadError ? statusEl.textContent : '';
       await renderContactFilesTab(c, canEdit);
+      if(hadError){
+        const freshStatusEl = document.getElementById('cdFileStatus');
+        if(freshStatusEl) freshStatusEl.textContent = lastMessage;
+      }
     });
   }
 

@@ -2461,6 +2461,45 @@ siehe Kernstruktur-Regel unten): Reiter "Dateien" am Kontakt
   Gilden-Schreibrechte am Kontakt beheben (betrifft dann mehrere Stellen
   auf einmal, nicht nur Dateien).
 
+**Bugfix, noch am selben Tag (Patch 44, `supabase/migrations/
+20260810194843_fix_contact_files_storage_rls.sql`):** jeder Upload schlug
+live mit "new row violates row-level security policy" fehl — Bugreport
+direkt nach Ausprobieren ("hab eine Datei hochgeladen. einfach
+verschwunden"). Zwei Ursachen, beide behoben:
+1. **Sichtbarkeits-Bug im Frontend:** `renderContactFilesTab()` löschte
+   `cdFileStatus.textContent` unbedingt, bevor der Tab komplett neu
+   gerendert wurde — dadurch war JEDE Fehlermeldung (und auch der letzte
+   Erfolgs-Status) technisch kurz da, aber nie sichtbar, das Feld wurde
+   sofort wieder leergemacht und dann ohnehin durch `wrap.innerHTML`
+   ersetzt. Fix: Fehlermeldung wird nach dem Neuzeichnen auf das frische
+   `cdFileStatus`-Element erneut gesetzt, statt sie vorher zu löschen.
+2. **Der eigentliche Bug, den diese Sichtbarkeits-Korrektur erst
+   aufgedeckt hat — echte Namenskollision in SQL:** die drei
+   Storage-Policies aus Patch 42 (`contact_files_storage_select/insert/
+   delete`) benutzten `(storage.foldername(name))[1]`, aber `name` ist
+   dort mehrdeutig — `storage.objects` UND das in der EXISTS-Subquery
+   korrelierte `public.contacts` haben BEIDE eine Spalte `name`. Postgres
+   löste `name` auf das näherliegende `contacts.name` auf (den
+   Kunden-Anzeigenamen, z.B. "Jrui Laev") statt auf den Datei-Pfad —
+   `foldername()` eines Namens ohne "/" ergibt nie die erwartete
+   Kontakt-ID, die Prüfung schlug deshalb für JEDE Datei fehl, unabhängig
+   von Berechtigung. Per direkter SQL-Diagnose (`supabase db query
+   --linked` + `set_config`) bestätigt: dieselbe Logik mit einem
+   Literal-String statt der echten Spalte ergab korrekt `true` — die
+   Berechtigungslogik selbst (`guild_contact_permission()` etc.) war nie
+   das Problem. Fix: `objects.name` statt `name` — der bloße Tabellenname
+   dient als eindeutige Korrelationsvariable der eigenen Zeile innerhalb
+   einer RLS-Policy, unabhängig davon, was die Subquery sonst im FROM hat.
+   **Lehre fürs nächste Mal:** bei RLS-Policies mit einer Subquery auf
+   eine andere Tabelle immer prüfen, ob Spaltennamen kollidieren
+   (`name`/`id`/`status` sind in diesem Projekt an mehreren Tabellen
+   vergeben) — im Zweifel die eigene Tabelle in der Policy explizit
+   qualifizieren, nicht auf unqualifizierte Referenzen verlassen.
+
+Per Playwright end-to-end erneut verifiziert (echter Upload landet in der
+Liste, Löschen räumt Storage + Tabellenzeile wieder auf, keine
+Konsolenfehler).
+
 ## Kontakt-Seite statt Popup (Patch 43, 2026-08-10)
 
 **Auslöser:** Nutzer-Frust über ein früher genutztes CRM im sozialen
