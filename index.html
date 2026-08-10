@@ -384,7 +384,7 @@
   .kanban-card{position:relative;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-sm);padding:8px 10px;font-size:12px;cursor:grab;transition:border-color .15s, box-shadow .15s;box-shadow:var(--shadow-rest);}
   .kanban-card:hover{border-color:var(--arcane);box-shadow:var(--shadow-raised);}
   .kanban-card.dragging{opacity:0.4;}
-  .kanban-card .kc-name{display:block;color:var(--text);font-weight:600;}
+  .kanban-card .kc-name{display:block;color:var(--text);font-weight:600;text-decoration:none;}
   .kanban-card .kc-meta{display:block;color:var(--muted-2);font-size:10.5px;font-family:'JetBrains Mono',monospace;margin-top:2px;}
   .kc-move-btn{display:none;position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--panel-2);color:var(--muted-2);font-size:12px;line-height:1;align-items:center;justify-content:center;cursor:pointer;}
   .kc-move-btn:hover, .kc-move-btn:active{border-color:var(--arcane);color:var(--text);}
@@ -407,8 +407,23 @@
   .ctable{width:100%;border-collapse:collapse;font-size:12.5px;}
   .ctable th{text-align:left;color:var(--muted-2);font-weight:600;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;padding:8px 10px;border-bottom:1px solid var(--border);}
   .ctable td{padding:9px 10px;border-bottom:1px solid var(--border);color:var(--text);}
-  .ctable tr.ctable-row{cursor:pointer;}
+  .ctable tr.ctable-row{position:relative;cursor:pointer;}
   .ctable tr.ctable-row:hover td{background:rgba(139,92,246,0.08);}
+  /* Stretched-Link: die ganze Zeile bleibt klickbar, ist aber technisch ein
+     echter <a>-Tag im Namensfeld -- Rechtsklick "In neuem Tab öffnen"
+     funktioniert dadurch, ohne das Zeilen-Layout zu verändern. */
+  .ctable-row-link{color:inherit;text-decoration:none;}
+  .ctable-row-link::after{content:'';position:absolute;inset:0;}
+
+  /* Kontakt-Seite (seit 2026-08-10, ersetzt das frühere Popup) */
+  .id-row{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;}
+  .kd-name{font-family:'Cinzel',serif;font-size:19px;color:var(--text);}
+  .kd-stat-strip{display:flex;flex-wrap:wrap;gap:22px;}
+  .kd-stat-chip .num{font-size:16px;font-weight:700;color:var(--text);font-family:'JetBrains Mono',monospace;}
+  .kd-stat-chip .lbl{font-size:10px;color:var(--muted-2);text-transform:uppercase;letter-spacing:.04em;}
+  .kd-contract-row{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 14px;align-items:baseline;}
+  .kd-contract-row .kdc-main{color:var(--text);}
+  .kd-contract-row .kdc-meta{color:var(--muted-2);font-size:11px;font-family:'JetBrains Mono',monospace;}
   .cd-field{margin-bottom:10px;font-size:13px;}
   .cd-field .cdl{color:var(--muted-2);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:2px;}
   .cd-field .cdv{color:var(--text);white-space:pre-wrap;}
@@ -1296,6 +1311,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       <select id="saleEntryCategory"></select>
       <select id="saleEntryProdukt"></select>
       <input type="number" id="saleEntryMenge" placeholder="Stückzahl" min="1" value="1">
+      <input type="text" id="saleEntryVertragsnummer" placeholder="Vertragsnummer (optional)" maxlength="60">
       <input type="number" id="saleEntryBeitrag" placeholder="Laufender Beitrag (€)" step="0.01" min="0">
       <label class="cdl" style="display:block;margin-top:4px;">Vertragsbeginn</label>
       <input type="date" id="saleEntryVertragsbeginn">
@@ -1568,29 +1584,54 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   </div>
 </div>
 
-<div class="loc-modal" id="contactDetailModal" style="display:none;">
-  <div class="loc-modal-inner" style="max-width:560px;">
-    <div class="loc-modal-header">
-      <span id="contactDetailTitle">Kontakt</span>
-      <button id="contactDetailClose">✕</button>
+<!-- Echte Kontakt-Unterseite statt Popup (seit 2026-08-10) — eigene URL
+     (#kontakt/<id>), damit Rechtsklick "In neuem Tab öffnen" überall
+     funktioniert, wo ein Kontaktname auftaucht. Layout "Variante 2"
+     (Kennzahlen-Leiste), mit dem Nutzer per Wireframe-Vergleich
+     abgestimmt. Verträge sind bewusst IMMER sichtbar (keine eigene
+     Reiter mehr), nur Chronik/Dateien/Tagebuch bleiben Reiter. -->
+<div class="page" id="page-kontakt-detail" style="display:none;">
+  <button type="button" class="cal-nav-btn" id="kdBackBtn" style="margin-bottom:14px;">← Zurück zu Kontakte</button>
+
+  <div class="card" id="kdNotFound" style="display:none;">
+    <div class="empty-page-hint">Kontakt nicht gefunden oder kein Zugriff.</div>
+  </div>
+
+  <div id="kdContent" style="display:none;">
+    <div class="card">
+      <div class="id-row">
+        <span id="contactDetailTitle" class="kd-name">Kontakt</span>
+        <span id="kdStatusPill" class="tag"></span>
+      </div>
+      <div class="empty-page-hint" id="kdSubline" style="margin-top:2px;"></div>
+      <div class="empty-page-hint" id="kdContactLine" style="margin-top:6px;"></div>
+      <div class="cc-actions" style="margin-top:14px;" id="kdActionsRow"></div>
     </div>
-    <div class="view-switch" style="flex-wrap:wrap;">
-      <button class="cal-nav-btn view-switch-btn active" id="cdTabOverviewBtn">Übersicht</button>
-      <button class="cal-nav-btn view-switch-btn" id="cdTabChronikBtn">Chronik</button>
-      <button class="cal-nav-btn view-switch-btn" id="cdTabSalesBtn">Verkaufshistorie</button>
-      <button class="cal-nav-btn view-switch-btn" id="cdTabJournalBtn">Tagebucheintrag</button>
-      <button class="cal-nav-btn view-switch-btn" id="cdTabFilesBtn">Dateien</button>
+
+    <div class="card" id="kdStatStrip" style="margin-top:14px;"></div>
+
+    <div class="card" style="margin-top:14px;">
+      <h2 style="margin-top:0;">Verträge</h2>
+      <div id="contactDetailSales"></div>
     </div>
-    <div id="contactDetailBody"></div>
-    <div id="contactDetailChronik" style="display:none;"></div>
-    <div class="cal-nav" id="chronikPaginationNav" style="display:none;margin-top:8px;margin-bottom:0;align-items:center;justify-content:center;">
-      <button class="cal-nav-btn" id="chronikPrevPageBtn">‹ zurück</button>
-      <span class="tag" id="chronikPageLabel"></span>
-      <button class="cal-nav-btn" id="chronikNextPageBtn">weiter ›</button>
+
+    <div class="card" style="margin-top:14px;">
+      <div class="view-switch" style="flex-wrap:wrap;">
+        <button class="cal-nav-btn view-switch-btn active" id="cdTabOverviewBtn">Übersicht</button>
+        <button class="cal-nav-btn view-switch-btn" id="cdTabChronikBtn">Chronik</button>
+        <button class="cal-nav-btn view-switch-btn" id="cdTabJournalBtn">Tagebucheintrag</button>
+        <button class="cal-nav-btn view-switch-btn" id="cdTabFilesBtn">Dateien</button>
+      </div>
+      <div id="contactDetailBody"></div>
+      <div id="contactDetailChronik" style="display:none;"></div>
+      <div class="cal-nav" id="chronikPaginationNav" style="display:none;margin-top:8px;margin-bottom:0;align-items:center;justify-content:center;">
+        <button class="cal-nav-btn" id="chronikPrevPageBtn">‹ zurück</button>
+        <span class="tag" id="chronikPageLabel"></span>
+        <button class="cal-nav-btn" id="chronikNextPageBtn">weiter ›</button>
+      </div>
+      <div id="contactDetailJournal" style="display:none;"></div>
+      <div id="contactDetailFiles" style="display:none;"></div>
     </div>
-    <div id="contactDetailSales" style="display:none;"></div>
-    <div id="contactDetailJournal" style="display:none;"></div>
-    <div id="contactDetailFiles" style="display:none;"></div>
   </div>
 </div>
 
@@ -3916,8 +3957,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const container = document.getElementById(containerId);
     if(!contactsSubset || contactsSubset.length===0){ container.innerHTML = '<div class="empty-page-hint">Keine Kontakte.</div>'; return; }
     const rows = contactsSubset.map(c=>`
-      <tr class="ctable-row" data-contact="${c.id}">
-        <td>${escHtml(c.name)}</td>
+      <tr class="ctable-row">
+        <td><a class="ctable-row-link" href="#kontakt/${c.id}">${escHtml(c.name)}</a></td>
         <td>${bundle.roles[c.role]||c.role||'—'}</td>
         <td>${c.location_id ? locName(bundle, c.location_id) : '—'}</td>
         <td><span class="cc-status ${c.status}">${c.status}</span></td>
@@ -3927,24 +3968,88 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       <thead><tr><th>Name</th><th>Berufsstatus</th><th>Betrieb</th><th>Status</th><th>Wiedervorlage</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>`;
-    container.querySelectorAll('[data-contact]').forEach(tr=>{
-      const c = contactsSubset.find(x=>x.id===tr.dataset.contact);
-      tr.addEventListener('click', ()=> openContactDetail(c, bundle));
-    });
   }
 
   function jumpToJournalDay(dateStr){
-    document.getElementById('contactDetailModal').style.display='none';
     const p = { year:+dateStr.slice(0,4), month:+dateStr.slice(5,7)-1 };
     calViewYear = p.year; calViewMonth = p.month;
     showPage('tagebuch');
     renderCalendar().then(()=> showDayPreview(dateStr));
   }
 
-  function openContactDetail(c, bundle){
+  // Echte Kontakt-Unterseite (seit 2026-08-10) statt Popup -- eigene URL
+  // #kontakt/<id>, siehe Hash-Routing weiter unten bei showPage(). Ersetzt
+  // das frühere openContactDetail()/contactDetailModal-Paar. currentContactPageId
+  // + refreshContactPageIfCurrent() sorgen dafür, dass Aktionen (XP loggen,
+  // Anruf/Email, Termin) die Seite in-place aktualisieren, statt sie wie
+  // früher das Modal einfach zu schließen.
+  let currentContactPageId = null;
+
+  async function openContactPage(id){
+    currentContactPageId = id;
+    document.querySelectorAll('.page').forEach(p=>p.style.display='none');
+    document.getElementById('page-kontakt-detail').style.display='block';
+    document.getElementById('kdContent').style.display='none';
+    document.getElementById('kdNotFound').style.display='none';
+    if(location.hash !== '#kontakt/'+id) location.hash = 'kontakt/'+id;
+
+    const bundle = await loadContactsBundle();
+    if(bundle.error){ logSilentError('Kontakt laden', bundle.error); document.getElementById('kdNotFound').style.display='block'; return; }
+    const c = bundle.contacts.find(x=>x.id===id);
+    if(!c){ document.getElementById('kdNotFound').style.display='block'; return; }
+    document.getElementById('kdContent').style.display='block';
+    await renderContactPageContent(c, bundle);
+  }
+
+  async function refreshContactPageIfCurrent(id){
+    if(currentContactPageId===id && document.getElementById('page-kontakt-detail').style.display!=='none'){
+      await openContactPage(id);
+    }
+  }
+
+  async function contactFilesCount(contactId){
+    const { count, error } = await sb.from('contact_files').select('id', {count:'exact', head:true}).eq('contact_id', contactId);
+    if(error){ logSilentError('Dateien zählen', error); return 0; }
+    return count || 0;
+  }
+
+  function renderContactStatStrip(cSales, chronikCount, filesCount, lastTs){
+    const chip = (num, lbl) => `<div class="kd-stat-chip"><div class="num">${num}</div><div class="lbl">${lbl}</div></div>`;
+    document.getElementById('kdStatStrip').innerHTML = `<div class="kd-stat-strip">
+      ${chip(cSales.length, 'Verträge')}
+      ${chip(chronikCount, 'Chronik-Einträge')}
+      ${chip(filesCount, 'Dateien')}
+      ${chip(lastTs ? fmtTime(lastTs) : '—', 'Zuletzt kontaktiert')}
+    </div>`;
+  }
+
+  async function renderContactPageContent(c, bundle){
     const canEdit = c.owner_id===profile.id || profile.role==='admin';
     const fmtDate = (d) => d ? new Date(d+'T12:00:00').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
     document.getElementById('contactDetailTitle').textContent = c.name;
+
+    const statusPill = document.getElementById('kdStatusPill');
+    statusPill.textContent = c.status;
+    statusPill.className = 'cc-status ' + c.status;
+
+    const sublineParts = [];
+    if(bundle.roles[c.role]||c.role) sublineParts.push(bundle.roles[c.role]||c.role);
+    if(c.location_id) sublineParts.push(locName(bundle, c.location_id));
+    document.getElementById('kdSubline').textContent = sublineParts.join(' · ') || '—';
+
+    const contactParts = [];
+    if(c.telefon) contactParts.push('📞 '+c.telefon);
+    if(c.email) contactParts.push('✉ '+c.email);
+    const wohnort = (c.wohnort_strasse||c.wohnort_ort) ? `${c.wohnort_strasse||''}${c.wohnort_strasse&&c.wohnort_ort?', ':''}${c.wohnort_ort||''}` : null;
+    if(wohnort) contactParts.push('🏠 '+wohnort);
+    document.getElementById('kdContactLine').textContent = contactParts.join('   ');
+
+    document.getElementById('kdActionsRow').innerHTML = `
+      <button id="cdLogActionBtn">Aktion loggen</button>
+      <button id="cdActivityBtn">Anruf/Email loggen</button>
+      <button id="cdTerminBtn">Termin eintragen</button>
+      ${canEdit ? `<button id="cdEditBtn">Bearbeiten</button><button id="cdDeleteBtn">Löschen</button>` : ''}
+    `;
 
     const myEntries = log.filter(e=>e.contact_id===c.id);
     const lastTs = myEntries.length ? myEntries[myEntries.length-1].created_at : null;
@@ -3952,31 +4057,20 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const cSales = bundle.salesMap[c.id] || [];
 
     const field = (label, value) => value ? `<div class="cd-field"><span class="cdl">${label}</span><span class="cdv">${escHtml(String(value))}</span></div>` : '';
-
     let html = '';
-    html += field('Berufsstatus', bundle.roles[c.role]||c.role);
-    html += field('Betrieb', c.location_id ? locName(bundle, c.location_id) : null);
     html += field('Geburtsdatum', fmtDate(c.geburtsdatum)!=='—' ? fmtDate(c.geburtsdatum) : null);
-    html += field('Telefon', c.telefon);
-    html += field('E-Mail', c.email);
-    html += field('Wohnort', (c.wohnort_strasse||c.wohnort_ort) ? `${c.wohnort_strasse||''}${c.wohnort_strasse&&c.wohnort_ort?', ':''}${c.wohnort_ort||''}` : null);
     html += field('Bedarf – Ist', c.bedarf_ist);
     html += field('Bedarf – Wunsch', c.bedarf_wunsch);
     html += field('Nächster Kontakt', c.naechster_kontakt ? fmtDate(c.naechster_kontakt) : null);
     html += field('Zuletzt kontaktiert (von dir)', lastTs ? fmtTime(lastTs) : 'Noch kein eigener Kontaktpunkt');
     html += field('Notizen', c.notes);
+    document.getElementById('contactDetailBody').innerHTML = html || '<div class="empty-page-hint">Keine weiteren Angaben.</div>';
 
-    html += `<div class="cc-actions" style="margin-top:14px;">
-      <button id="cdLogActionBtn">Aktion loggen</button>
-      <button id="cdActivityBtn">Anruf/Email loggen</button>
-      <button id="cdTerminBtn">Termin eintragen</button>
-      ${canEdit ? `<button id="cdEditBtn">Bearbeiten</button><button id="cdDeleteBtn">Löschen</button>` : ''}
-    </div>`;
-
-    document.getElementById('contactDetailBody').innerHTML = html;
     renderContactSalesTab(c, cSales, canEdit, fmtDate);
-    renderContactChronikTab(c, myEntries, cSales, fmtDate);
-    renderContactFilesTab(c, canEdit);
+    await renderContactChronikTab(c, myEntries, cSales, fmtDate);
+    await renderContactFilesTab(c, canEdit);
+    const filesCount = await contactFilesCount(c.id);
+    renderContactStatStrip(cSales, chronikItemsCache.length, filesCount, lastTs);
 
     const journalHtml = mentions.length>0
       ? `<div class="cd-mentions">${mentions.map(d=>`<a class="cal-nav-btn" data-jump="${d}">📖 ${new Date(d+'T12:00:00').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'})}</a>`).join('')}</div>`
@@ -3985,20 +4079,16 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     showContactDetailTab('overview');
 
-    document.getElementById('contactDetailModal').style.display='flex';
-
     document.querySelectorAll('#contactDetailBody [data-jump], #contactDetailJournal [data-jump]').forEach(a=>{
       a.addEventListener('click', ()=> jumpToJournalDay(a.dataset.jump));
     });
     document.getElementById('cdLogActionBtn').addEventListener('click', ()=>{
-      document.getElementById('contactDetailModal').style.display='none';
       openContactActionModal(c);
     });
     document.getElementById('cdActivityBtn').addEventListener('click', ()=>{
       openContactActivityModal(c);
     });
     document.getElementById('cdTerminBtn').addEventListener('click', async ()=>{
-      document.getElementById('contactDetailModal').style.display='none';
       // Karte steht auf Gewonnen/Verloren -> "Termin eintragen" holt sie
       // zurück auf den Ersttermin (kein neuer Kontakt, derselbe Datensatz),
       // gleiche Kundenausbau-Logik wie beim Ziehen im Kanban
@@ -4015,30 +4105,28 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       } else {
         await promptKanbanTermin(c, 'Termin');
       }
+      await refreshContactPageIfCurrent(c.id);
     });
     const editBtn = document.getElementById('cdEditBtn');
-    if(editBtn) editBtn.addEventListener('click', ()=>{ document.getElementById('contactDetailModal').style.display='none'; startEditContact(c); });
+    if(editBtn) editBtn.addEventListener('click', ()=>{ showPage('kontakte'); startEditContact(c); });
     const delBtn = document.getElementById('cdDeleteBtn');
     if(delBtn) delBtn.addEventListener('click', async ()=>{
       if(!confirm('Kontakt wirklich löschen?')) return;
       const { error } = await sb.from('contacts').delete().eq('id', c.id);
       if(error){ reportError('Kontakt löschen', error); return; }
-      document.getElementById('contactDetailModal').style.display='none';
+      showPage('kontakte');
       await renderContactsPage();
     });
   }
-  document.getElementById('contactDetailClose').addEventListener('click', ()=>{
-    document.getElementById('contactDetailModal').style.display='none';
-  });
-  function showContactDetailTab(tab){ // 'overview' | 'chronik' | 'sales' | 'journal' | 'files'
+  document.getElementById('kdBackBtn').addEventListener('click', ()=> showPage('kontakte'));
+
+  function showContactDetailTab(tab){ // 'overview' | 'chronik' | 'journal' | 'files'
     document.getElementById('cdTabOverviewBtn').classList.toggle('active', tab==='overview');
     document.getElementById('cdTabChronikBtn').classList.toggle('active', tab==='chronik');
-    document.getElementById('cdTabSalesBtn').classList.toggle('active', tab==='sales');
     document.getElementById('cdTabJournalBtn').classList.toggle('active', tab==='journal');
     document.getElementById('cdTabFilesBtn').classList.toggle('active', tab==='files');
     document.getElementById('contactDetailBody').style.display = tab==='overview' ? 'block' : 'none';
     document.getElementById('contactDetailChronik').style.display = tab==='chronik' ? 'block' : 'none';
-    document.getElementById('contactDetailSales').style.display = tab==='sales' ? 'block' : 'none';
     document.getElementById('contactDetailJournal').style.display = tab==='journal' ? 'block' : 'none';
     document.getElementById('contactDetailFiles').style.display = tab==='files' ? 'block' : 'none';
     if(tab!=='chronik') document.getElementById('chronikPaginationNav').style.display = 'none';
@@ -4046,7 +4134,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
   document.getElementById('cdTabOverviewBtn').addEventListener('click', ()=> showContactDetailTab('overview'));
   document.getElementById('cdTabChronikBtn').addEventListener('click', ()=> showContactDetailTab('chronik'));
-  document.getElementById('cdTabSalesBtn').addEventListener('click', ()=> showContactDetailTab('sales'));
   document.getElementById('cdTabJournalBtn').addEventListener('click', ()=> showContactDetailTab('journal'));
   document.getElementById('cdTabFilesBtn').addEventListener('click', ()=> showContactDetailTab('files'));
 
@@ -4063,12 +4150,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     const row = (s, showKuendigen) => {
       const p = productById(s.product_id);
-      return `<div class="cc-notes" data-sale="${s.id}">
-        <strong>${p ? p.name : '?'}</strong> — Start: ${fmtDate(s.vertragsbeginn)} · Stückzahl: ${s.menge}
+      return `<div class="cc-notes kd-contract-row" data-sale="${s.id}">
+        <span class="kdc-main"><strong>${p ? p.name : '?'}</strong>${s.vertragsnummer ? ` <span class="kdc-meta">${escHtml(s.vertragsnummer)}</span>` : ''} — Start: ${fmtDate(s.vertragsbeginn)} · Stückzahl: ${s.menge}
         · laufender Beitrag: ${fmtEuro(s.laufender_beitrag)} · ausgeschüttete Provision: —
         ${s.status==='verloren' ? ' · <span style="color:var(--danger)">verloren</span>' : ''}
-        ${s.vertragsende ? ` · gekündigt zum ${fmtDate(s.vertragsende)}` : ''}
-        ${showKuendigen && canEdit ? `<button class="cal-nav-btn" data-kuendigen="${s.id}" style="margin-left:8px;">Gekündigt/ausgelaufen</button>` : ''}
+        ${s.vertragsende ? ` · gekündigt zum ${fmtDate(s.vertragsende)}` : ''}</span>
+        ${showKuendigen && canEdit ? `<button class="cal-nav-btn" data-kuendigen="${s.id}">Gekündigt/ausgelaufen</button>` : ''}
       </div>`;
     };
 
@@ -4084,7 +4171,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     const saleBtn = document.getElementById('cdAddSaleBtn');
     if(saleBtn) saleBtn.addEventListener('click', async ()=>{
-      document.getElementById('contactDetailModal').style.display='none';
       const gewonnen = confirm('Gewonnen? (Abbrechen = Verloren)');
       if(gewonnen) await recordWonSalesLoop(c); else await recordLostSale(c);
       if(gewonnen){
@@ -4092,6 +4178,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         if(error) logSilentError('Kontaktstatus aktualisieren', error);
       }
       await renderContactsPage();
+      await refreshContactPageIfCurrent(c.id);
     });
     document.querySelectorAll('#contactDetailSales [data-kuendigen]').forEach(btn=>{
       btn.addEventListener('click', async ()=>{
@@ -4100,6 +4187,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         const { error } = await sb.from('sales').update({ vertragsende: datum }).eq('id', btn.dataset.kuendigen);
         if(error){ reportError('Vertrag als gekündigt markieren', error); return; }
         await renderContactsPage();
+        await refreshContactPageIfCurrent(c.id);
       });
     });
   }
@@ -4520,12 +4608,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     document.getElementById('contactActivityModal').style.display = 'none';
     render();
-    // Kontaktdetail bleibt hinter dem Aktivitäts-Popup offen (wie bei
-    // "Termin eintragen") — ohne dieses Neu-Öffnen bliebe die Chronik auf
-    // dem Stand von vor dem Speichern stehen, da showContactDetailTab()
-    // nur zwischen bereits gerenderten Tabs umschaltet, nicht neu lädt.
-    const bundle = await loadContactsBundle();
-    if(!bundle.error) openContactDetail(bundle.contacts.find(x=>x.id===contact.id) || contact, bundle);
+    // Kontaktseite bleibt hinter dem Aktivitäts-Popup offen -- ohne dieses
+    // Neu-Rendern bliebe die Chronik auf dem Stand von vor dem Speichern,
+    // da showContactDetailTab() nur zwischen bereits gerenderten Tabs
+    // umschaltet, nicht neu lädt.
+    await refreshContactPageIfCurrent(contact.id);
     await renderContactsPage();
   });
 
@@ -5700,7 +5787,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       document.getElementById('kanbanCards_'+stage).innerHTML = list.map(c=>`
         <div class="kanban-card" draggable="true" data-contact="${c.id}" data-stage="${stage}">
           <button type="button" class="kc-move-btn" title="Verschieben">↕</button>
-          <span class="kc-name">${escHtml(c.name)}</span>
+          <a class="kc-name" draggable="false" href="#kontakt/${c.id}">${escHtml(c.name)}</a>
           ${c.location_id ? `<span class="kc-meta">${locName(bundle,c.location_id)}</span>` : ''}
         </div>`).join('');
     });
@@ -5715,9 +5802,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         card.dataset.dragging = '1';
       });
       card.addEventListener('dragend', ()=>{ card.classList.remove('dragging'); delete card.dataset.dragging; });
-      card.addEventListener('click', ()=>{
-        const c = kanbanBundleCache.contacts.find(x=>x.id===card.dataset.contact);
-        if(c) openContactDetail(c, kanbanBundleCache);
+      card.addEventListener('click', (e)=>{
+        // Klick auf den Namen selbst navigiert schon über den echten <a
+        // href="#kontakt/..."> -- hier nur für Klicks auf den Rest der
+        // Karte (Kartenfläche bleibt bequem als großes Klickziel).
+        if(e.target.closest('.kc-name')) return;
+        location.hash = 'kontakt/' + card.dataset.contact;
       });
       const moveBtn = card.querySelector('.kc-move-btn');
       moveBtn.addEventListener('click', (e)=>{
@@ -5843,6 +5933,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       const catEl = document.getElementById('saleEntryCategory');
       const produktEl = document.getElementById('saleEntryProdukt');
       const mengeEl = document.getElementById('saleEntryMenge');
+      const vertragsnummerEl = document.getElementById('saleEntryVertragsnummer');
       const beitragEl = document.getElementById('saleEntryBeitrag');
       const beginnEl = document.getElementById('saleEntryVertragsbeginn');
       const bwsEl = document.getElementById('saleEntryBws');
@@ -5856,7 +5947,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       document.getElementById('saleEntryContactName').textContent = contact.name;
       populateCategorySelect(catEl);
       populateProductSelect(catEl, produktEl);
-      mengeEl.value = '1'; beitragEl.value = ''; beginnEl.value = ''; bwsEl.value = ''; wiedervorlageEl.value = '';
+      mengeEl.value = '1'; vertragsnummerEl.value = ''; beitragEl.value = ''; beginnEl.value = ''; bwsEl.value = ''; wiedervorlageEl.value = '';
       statusEl.textContent = ''; listEl.textContent = '';
       const added = [];
 
@@ -5883,6 +5974,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         if(!beginnEl.value){ statusEl.textContent = 'Bitte Vertragsbeginn eintragen.'; return; }
         const { error } = await sb.from('sales').insert({
           contact_id: contact.id, org_id: profile.org_id, product_id: product.id, menge,
+          vertragsnummer: vertragsnummerEl.value.trim() || null,
           laufender_beitrag: beitragEl.value ? parseFloat(beitragEl.value) : null,
           vertragsbeginn: beginnEl.value,
           bewertungssumme: bwsEl.value ? parseFloat(bwsEl.value) : null,
@@ -5892,7 +5984,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         mySalesCache = null;
         added.push(`${escHtml(product.name)} × ${menge}`);
         listEl.innerHTML = added.map(x=>'✓ '+x).join('<br>');
-        mengeEl.value = '1'; beitragEl.value = ''; beginnEl.value = ''; bwsEl.value = ''; statusEl.textContent = '';
+        mengeEl.value = '1'; vertragsnummerEl.value = ''; beitragEl.value = ''; beginnEl.value = ''; bwsEl.value = ''; statusEl.textContent = '';
       }
       async function finish(){
         if(wiedervorlageEl.value){
@@ -6667,14 +6759,24 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     btn.addEventListener('click', ()=> showPage(btn.dataset.page));
   });
 
+  // Kontakt-Unterseiten (#kontakt/<id>) sind ein zweites Hash-Format neben
+  // den einfachen Seitennamen -- eigene Weiche statt sie in VALID_PAGES zu
+  // zwingen, da der zweite Teil dynamisch ist (echte UUID, keine feste Liste).
+  function routeToHash(hash, updateHash){
+    const clean = hash.replace('#','');
+    if(clean.startsWith('kontakt/')) openContactPage(clean.slice('kontakt/'.length));
+    else showPage(clean, updateHash);
+  }
+
   // Browser-Vor-/Zurück-Buttons ebenfalls unterstützen
   window.addEventListener('hashchange', ()=>{
-    showPage(location.hash.replace('#',''), false);
+    routeToHash(location.hash, false);
   });
 
   function restoreLastPage(){
     const fromHash = location.hash.replace('#','');
-    showPage(fromHash || 'charakter', !fromHash);
+    if(fromHash) routeToHash(location.hash, false);
+    else showPage('charakter', true);
   }
 
   // Klick auf die abgedunkelte Fläche außerhalb eines Modal-Fensters schließt

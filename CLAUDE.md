@@ -2407,26 +2407,25 @@ danach vollständig aufgeräumt.
 ## Vertragsnummer-Feld an `sales` (Patch 41, 2026-08-10)
 
 Migration `supabase/migrations/20260810184939_vertragsnummer.sql`,
-**geschrieben, noch nicht gepusht (wartet auf Go)**. Löst die am
-2026-07-31 angekündigte B2B-Vorkehrung ein: nullable `sales.vertragsnummer`
-(text), pro Verkaufszeile statt pro Abschluss — ein Abschluss kann mehrere
+**live seit 2026-08-10** (nach Go gepusht). Löst die am 2026-07-31
+angekündigte B2B-Vorkehrung ein: nullable `sales.vertragsnummer` (text),
+pro Verkaufszeile statt pro Abschluss — ein Abschluss kann mehrere
 Produkte/Zeilen erzeugen (`recordWonSalesLoop()`), jede Police hat
-üblicherweise ihre eigene Nummer. **Frontend-Anbindung (Eingabefeld im
-Verkaufs-Popup, Anzeige in der Verkaufshistorie) ist noch nicht gebaut** —
-kommt nach dem Go zum Pushen, damit nicht ein Feld existiert, das noch
-niemand befüllen kann.
+üblicherweise ihre eigene Nummer. **Frontend seit demselben Tag
+angebunden** (im Zuge des Kontakt-Seiten-Umbaus, siehe eigener Abschnitt
+unten): optionales Textfeld `saleEntryVertragsnummer` im
+Verkaufs-Popup, Anzeige direkt neben dem Produktnamen in der
+Verträge-Zone der Kontakt-Seite (`renderContactSalesTab()`).
 
 ## Datei-Upload bei Kontakten (Patch 42, 2026-08-10)
 
 Migration `supabase/migrations/20260810185923_contact_files.sql` +
-Frontend in `index.html`, **fertig gebaut, Migration wartet noch auf Go
-zum Pushen** (Frontend-Code kann gefahrlos vorher schon im Repo liegen,
-er greift einfach ins Leere, bis die Tabelle/der Bucket existieren).
+Frontend in `index.html`, **live seit 2026-08-10** (nach Go gepusht).
 
 **Kurz durchgesprochen, dann gebaut** (kein separates SQL-Vorab-Review,
-siehe Kernstruktur-Regel unten): neuer Reiter "Dateien" am Kontakt
+siehe Kernstruktur-Regel unten): Reiter "Dateien" am Kontakt
 (`renderContactFilesTab()`), gleiches `.view-switch`-Tab-Muster wie
-Übersicht/Chronik/Verkaufshistorie/Tagebucheintrag.
+Übersicht/Chronik/Tagebucheintrag.
 
 - **Rechte:** kein drittes Freigabe-Level erfunden — nutzt exakt das
   bestehende Gilden-Freigabepaar für Kontakte
@@ -2450,18 +2449,106 @@ siehe Kernstruktur-Regel unten): neuer Reiter "Dateien" am Kontakt
   Eigentümer-Ordner (Storage-Policies joinen auf `contacts` +
   `guild_contact_permission()`, dieselbe Bedingung wie bei der
   `contact_files`-Tabelle selbst).
-- **Bekannte, bewusst nicht mitgefixte Einschränkung:** `canEdit` im
-  Kontakt-Detail-Modal (`c.owner_id===profile.id || profile.role==='admin'`)
-  entscheidet, ob die Upload-/Löschen-Buttons überhaupt angezeigt werden —
-  das ist derselbe Client-Flag, der schon vorher "Bearbeiten"/"Löschen"
-  am Kontakt selbst steuert, und berücksichtigt **kein**
-  `guild_contact_permission('write')`. Ein Gildenmitglied mit
-  Schreibrecht auf einen fremden, geteilten Kontakt sieht die
-  Datei-Upload-Buttons deshalb aktuell nicht, obwohl die RLS es erlauben
-  würde — vorbestehende Lücke, keine neue, nicht Teil dieses Patches.
-  Bei Gelegenheit gemeinsam mit einer echten UI-Prüfung für
+- **Bekannte, bewusst nicht mitgefixte Einschränkung:** `canEdit` auf der
+  Kontakt-Seite (`c.owner_id===profile.id || profile.role==='admin'`)
+  entscheidet, ob die Upload-/Löschen-Buttons überhaupt angezeigt werden,
+  und berücksichtigt **kein** `guild_contact_permission('write')`. Ein
+  Gildenmitglied mit Schreibrecht auf einen fremden, geteilten Kontakt
+  sieht die Datei-Upload-Buttons deshalb aktuell nicht, obwohl die RLS es
+  erlauben würde — vorbestehende Lücke (betraf vorher schon
+  "Bearbeiten"/"Löschen"), keine neue, nicht Teil dieses Patches. Bei
+  Gelegenheit gemeinsam mit einer echten UI-Prüfung für
   Gilden-Schreibrechte am Kontakt beheben (betrifft dann mehrere Stellen
   auf einmal, nicht nur Dateien).
+
+## Kontakt-Seite statt Popup (Patch 43, 2026-08-10)
+
+**Auslöser:** Nutzer-Frust über ein früher genutztes CRM im sozialen
+Bereich, das Kontakte nicht per Rechtsklick in einem neuen Tab öffnen
+ließ ("richtig schlecht gelöst ... hätte viele Arbeitsschritte gespart").
+Das bisherige `contactDetailModal`-Popup hatte exakt dieses Problem
+strukturell eingebaut — keine echte URL, nur ein per JS ein-/ausgeblendetes
+Overlay. Komplett ersetzt durch eine echte Unterseite mit eigenem
+Hash-Pfad.
+
+**Design-Prozess:** drei Zonen-Layout-Vorschläge (Kompakt / Seitenleiste /
+Gestapelte Record-Seite) erst als Skizze im Chat, dann auf Nutzerwunsch
+als reine Grau-Wireframes (keine Farben, "wirklich nur die Zonen") per
+Artifact gezeigt. Nutzer wählte "Kompakt" (Kundendaten oben, Verträge
+immer sichtbar in der Mitte, Reiter darunter) als Grundstruktur, dann in
+einer zweiten Artifact-Runde drei konkrete Ausführungen davon (Kompakt /
+Kennzahlen-Leiste / Kartenliste) — gewählt wurde **Kennzahlen-Leiste**
+("die Übersicht mit den Kennzahlen find ich cool, auch das mit dem
+Zuletzt kontaktiert!").
+
+**Routing:** zweites Hash-Format neben den einfachen Seitennamen
+(`VALID_PAGES`) — `#kontakt/<uuid>`, ausgewertet in `routeToHash()`
+(Weiche vor `showPage()`, da der zweite Teil dynamisch ist, keine feste
+Liste). `openContactPage(id)` lädt über das bereits bestehende
+`loadContactsBundle()` (bewusst nicht extra für einen Einzelkontakt
+optimiert — bei der aktuellen Datenmenge unnötige Vorab-Optimierung,
+Rule of Three) und rendert `#page-kontakt-detail`, eine ganz normale
+`.page`-Seite (kein Modal mehr, kein `contactDetailModal`,
+`contactDetailClose` entfernt). Ein nicht gefundener/nicht zugänglicher
+Kontakt (kaputter Link, fehlende Berechtigung) zeigt `#kdNotFound` statt
+eines Fehlers. `openContactPage()` läuft sowohl beim Klick als auch bei
+einem frischen Seitenaufruf mit `#kontakt/...` in der URL (Deep-Link,
+z.B. aus einem neuen Tab) — per Playwright verifiziert: Reload derselben
+URL zeigt exakt denselben Kontakt.
+
+**Rechtsklick/neuer Tab funktioniert jetzt überall, wo ein Kontaktname
+auftaucht** — durchgängig über echte `<a href="#kontakt/<id>">`, nicht
+mehr über reine Klick-Handler:
+- Kontakttabelle (`renderContactsTableInto`): **Stretched-Link-Muster**
+  (`.ctable-row-link` im Namensfeld, `::after{position:absolute;inset:0}`
+  streckt die Klickfläche über die ganze Zeile) — bleibt technisch ein
+  einzelner `<a>`-Tag, die ganze Zeile bleibt trotzdem klickbar.
+- Kanban-Karten: **kein** Stretched-Link (Konfliktrisiko mit dem
+  bestehenden `draggable="true"` fürs Ziehen) — stattdessen ist gezielt
+  nur `.kc-name` ein echter `<a draggable="false">`, der Rest der Karte
+  bleibt ein normaler Klick-Handler (`location.hash = ...`) fürs bequeme
+  große Klickziel. Zwei Mechanismen nebeneinander, bewusst kein
+  Kompromiss bei der Drag-&-Drop-Zuverlässigkeit.
+
+**Layout (Variante "Kennzahlen-Leiste"):** Kopf-Karte (Name, Status-Pill,
+Berufsstatus/Betrieb, Telefon/E-Mail/Wohnort, Aktions-Buttons) →
+Kennzahlen-Leiste (`renderContactStatStrip()`: Anzahl Verträge,
+Chronik-Einträge, Dateien, "Zuletzt kontaktiert") → Verträge-Zone
+**immer sichtbar** (vorher ein eigener Reiter "Verkaufshistorie", jetzt
+in `renderContactSalesTab()` fest zwischen Kopf und Reitern verankert,
+kein Tab-Umschalten mehr nötig) → Reiter Übersicht/Chronik/
+Tagebucheintrag/Dateien (Übersicht enthält jetzt nur noch Geburtsdatum/
+Bedarf-Ist/-Wunsch/Nächster Kontakt/Zuletzt kontaktiert/Notizen —
+Berufsstatus/Betrieb/Telefon/E-Mail/Wohnort wanderten in den Kopfbereich,
+um Dopplung zu vermeiden). Chronik-Anzahl für die Kennzahlen-Leiste kommt
+aus `chronikItemsCache.length` (derselbe gemergte Datensatz, den
+`renderContactChronikTab()` ohnehin schon aufbaut), Dateien-Anzahl über
+einen schlanken `count:'exact', head:true`-Zählaufruf.
+
+**Refresh-in-place statt Modal-Schließen:** `currentContactPageId` +
+`refreshContactPageIfCurrent(id)` ersetzen das frühere Muster "Modal
+schließen, Popup öffnen, danach ggf. wieder öffnen" — Aktion loggen,
+Anruf/Email loggen, Termin eintragen, Verkauf eintragen und Kündigen
+rendern die offene Kontakt-Seite jetzt einfach neu, statt sie zu
+verstecken. "Bearbeiten" springt zur Kontakte-Seite und öffnet dort das
+bestehende Inline-Formular (`startEditContact()`, unverändert), "Löschen"
+navigiert danach zurück zu Kontakte.
+
+**Bekannte, bewusst nicht mitgefixte Einschränkung (identisch zum
+Datei-Upload-Punkt oben, jetzt an einer Stelle sichtbar für ALLE
+Aktions-Buttons):** `canEdit` berücksichtigt weiterhin kein
+`guild_contact_permission('write')`.
+
+Per Playwright gegen den echten Account verifiziert: echter `<a
+href="#kontakt/...">` mit Ziel-UUID, Klick navigiert korrekt (Hash ändert
+sich, alte Seite verschwindet, neue erscheint), Kennzahlen-Leiste füllt
+sich, Verträge-Zone ohne Tab-Klick sichtbar, alter
+Verkaufshistorie-Reiter weg, Dateien-Reiter funktioniert, **Deep-Link per
+komplettem Seiten-Reload liefert denselben Kontakt** (das ist der
+eigentliche Rechtsklick-neuer-Tab-Beweis), Zurück-Button führt korrekt
+zu Kontakte, Kanban-Karten-Link ebenfalls ein echter Link und
+funktioniert. Kein horizontales Overflow auf 390px Mobile-Breite, keine
+Konsolen-/Seitenfehler in beiden Durchläufen.
 
 ## Bekannte, bewusst in Kauf genommene Lücken
 
