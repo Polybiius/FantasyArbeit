@@ -1301,11 +1301,22 @@ steht die Karte gerade auf Gewonnen/Verloren, holt derselbe Button sie
 jetzt zusätzlich auf Ersttermin zurück (gleiche `kundenausbau`-Aktion wie
 beim Ziehen im Kanban, kein neuer Kontakt) — vorher passierte das nur beim
 Ziehen im Board, nicht über diesen Button, was der Nutzer als Bug meldete.
-**Offen, beim nächsten Gespräch klären:** der Nutzer wollte zusätzlich,
-dass so ein Rücksprung im Hintergrund mitzählt, welcher Termin es der
-Reihe nach für den Kontakt ist (3., 4., 5. …, da Ersttermin+Zweittermin
-schon vor dem ersten Gewinn stattfanden) — Formulierung war unklar,
-nicht geraten/gebaut, aktiv nachfragen.
+**Geklärt am 2026-08-10, weiterhin bewusst NICHT gebaut:** ein Rücksprung
+Gewonnen/Verloren → Ersttermin (Kundenausbau) soll im Hintergrund
+mitzählen, der wievielte Termin es der Reihe nach für den Kontakt ist —
+eine einzige durchlaufende Nummer pro Kontakt (Ersttermin+Zweittermin vor
+dem ersten Gewinn = 1./2., jeder spätere Kundenausbau-Rücksprung zählt
+fortlaufend weiter, 3./4./5. …). **Bewusst nirgends in der UI anzeigen**
+(ausdrücklicher Nutzerwunsch, "das muss nirgends erscheinen … der Kanban
+ist einfach praktisch") — die Chronik zeigt die Kontaktintensität für
+Menschen schon ausreichend über Datum/Art jeder Zeile. Zweck ist rein,
+dass ein künftiger Kundenausbau-Quest-Typ (Kategorie "Advance", siehe
+Questbaum-Notiz) diese Zahl als Schwellenwert nutzen kann. Da noch keine
+Quest das braucht, absichtlich noch nicht gecodet (Rule of Three) — wenn
+gebaut wird, dann live aus `action_log` abgeleitet
+(`termin_vereinbart`/Zweittermin-Kanban-Übergänge desselben Kontakts
+zählen), kein neues Speicherfeld nötig, gleiches Prinzip wie
+`computeJournalStreak()`.
 
 **Bewusst noch nicht gebaut (Phase 2, siehe "Bewusst aufgeschobene Ideen"-
 Prinzip):** wiederkehrende Termine, Erinnerungen, Tagesansicht. Nicht von
