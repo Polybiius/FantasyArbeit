@@ -1579,6 +1579,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       <button class="cal-nav-btn view-switch-btn" id="cdTabChronikBtn">Chronik</button>
       <button class="cal-nav-btn view-switch-btn" id="cdTabSalesBtn">Verkaufshistorie</button>
       <button class="cal-nav-btn view-switch-btn" id="cdTabJournalBtn">Tagebucheintrag</button>
+      <button class="cal-nav-btn view-switch-btn" id="cdTabFilesBtn">Dateien</button>
     </div>
     <div id="contactDetailBody"></div>
     <div id="contactDetailChronik" style="display:none;"></div>
@@ -1589,6 +1590,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     </div>
     <div id="contactDetailSales" style="display:none;"></div>
     <div id="contactDetailJournal" style="display:none;"></div>
+    <div id="contactDetailFiles" style="display:none;"></div>
   </div>
 </div>
 
@@ -3974,6 +3976,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('contactDetailBody').innerHTML = html;
     renderContactSalesTab(c, cSales, canEdit, fmtDate);
     renderContactChronikTab(c, myEntries, cSales, fmtDate);
+    renderContactFilesTab(c, canEdit);
 
     const journalHtml = mentions.length>0
       ? `<div class="cd-mentions">${mentions.map(d=>`<a class="cal-nav-btn" data-jump="${d}">📖 ${new Date(d+'T12:00:00').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'})}</a>`).join('')}</div>`
@@ -4027,15 +4030,17 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   document.getElementById('contactDetailClose').addEventListener('click', ()=>{
     document.getElementById('contactDetailModal').style.display='none';
   });
-  function showContactDetailTab(tab){ // 'overview' | 'chronik' | 'sales' | 'journal'
+  function showContactDetailTab(tab){ // 'overview' | 'chronik' | 'sales' | 'journal' | 'files'
     document.getElementById('cdTabOverviewBtn').classList.toggle('active', tab==='overview');
     document.getElementById('cdTabChronikBtn').classList.toggle('active', tab==='chronik');
     document.getElementById('cdTabSalesBtn').classList.toggle('active', tab==='sales');
     document.getElementById('cdTabJournalBtn').classList.toggle('active', tab==='journal');
+    document.getElementById('cdTabFilesBtn').classList.toggle('active', tab==='files');
     document.getElementById('contactDetailBody').style.display = tab==='overview' ? 'block' : 'none';
     document.getElementById('contactDetailChronik').style.display = tab==='chronik' ? 'block' : 'none';
     document.getElementById('contactDetailSales').style.display = tab==='sales' ? 'block' : 'none';
     document.getElementById('contactDetailJournal').style.display = tab==='journal' ? 'block' : 'none';
+    document.getElementById('contactDetailFiles').style.display = tab==='files' ? 'block' : 'none';
     if(tab!=='chronik') document.getElementById('chronikPaginationNav').style.display = 'none';
     else renderChronikPage();
   }
@@ -4043,6 +4048,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   document.getElementById('cdTabChronikBtn').addEventListener('click', ()=> showContactDetailTab('chronik'));
   document.getElementById('cdTabSalesBtn').addEventListener('click', ()=> showContactDetailTab('sales'));
   document.getElementById('cdTabJournalBtn').addEventListener('click', ()=> showContactDetailTab('journal'));
+  document.getElementById('cdTabFilesBtn').addEventListener('click', ()=> showContactDetailTab('files'));
 
   function fmtEuro(n){ return n==null ? '—' : n.toLocaleString('de-DE',{minimumFractionDigits:2, maximumFractionDigits:2})+' €'; }
 
@@ -4095,6 +4101,97 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         if(error){ reportError('Vertrag als gekündigt markieren', error); return; }
         await renderContactsPage();
       });
+    });
+  }
+
+  const CONTACT_FILE_BUCKET = 'contact-files';
+  const CONTACT_FILE_MAX_BYTES = 10 * 1024 * 1024; // 10 MB, siehe CLAUDE.md
+  const CONTACT_FILE_ALLOWED_TYPES = ['application/pdf','image/jpeg','image/png','image/webp'];
+
+  function fmtFileSize(bytes){
+    if(bytes < 1024*1024) return Math.round(bytes/1024) + ' KB';
+    return (bytes/1024/1024).toFixed(1) + ' MB';
+  }
+
+  // Dateien-Reiter am Kontakt: Rechte/Sichtbarkeit folgen exakt der
+  // Kontakt-Freigabe (Storage-/Tabellen-RLS prüft guild_contact_permission()
+  // auf den Kontakt-Eigentümer, siehe supabase/migrations/*_contact_files.sql).
+  // canEdit hier ist derselbe Client-Flag wie bei "Bearbeiten"/"Löschen" am
+  // Kontakt selbst -- ein Gildenmitglied mit Schreibrecht, das (noch) nicht
+  // Owner/Admin ist, sieht die Upload-Buttons deshalb aktuell nicht, obwohl
+  // die RLS es erlauben würde (bekannte, vorbestehende Lücke bei canEdit,
+  // nicht Teil dieses Features -- siehe CLAUDE.md).
+  async function renderContactFilesTab(c, canEdit){
+    const wrap = document.getElementById('contactDetailFiles');
+    wrap.innerHTML = '<div class="empty-page-hint">Lade Dateien…</div>';
+    const { data: files, error } = await sb.from('contact_files').select('*').eq('contact_id', c.id).order('created_at', {ascending:false});
+    if(error){ logSilentError('Kontaktdateien laden', error); wrap.innerHTML = '<div class="empty-page-hint">Dateien konnten nicht geladen werden.</div>'; return; }
+
+    let html = '';
+    if(canEdit){
+      html += `<div class="cc-notes" style="margin-bottom:10px;">
+        <input type="file" id="cdFileInput" multiple accept="application/pdf,image/jpeg,image/png,image/webp" style="max-width:100%;">
+        <div class="empty-page-hint" style="margin-top:4px;">PDF oder Bild (JPEG/PNG/WEBP), max. 10 MB pro Datei.</div>
+        <div id="cdFileStatus" style="margin-top:4px;"></div>
+      </div>`;
+    }
+    if(!files || files.length===0){
+      html += '<div class="empty-page-hint">Noch keine Dateien zu diesem Kontakt.</div>';
+    } else {
+      html += files.map(f => `<div class="cc-notes" data-file="${f.id}">
+        <span>${escHtml(f.filename)}</span> <span class="tag">${fmtFileSize(f.size_bytes)}</span>
+        <button class="cal-nav-btn" data-download="${f.id}" style="margin-left:8px;">Herunterladen</button>
+        ${canEdit ? `<button class="cal-nav-btn" data-delete-file="${f.id}" style="margin-left:6px;">Löschen</button>` : ''}
+      </div>`).join('');
+    }
+    wrap.innerHTML = html;
+
+    wrap.querySelectorAll('[data-download]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const f = files.find(x=>x.id===btn.dataset.download);
+        const { data: signed, error: signErr } = await sb.storage.from(CONTACT_FILE_BUCKET).createSignedUrl(f.storage_path, 3600);
+        if(signErr){ reportError('Datei herunterladen', signErr); return; }
+        window.open(signed.signedUrl, '_blank');
+      });
+    });
+    wrap.querySelectorAll('[data-delete-file]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        if(!confirm('Datei wirklich löschen?')) return;
+        const f = files.find(x=>x.id===btn.dataset.deleteFile);
+        const { error: rmErr } = await sb.storage.from(CONTACT_FILE_BUCKET).remove([f.storage_path]);
+        if(rmErr){ reportError('Datei löschen', rmErr); return; }
+        const { error: delErr } = await sb.from('contact_files').delete().eq('id', f.id);
+        if(delErr){ reportError('Datei löschen', delErr); return; }
+        await renderContactFilesTab(c, canEdit);
+      });
+    });
+
+    const fileInput = document.getElementById('cdFileInput');
+    if(fileInput) fileInput.addEventListener('change', async ()=>{
+      const statusEl = document.getElementById('cdFileStatus');
+      const picked = Array.from(fileInput.files || []);
+      fileInput.value = '';
+      for(const file of picked){
+        if(!CONTACT_FILE_ALLOWED_TYPES.includes(file.type)){
+          statusEl.textContent = `${file.name}: nicht unterstützter Dateityp.`;
+          continue;
+        }
+        if(file.size > CONTACT_FILE_MAX_BYTES){
+          statusEl.textContent = `${file.name}: größer als 10 MB.`;
+          continue;
+        }
+        statusEl.textContent = `Lade ${file.name} hoch…`;
+        const path = `${c.id}/${crypto.randomUUID()}_${file.name}`;
+        const { error: upErr } = await sb.storage.from(CONTACT_FILE_BUCKET).upload(path, file, { contentType: file.type });
+        if(upErr){ reportError('Datei hochladen', upErr, statusEl); continue; }
+        const { error: insErr } = await sb.from('contact_files').insert({
+          org_id: profile.org_id, contact_id: c.id, uploaded_by: profile.id,
+          storage_path: path, filename: file.name, mime_type: file.type, size_bytes: file.size
+        });
+        if(insErr){ reportError('Datei speichern', insErr, statusEl); continue; }
+      }
+      statusEl.textContent = '';
+      await renderContactFilesTab(c, canEdit);
     });
   }
 

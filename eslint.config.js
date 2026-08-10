@@ -32,6 +32,7 @@ export default [
         location: 'readonly',
         Image: 'readonly',
         indexedDB: 'readonly',
+        crypto: 'readonly',
         // von den zwei CDN-Skripten geladen (supabase-js, Leaflet)
         supabase: 'readonly',
         L: 'readonly',

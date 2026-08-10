@@ -1692,14 +1692,6 @@ verifizieren (selbst nachmessen, nicht nur rendern und hoffen) — erst danach
 das Ergebnis dem Nutzer zeigen. Kein Rückfall auf reines Augenmaß.
 
 ## Bewusst aufgeschobene Ideen (NICHT vergessen, aber NICHT von selbst bauen)
-- **Datei-Upload bei Kontakten** — vom Nutzer am 2026-08-09 nur als
-  Stichwort genannt ("bei Kunden Dateien hochladen können"), noch ohne
-  Details (welche Dateitypen, wo sichtbar, wer darf hochladen/löschen).
-  Naheliegendes Vorbild im Code: `journal_photos` (privater Storage-Bucket,
-  signierte URLs) — technisch übertragbar, aber Sichtbarkeits-/
-  Berechtigungsfrage ist bei Kontakt-Dateien eine andere (Kontakte können
-  geteilt sein, Fotos im Tagebuch nicht). Erst durchsprechen, bevor gebaut
-  wird (Kernstruktur-Regel).
 - **Outlook-artige abhakbare Aufgaben** — vom Nutzer am 2026-08-09 als
   Ausbau-Wunsch genannt: "ähnlich wie in Outlook Aufgaben, die wir abhaken
   können". Es gibt bereits eine Teilbasis dafür (`tasksForDate()`,
@@ -1723,15 +1715,19 @@ das Ergebnis dem Nutzer zeigen. Kein Rückfall auf reines Augenmaß.
   Charakterseite/Gilde/Inventar dann komplett weg?) — braucht ein
   eigenes Gespräch, bevor irgendwas gebaut wird.
 - **Verkaufsstatistik (Arkanes Kompendium) an die Gilde binden** — vom
-  Nutzer am 2026-08-09: die aktuelle Berechnung (`aggregateStats()`,
-  Verkaufsstatistik-Seite) läuft ausschließlich über die **eigenen**
-  gewonnenen Verkäufe (`created_by = profile.id`) — der Nutzer möchte,
-  dass diese Zahlen später auch auf Gilden-Ebene aggregiert werden
-  (Team-Leistung sichtbar machen), naheliegend nach dem bereits gebauten
-  Gilden-Sichtbarkeits-Modell (Phase 1-3, siehe eigener Abschnitt). Noch
-  nicht durchdacht: ob das eine neue Ansicht ist (Gilden-Dashboard) oder
-  ein Umschalter auf der bestehenden Seite, und ob alle Gildenmitglieder
-  das sehen dürfen oder nur der Gildenführer/Team-Rechte-Inhaber.
+  Nutzer am 2026-08-09 als Idee genannt, am 2026-08-10 kurz angerissen
+  und **bewusst wieder zurückgestellt, weil dabei ein echtes, ungelöstes
+  Problem sichtbar wurde:** Provisionssätze/Planungsziele (Patch 31)
+  trägt jeder für sich selbst ein, es gibt aber **keinerlei Anstoß**,
+  das je zu tun — anders als XP (kommt automatisch durchs Arbeiten),
+  müsste ein neu eingeladenes Gildenmitglied diese Einstellungen aktiv
+  und freiwillig ausfüllen, sonst bleiben seine Zahlen leer/verzerrt,
+  sobald sie in eine Team-Ansicht einfließen. Nutzer-O-Ton: "das reißt
+  etwas auf, was wir gerade nicht wollen." Vor einem erneuten Anlauf
+  müsste zuerst diese Adoptions-Frage geklärt werden (z.B. ein
+  einmaliger Onboarding-Hinweis Richtung Einstellungen-Seite, ähnlich
+  dem Changelog-Popup-Muster) — nicht von selbst wieder aufgreifen, nur
+  auf erneuten Nutzeranstoß.
 - **Lern-/Zertifikatsystem für den Zauberer** — vom Nutzer am 2026-08-03 nur
   als Name angekündigt, noch ohne jegliche inhaltliche Details. **Wichtig:
   der Name "Grimoire" ist dafür reserviert** — deshalb heißt die
@@ -1740,12 +1736,28 @@ das Ergebnis dem Nutzer zeigen. Kein Rückfall auf reines Augenmaß.
   Nutzer künftig von einem Lern-/Zertifikatsystem spricht, ist das dieses
   hier gemeinte Vorhaben. Nicht von selbst anfangen, nur wenn der Nutzer es
   explizit anstößt.
-- **Manatrank-Vergabe an Quests knüpfen** (statt/zusätzlich zum täglichen
-  Gratis-Trank aus `grantDailyManatrank()`, siehe oben bei `user_inventory`):
-  vom Nutzer am 2026-07-31 als "wird sich noch ändern" angekündigt, noch ohne
-  Details. Vor dem Umbauen erst klären, wie genau (ersetzt der tägliche
-  Gratis-Trank die Quest-Vergabe, oder kommt beides zusammen — `grantItem()`
-  für Quest-Belohnungen existiert bereits und ist unabhängig nutzbar).
+- **Item-/Mengen-System-Umbau** — der tägliche Gratis-Manatrank
+  (`grantDailyManatrank()`) war laut Nutzer nur ein Bauphase-Hilfsmittel,
+  das eigentliche Item-System soll noch umgebaut werden. **Verbindliche
+  Reihenfolge, festgelegt 2026-08-10:** dieser Umbau kommt erst NACH der
+  Questbaum-Übersetzung in die App (siehe "Ein aktiver, paralleler
+  Nebenstrang" unten) — eins folgt aufs andere, nicht gleichzeitig
+  anfangen. Bündelt bei Gelegenheit drei bisher einzeln notierte Punkte:
+  1. **Manatrank-Vergabe an Quests knüpfen** (statt/zusätzlich zum
+     täglichen Gratis-Trank) — vom Nutzer am 2026-07-31 als "wird sich
+     noch ändern" angekündigt, noch ohne Details, wie genau (ersetzt der
+     Gratis-Trank die Quest-Vergabe, oder kommt beides zusammen —
+     `grantItem()` für Quest-Belohnungen existiert bereits und ist
+     unabhängig nutzbar).
+  2. **`reward_item_key`+`qty`-Feld für Quests** (Items als
+     Quest-Belohnung gewinnen) — technisch trivial über das bestehende
+     `grantItem()`, aber noch nicht verdrahtet.
+  3. **`user_inventory`-RLS-Lücke** (`item_key`/`quantity` ohne
+     Katalog-Prüfung selbst zuteilbar, siehe Sicherheits-Durchgang
+     2026-08-07) — ein Katalog-Prüf-Trigger war ursprünglich mit im
+     org_id-Pinning-Patch (2026-08-08) geplant, wurde aber bewusst
+     rausgenommen, um nicht doppelte Arbeit zu bauen, bevor der Umbau
+     steht.
 - **Gilden-basierte Sichtbarkeit** — Phase 1 seit 2026-08-08 live gebaut,
   siehe eigener Abschnitt "Gilden-basierte Sichtbarkeit, Phase 1" weiter
   unten. Phase 2 (Notfall-Nachfolgekette) und Phase 3 (protokollierter
@@ -1919,15 +1931,10 @@ das Ergebnis dem Nutzer zeigen. Kein Rückfall auf reines Augenmaß.
   statt eine bedeutungslose Nulllinie zu zeigen. Kein eigener Hover pro
   Datenpunkt — die exakten Zahlen bleiben über die Monats-Reiter
   abrufbar, das reicht als "Tabellen-Ansicht"-Äquivalent.
-- **Vertragsnummer-Feld an `sales`** — vom Nutzer am 2026-07-31 fürs
-  zukünftige B2B-CRM-Geschäft angekündigt (andere Vertriebsorganisationen
-  brauchen das vermutlich), aktuell aber noch nicht gebraucht — bewusst noch
-  nicht ins Schema aufgenommen.
-- **Malus-Berechnung bei gekündigten/ausgelaufenen Verträgen**: vom Nutzer am
-  2026-07-31 als Zukunftsidee erwähnt ("was wir aus dem Malus rechnerisch
-  machen, dazu in Zukunft mehr"), noch ohne jegliche Details — evtl.
-  verwandt mit dem bestehenden Konversions-Malus-Mechanismus beim Kanban
-  (`termin_nicht_wahrgenommen`, −2 XP). Nicht von selbst anfangen.
+- ~~Malus-Berechnung bei gekündigten/ausgelaufenen Verträgen~~ —
+  **entschieden gegen, 2026-08-10:** kein zusätzlicher Malus bei Storno,
+  der Storno selbst ist schmerzhaft genug. War am 2026-07-31 nur als
+  Zukunftsidee erwähnt, jetzt final verworfen, keine Wiedervorlage mehr.
 - **Admin-Benachrichtigung bei Kündigung durch Mitarbeiter**: wenn ein
   Team-Mitglied einen Vertrag als gekündigt/ausgelaufen markiert, soll der
   Admin künftig automatisch informiert werden (vom Nutzer am 2026-07-31
@@ -2011,9 +2018,8 @@ das Ergebnis dem Nutzer zeigen. Kein Rückfall auf reines Augenmaß.
   für die Vorschauen im Onboarding (Klassenwahl, Aussehen-Screen), wo es ja
   noch gar kein Inventar gibt.
 
-  **Weiterhin offen:** das `reward_item_key`+`qty`-Feld für Quests (Items
-  als Quest-Belohnung gewinnen, über das bestehende generische `grantItem()`
-  — technisch trivial, aber noch nicht verdrahtet).
+  **`reward_item_key`+`qty`-Feld für Quests:** siehe "Bewusst
+  aufgeschobene Ideen" → "Item-/Mengen-System-Umbau", dort konsolidiert.
 
   **Schützen-Bogen, seit 2026-08-03 gelöst (`schuetze_bogen`,
   `sql/patch28_schuetze_bogen.sql`):** kein GandalfHardcore-Asset (im Paket
@@ -2083,25 +2089,23 @@ das Ergebnis dem Nutzer zeigen. Kein Rückfall auf reines Augenmaß.
   2D-Bild. Höherer Einstiegsaufwand, deshalb bewusst zurückgestellt, solange
   die 2D-Ebenen-Lösung oben für die aktuellen 3 Klassen ausreicht.
 
-  **Krieger-Portrait, seit 2026-08-01 testweise live** (Nutzer: "kann sein,
-  wenn es nicht schön ist, dass wir das wieder rückgängig machen" — bewusst
-  ein Versuch, kein endgültiger Beschluss): Basis-Körper + roter Umhang +
-  Schwert + Standard-Kleidung + Haare, aus einem Idle-Frame der Sheets
-  zusammengesetzt (Python/Pillow, Frame-Ausschnitt (31,21,48,64) auf der
-  800×448-Leinwand). Datei liegt unter `img/characters/krieger.png` (erster
-  Bild-Ordner im Repo, es gab bisher keine lokalen Bild-Assets).
-  Ursprünglich an drei Stellen in `index.html` eingebaut, seit 2026-08-02 nur
-  noch an zweien — der Nutzer wollte es auf dem Login-Bildschirm nicht mehr
-  sehen, `.auth-portrait` in `#authScreen` wurde wieder entfernt (erst im
-  Dummy getestet, siehe "Profil-Onboarding" oben, dann übertragen).
-  - `#page-charakter` (`charArtStack`): `renderCharacterEquipment()` hat
-    weiterhin eine `CLASS_BASE_ART`-Map (aktuell nur `krieger` gefüllt) —
-    zeigt bei passender Klasse das Basisbild UNTER den bereits bestehenden
-    Ausrüstungs-Ebenen (siehe oben), andere Klassen fallen weiter auf den
-    Hinweistext zurück. **Unverändert, nicht Teil der Aussehen/Basis-
-    Kleidung-Arbeit unten** — eigenständiger, noch offener Punkt.
-  `image-rendering:pixelated` überall gesetzt, damit die Pixel-Art beim
-  Hochskalieren scharf bleibt statt zu verschwimmen.
+  **Krieger-Portrait (`img/characters/krieger.png`), 2026-08-01 nur
+  testweise eingeführt — inzwischen komplett überholt, nur noch historisch
+  interessant:** ein einzelnes statisches Basisbild, das eine Zeit lang auf
+  der Charakterseite unter den Ausrüstungs-Ebenen lag, nur für Krieger
+  gefüllt (`CLASS_BASE_ART`-Map). **Mit dem Rendering-Umbau vom 2026-08-03
+  (siehe "Anziehen/Ausziehen" unten) gegenstandslos geworden:** die
+  Charakterseite (`#page-charakter`/`charArtStack`) nutzt seitdem
+  denselben klassenunabhängigen `createSpriteRenderer()` wie überall sonst
+  (`layersForCharacterProfile()`, gespeist aus `skin_tone`/`hair_style`/
+  `equipped_*` — kein Bezug zu `character_class` mehr) — funktioniert
+  dadurch für alle drei Klassen bereits gleichermaßen, kein Sonderfall,
+  kein Hinweistext-Fallback mehr. `img/characters/krieger.png` und
+  `CLASS_BASE_ART` existieren im Code nicht mehr (per Check am 2026-08-10
+  bestätigt). Frühere Zwischenstände dieses Absatzes waren nicht
+  konsequent nachgezogen worden, als der Umbau passierte — beim nächsten
+  ähnlichen Fund direkt mit korrigieren, nicht nur den neuen Stand
+  danebenschreiben.
 
   **Klassenwahl-Bildschirm auf 6 angezogene, animierte Beispielcharaktere
   erweitert (2026-08-02/03, seit 2026-08-03 auch im echten `index.html`):**
@@ -2399,6 +2403,65 @@ danach vollständig aufgeräumt.
 
 **Damit ist das gesamte Gilden-Sichtbarkeits-Projekt (Phase 1+2+3) vom
 2026-08-08 fertig**, kein bekannter offener Punkt mehr in diesem Strang.
+
+## Vertragsnummer-Feld an `sales` (Patch 41, 2026-08-10)
+
+Migration `supabase/migrations/20260810184939_vertragsnummer.sql`,
+**geschrieben, noch nicht gepusht (wartet auf Go)**. Löst die am
+2026-07-31 angekündigte B2B-Vorkehrung ein: nullable `sales.vertragsnummer`
+(text), pro Verkaufszeile statt pro Abschluss — ein Abschluss kann mehrere
+Produkte/Zeilen erzeugen (`recordWonSalesLoop()`), jede Police hat
+üblicherweise ihre eigene Nummer. **Frontend-Anbindung (Eingabefeld im
+Verkaufs-Popup, Anzeige in der Verkaufshistorie) ist noch nicht gebaut** —
+kommt nach dem Go zum Pushen, damit nicht ein Feld existiert, das noch
+niemand befüllen kann.
+
+## Datei-Upload bei Kontakten (Patch 42, 2026-08-10)
+
+Migration `supabase/migrations/20260810185923_contact_files.sql` +
+Frontend in `index.html`, **fertig gebaut, Migration wartet noch auf Go
+zum Pushen** (Frontend-Code kann gefahrlos vorher schon im Repo liegen,
+er greift einfach ins Leere, bis die Tabelle/der Bucket existieren).
+
+**Kurz durchgesprochen, dann gebaut** (kein separates SQL-Vorab-Review,
+siehe Kernstruktur-Regel unten): neuer Reiter "Dateien" am Kontakt
+(`renderContactFilesTab()`), gleiches `.view-switch`-Tab-Muster wie
+Übersicht/Chronik/Verkaufshistorie/Tagebucheintrag.
+
+- **Rechte:** kein drittes Freigabe-Level erfunden — nutzt exakt das
+  bestehende Gilden-Freigabepaar für Kontakte
+  (`guild_contact_permission()` aus Phase 1). Lesezugriff (`'read'`) =
+  nur ansehen/herunterladen, Schreibzugriff (`'write'`) = zusätzlich
+  hochladen/löschen.
+- **Sichtbarkeit folgt 1:1 dem Kontakt** — kein eigenes Sichtbarkeitsmodell
+  wie beim Tagebuch, bewusste Nutzerentscheidung ("Folgt dem Kontakt").
+- **Grenzen** (Nutzerwunsch "best practice", von Claude konkretisiert):
+  max. 10 MB pro Datei (deckt auch mehrseitige gescannte Vertrags-PDFs
+  ab), erlaubte Typen PDF + JPEG/PNG/WEBP (kein HEIC, inkonsistente
+  Browser-Vorschau). Durchgesetzt **direkt am Storage-Bucket**
+  (`file_size_limit`/`allowed_mime_types` in `storage.buckets`, keine
+  eigene Trigger-Logik nötig) plus client-seitiger Vorab-Prüfung für
+  sofortiges Feedback. Mehrfach-Upload erlaubt (`<input multiple>`), kein
+  künstliches Zähl-Limit pro Kontakt.
+- **Technik:** privater Bucket `contact-files`, Objektpfad
+  `<contact_id>/<uuid>_<dateiname>`, signierte URLs zum Herunterladen
+  (`createSignedUrl`, 3600s) — gleiches Grundmuster wie `journal_photos`,
+  aber mit Freigabe-Prüfung über den Kontakt statt über einen reinen
+  Eigentümer-Ordner (Storage-Policies joinen auf `contacts` +
+  `guild_contact_permission()`, dieselbe Bedingung wie bei der
+  `contact_files`-Tabelle selbst).
+- **Bekannte, bewusst nicht mitgefixte Einschränkung:** `canEdit` im
+  Kontakt-Detail-Modal (`c.owner_id===profile.id || profile.role==='admin'`)
+  entscheidet, ob die Upload-/Löschen-Buttons überhaupt angezeigt werden —
+  das ist derselbe Client-Flag, der schon vorher "Bearbeiten"/"Löschen"
+  am Kontakt selbst steuert, und berücksichtigt **kein**
+  `guild_contact_permission('write')`. Ein Gildenmitglied mit
+  Schreibrecht auf einen fremden, geteilten Kontakt sieht die
+  Datei-Upload-Buttons deshalb aktuell nicht, obwohl die RLS es erlauben
+  würde — vorbestehende Lücke, keine neue, nicht Teil dieses Patches.
+  Bei Gelegenheit gemeinsam mit einer echten UI-Prüfung für
+  Gilden-Schreibrechte am Kontakt beheben (betrifft dann mehrere Stellen
+  auf einmal, nicht nur Dateien).
 
 ## Bekannte, bewusst in Kauf genommene Lücken
 
