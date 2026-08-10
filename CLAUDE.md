@@ -1736,28 +1736,6 @@ das Ergebnis dem Nutzer zeigen. Kein Rückfall auf reines Augenmaß.
   Nutzer künftig von einem Lern-/Zertifikatsystem spricht, ist das dieses
   hier gemeinte Vorhaben. Nicht von selbst anfangen, nur wenn der Nutzer es
   explizit anstößt.
-- **Item-/Mengen-System-Umbau** — der tägliche Gratis-Manatrank
-  (`grantDailyManatrank()`) war laut Nutzer nur ein Bauphase-Hilfsmittel,
-  das eigentliche Item-System soll noch umgebaut werden. **Verbindliche
-  Reihenfolge, festgelegt 2026-08-10:** dieser Umbau kommt erst NACH der
-  Questbaum-Übersetzung in die App (siehe "Ein aktiver, paralleler
-  Nebenstrang" unten) — eins folgt aufs andere, nicht gleichzeitig
-  anfangen. Bündelt bei Gelegenheit drei bisher einzeln notierte Punkte:
-  1. **Manatrank-Vergabe an Quests knüpfen** (statt/zusätzlich zum
-     täglichen Gratis-Trank) — vom Nutzer am 2026-07-31 als "wird sich
-     noch ändern" angekündigt, noch ohne Details, wie genau (ersetzt der
-     Gratis-Trank die Quest-Vergabe, oder kommt beides zusammen —
-     `grantItem()` für Quest-Belohnungen existiert bereits und ist
-     unabhängig nutzbar).
-  2. **`reward_item_key`+`qty`-Feld für Quests** (Items als
-     Quest-Belohnung gewinnen) — technisch trivial über das bestehende
-     `grantItem()`, aber noch nicht verdrahtet.
-  3. **`user_inventory`-RLS-Lücke** (`item_key`/`quantity` ohne
-     Katalog-Prüfung selbst zuteilbar, siehe Sicherheits-Durchgang
-     2026-08-07) — ein Katalog-Prüf-Trigger war ursprünglich mit im
-     org_id-Pinning-Patch (2026-08-08) geplant, wurde aber bewusst
-     rausgenommen, um nicht doppelte Arbeit zu bauen, bevor der Umbau
-     steht.
 - **Gilden-basierte Sichtbarkeit** — Phase 1 seit 2026-08-08 live gebaut,
   siehe eigener Abschnitt "Gilden-basierte Sichtbarkeit, Phase 1" weiter
   unten. Phase 2 (Notfall-Nachfolgekette) und Phase 3 (protokollierter
@@ -2018,8 +1996,9 @@ das Ergebnis dem Nutzer zeigen. Kein Rückfall auf reines Augenmaß.
   für die Vorschauen im Onboarding (Klassenwahl, Aussehen-Screen), wo es ja
   noch gar kein Inventar gibt.
 
-  **`reward_item_key`+`qty`-Feld für Quests:** siehe "Bewusst
-  aufgeschobene Ideen" → "Item-/Mengen-System-Umbau", dort konsolidiert.
+  **`reward_item_key`+`qty`-Feld für Quests:** siehe "Ein aktiver,
+  paralleler Nebenstrang" → "Item-/Mengen-System-Umbau", dort
+  konsolidiert.
 
   **Schützen-Bogen, seit 2026-08-03 gelöst (`schuetze_bogen`,
   `sql/patch28_schuetze_bogen.sql`):** kein GandalfHardcore-Asset (im Paket
@@ -2152,6 +2131,28 @@ Quest-Baum-Datei mitbringt, geht es darum, sie ins `recurringQuests`/
 bestehende Beispiele in `sql/patch2_journal.sql` ff. bzw. direkt in der
 Supabase-Tabelle `rule_configs`. **Erster echter Schritt dieser
 Übersetzung seit 2026-08-09 abends live**, siehe nächster Abschnitt.
+
+**Unterpunkt, festgelegt 2026-08-10 — Item-/Mengen-System-Umbau folgt
+NACH diesem Nebenstrang, nicht parallel:** der tägliche Gratis-Manatrank
+(`grantDailyManatrank()`) war laut Nutzer nur ein Bauphase-Hilfsmittel,
+das eigentliche Item-System soll noch umgebaut werden — aber erst,
+nachdem der Questbaum in die App übersetzt ist (eins folgt aufs
+andere). Bündelt drei bisher einzeln notierte Punkte:
+1. **Manatrank-Vergabe an Quests knüpfen** (statt/zusätzlich zum
+   täglichen Gratis-Trank) — vom Nutzer am 2026-07-31 als "wird sich
+   noch ändern" angekündigt, noch ohne Details, wie genau (ersetzt der
+   Gratis-Trank die Quest-Vergabe, oder kommt beides zusammen —
+   `grantItem()` für Quest-Belohnungen existiert bereits und ist
+   unabhängig nutzbar).
+2. **`reward_item_key`+`qty`-Feld für Quests** (Items als
+   Quest-Belohnung gewinnen) — technisch trivial über das bestehende
+   `grantItem()`, aber noch nicht verdrahtet.
+3. **`user_inventory`-RLS-Lücke** (`item_key`/`quantity` ohne
+   Katalog-Prüfung selbst zuteilbar, siehe Sicherheits-Durchgang
+   2026-08-07) — ein Katalog-Prüf-Trigger war ursprünglich mit im
+   org_id-Pinning-Patch (2026-08-08) geplant, wurde aber bewusst
+   rausgenommen, um nicht doppelte Arbeit zu bauen, bevor der Umbau
+   steht.
 
 ## Questbaum-Übersetzung, erster Schritt: Termin-Kanal + Vertriebsserien (Patch 40, 2026-08-09)
 
