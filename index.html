@@ -4091,7 +4091,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('contactDetailBody').innerHTML = html || '<div class="empty-page-hint">Keine weiteren Angaben.</div>';
 
     renderContactSalesTab(c, cSales, canEdit, fmtDate);
-    await renderContactChronikTab(c, myEntries, cSales, fmtDate);
+    await renderContactChronikTab(c, cSales, fmtDate);
     await renderContactFilesTab(c, canEdit);
     const filesCount = await contactFilesCount(c.id);
     renderContactStatStrip(cSales, chronikItemsCache.length, filesCount, lastTs);
@@ -4340,20 +4340,30 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // die reinen XP-Grind-Aktionen sind standardmäßig ausgeblendet, ebenso
   // die "+XX XP"-Zahlen bei den CRM-Fakten selbst, bis der Nutzer das über
   // Einstellungen → Kontakt-Chronik einschaltet (profile.chronik_show_xp).
-  // Bewusst vorerst nur die eigenen Einträge, wie "Zuletzt kontaktiert" es
-  // auch tut; Team-Sichtbarkeit bei geteilten Kontakten ist eine spätere,
-  // separate Entscheidung.
+  // Sichtbarkeit folgt seit 2026-08-10 automatisch der Kontakt-Freigabe
+  // (Lese- ODER Schreibrecht über die Gilde genügt) -- Nutzerentscheidung
+  // "wenn man die Kontakte sehen kann, gehört die Chronik dazu", keine
+  // eigene Einstellung. Deshalb hier bewusst KEIN `.eq('user_id',
+  // profile.id)`/`.eq('owner_id', profile.id)` mehr auf den drei
+  // Kontakt-bezogenen Abfragen -- die RLS-Policies
+  // (contact_activities_select_shared_contact, termine_select_shared_contact,
+  // log_select_shared_contact_activity, sales_select_like_contact,
+  // supabase/migrations/20260810201954_chronik_gilden_sichtbarkeit.sql)
+  // filtern jetzt korrekt selbst. Nur die globale, eigene `log`-Liste
+  // (fürs eigene XP/Level) bleibt bewusst strikt eigentümerbezogen.
   const CRM_RELEVANT_ACTIONS = ['termin_vereinbart','termin_wahrgenommen','pitch','kundenausbau','abschluss','empfehlung','bedarfsanalyse'];
   const ACTIVITY_LINKED_ACTIONS = ['anruf_erreicht','anruf_nicht_erreicht','email_geschrieben','email_empfangen'];
 
-  async function renderContactChronikTab(c, myEntries, cSales, fmtDate){
+  async function renderContactChronikTab(c, cSales, fmtDate){
     const wrap = document.getElementById('contactDetailChronik');
     wrap.innerHTML = '<div class="empty-page-hint">Lade Chronik …</div>';
 
-    const [{ data: termineData, error: termineErr }, { data: activitiesData, error: actErr }] = await Promise.all([
-      sb.from('termine').select('*').eq('contact_id', c.id).eq('owner_id', profile.id),
-      sb.from('contact_activities').select('*, action_log(xp)').eq('contact_id', c.id).eq('user_id', profile.id)
+    const [{ data: logData, error: logErr }, { data: termineData, error: termineErr }, { data: activitiesData, error: actErr }] = await Promise.all([
+      sb.from('action_log').select('*').eq('contact_id', c.id),
+      sb.from('termine').select('*').eq('contact_id', c.id),
+      sb.from('contact_activities').select('*, action_log(xp)').eq('contact_id', c.id)
     ]);
+    if(logErr) logSilentError('Chronik: Aktionen laden', logErr);
     if(termineErr) logSilentError('Chronik: Termine laden', termineErr);
     if(actErr) logSilentError('Chronik: Aktivitäten laden', actErr);
 
@@ -4362,7 +4372,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     const items = [];
 
-    myEntries.forEach(e=>{
+    (logData||[]).forEach(e=>{
       if(ACTIVITY_LINKED_ACTIONS.includes(e.action_key)) return; // separat über contact_activities gerendert
       const isCrm = CRM_RELEVANT_ACTIONS.includes(e.action_key);
       if(!isCrm && !showXp) return; // reines XP nur mit eingeschaltetem Schalter sichtbar

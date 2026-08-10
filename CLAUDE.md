@@ -2527,6 +2527,53 @@ Klassenlabel, da das nur die Textbeschriftung ändert
 Seiten-Reload direkt auf eine `#kontakt/...`-URL markiert exakt einen
 Button korrekt, kein Nachziehen mehr nötig.
 
+## Chronik-Sichtbarkeit folgt der Kontakt-Freigabe (Patch 45, 2026-08-10)
+
+Löst die oben mehrfach als offen dokumentierte Lücke — Nutzerentscheidung,
+klar und ohne Umweg: "keine eigene Einstellung. automatisch. wenn man
+die Kontakte sehen kann, gehört die Chronik dazu." Migration
+`supabase/migrations/20260810201954_chronik_gilden_sichtbarkeit.sql`,
+live.
+
+**Vier Tabellen betroffen**, keine davon kannte bis dahin die
+Gilden-Freigabe:
+- `action_log`/`sales` hatten schon eine "geteilter Kontakt"-Sonderregel,
+  aber nur auf Basis der alten organisationsweiten
+  `contacts_shared_for_org()`-Einstellung — **bleibt als Fallback
+  erhalten** (genau wie bei `contacts` selbst), zusätzlich um
+  `guild_contact_permission(c.owner_id, false)` ergänzt.
+- `contact_activities`/`termine` hatten **gar keine** Freigabe-Regel,
+  nur Eigentümer oder Admin — neue Policy `*_select_shared_contact`
+  ergänzt.
+
+`guild_contact_permission(owner_id, false)` (need_write=**false**) ist
+bewusst gewählt: liefert `true` für jedes Gildenmitglied mit **Lese-
+ODER Schreibrecht** auf den Kontakt — genau "kann den Kontakt sehen",
+nicht nur "kann ihn bearbeiten".
+
+**Frontend musste mitgezogen werden, RLS allein reichte nicht:**
+`renderContactChronikTab()` fragte `termine`/`contact_activities` bisher
+explizit mit `.eq('owner_id', profile.id)`/`.eq('user_id', profile.id)`
+ab — eine im Frontend zusätzlich gesetzte Einschränkung, die selbst
+nach dem RLS-Fix weiterhin nur eigene Zeilen geliefert hätte. Beide
+Filter entfernt, `action_log` bekam dort zusätzlich eine eigene,
+kontakt-gebundene Abfrage (`eq('contact_id', c.id)`, keine
+`user_id`-Einschränkung mehr) statt wie vorher die global geladene,
+bewusst eigentümerbezogene `log`-Liste (die fürs eigene XP/Level exakt
+so bleiben muss). `sales` brauchte keine Frontend-Änderung — `cSales`
+kam schon vorher ohne Eigentümer-Filter aus `loadContactsBundle()`.
+**„Zuletzt kontaktiert (von dir)" bleibt unverändert** — explizit als
+"von dir" gekennzeichnet, nicht Teil dieser Änderung.
+
+**Verifiziert nicht nur mit dem eigenen Admin-Zugang** (der ohnehin
+alles sieht), sondern mit zwei echten Kollegen-Accounts über eine
+temporäre Gilden-Testmitgliedschaft (`supabase db query --linked` +
+`set_config`, danach vollständig entfernt): mit Lesezugriff sah der
+Kollege alle 25 `action_log`- und 7 `contact_activities`-Einträge eines
+echten Kontakts korrekt, ohne Mitgliedschaft exakt 0 — inklusive des
+Kontakts selbst. `guild_contact_permission(..., true)` (Schreibrecht)
+lieferte für den reinen Lese-Zugriff korrekt `false`.
+
 ## Kontakt-Seite statt Popup (Patch 43, 2026-08-10)
 
 **Auslöser:** Nutzer-Frust über ein früher genutztes CRM im sozialen
@@ -2634,25 +2681,10 @@ Nutzer-Beschwerde.
 
 ## Bekannte, bewusst in Kauf genommene Lücken
 
-- **"Zuletzt kontaktiert" und die Kontakt-Chronik zeigen nur eigene
-  Einträge, nicht die von Kollegen — auch bei einem per Gilde geteilten
-  Kontakt.** Am 2026-08-10 gegen die echten RLS-Policies verifiziert
-  (nicht nur vermutet), nachdem der Nutzer nachfragte "wir haben die
-  Datenbank doch bearbeitet???" — die Gilden-Sichtbarkeit (Phase 1,
-  2026-08-08) hat NUR `contacts` und `locations` auf das neue
-  `guild_contact_permission()`-Modell umgestellt, zwei andere Stellen
-  blieben unangetastet:
-  - `action_log` hat zwar eine `log_select_shared_contact_activity`-Policy
-    für Team-Sicht auf Log-Einträge an einem geteilten Kontakt, die
-    prüft aber weiterhin die **alte**, größtenteils abgelöste
-    org-weite `contacts_shared_for_org()`-Einstellung, nicht die neue
-    Gilden-Freigabe — de facto seit Phase 1 wirkungslos, wenn
-    `contactsVisibility` nicht mehr auf 'shared' steht.
-  - `contact_activities` (Anrufe/Emails, Patch 37) hat **überhaupt
-    keine** Team-Sicht-Policy, nur `user_id = auth.uid() OR is_admin()`.
-  Beides müsste im selben Aufwasch auf `guild_contact_permission()`
-  umgestellt werden, wenn das Thema wieder aufgegriffen wird — bewusst
-  nicht von selbst angefasst, nur auf erneuten Nutzeranstoß.
+- ~~"Zuletzt kontaktiert"/Kontakt-Chronik zeigen nur eigene Einträge~~ —
+  **behoben, Patch 45, 2026-08-10**, siehe eigener Abschnitt "Chronik-
+  Sichtbarkeit folgt der Kontakt-Freigabe". "Zuletzt kontaktiert (von
+  dir)" bleibt bewusst weiterhin eigentümerbezogen (so gekennzeichnet).
 - Level-Kurve basiert auf geschätzten, nicht gemessenen Aktivitätswerten.
 - Kein automatisiertes Testen — der Nutzer testet manuell mit sich selbst und
   zwei Kollegen (Safari/iPhone + Brave/Desktop).
