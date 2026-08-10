@@ -2633,12 +2633,25 @@ Nutzer-Beschwerde.
 
 ## Bekannte, bewusst in Kauf genommene Lücken
 
-- "Zuletzt kontaktiert" an einem Kontakt zeigt nur **eigene** Log-Einträge des
-  gerade eingeloggten Nutzers, nicht die von Kollegen — auch wenn der Kontakt
-  auf "shared" steht. Grund: `action_log` bleibt grundsätzlich privat; es gibt
-  eine RLS-Policy (`log_select_shared_contact_activity`), die Team-Sicht auf
-  Log-Einträge AN EINEM GETEILTEN KONTAKT erlaubt, aber die UI zieht das noch
-  nicht konsequent. Könnte man ausbauen.
+- **"Zuletzt kontaktiert" und die Kontakt-Chronik zeigen nur eigene
+  Einträge, nicht die von Kollegen — auch bei einem per Gilde geteilten
+  Kontakt.** Am 2026-08-10 gegen die echten RLS-Policies verifiziert
+  (nicht nur vermutet), nachdem der Nutzer nachfragte "wir haben die
+  Datenbank doch bearbeitet???" — die Gilden-Sichtbarkeit (Phase 1,
+  2026-08-08) hat NUR `contacts` und `locations` auf das neue
+  `guild_contact_permission()`-Modell umgestellt, zwei andere Stellen
+  blieben unangetastet:
+  - `action_log` hat zwar eine `log_select_shared_contact_activity`-Policy
+    für Team-Sicht auf Log-Einträge an einem geteilten Kontakt, die
+    prüft aber weiterhin die **alte**, größtenteils abgelöste
+    org-weite `contacts_shared_for_org()`-Einstellung, nicht die neue
+    Gilden-Freigabe — de facto seit Phase 1 wirkungslos, wenn
+    `contactsVisibility` nicht mehr auf 'shared' steht.
+  - `contact_activities` (Anrufe/Emails, Patch 37) hat **überhaupt
+    keine** Team-Sicht-Policy, nur `user_id = auth.uid() OR is_admin()`.
+  Beides müsste im selben Aufwasch auf `guild_contact_permission()`
+  umgestellt werden, wenn das Thema wieder aufgegriffen wird — bewusst
+  nicht von selbst angefasst, nur auf erneuten Nutzeranstoß.
 - Level-Kurve basiert auf geschätzten, nicht gemessenen Aktivitätswerten.
 - Kein automatisiertes Testen — der Nutzer testet manuell mit sich selbst und
   zwei Kollegen (Safari/iPhone + Brave/Desktop).
