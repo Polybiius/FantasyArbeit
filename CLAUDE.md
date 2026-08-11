@@ -29,7 +29,11 @@ nicht per Code-Änderung.
   Mitarbeiter-Ranking, bewusst kein Leaderboard.
 - **Beachhead bleibt die eigene Versicherungs-/Vertriebs-Nische**, kein
   branchenübergreifender Sprung, bis ein zweiter echter zahlender Kunde
-  ansteht (siehe Multi-Org-Schwelle oben).
+  ansteht (siehe Multi-Org-Schwelle oben). Die eigentliche Nische ist dabei
+  nicht Branche oder Firmengröße, sondern kleine, strukturierte
+  Vertriebsteams mit zählbarer, wiederholbarer Aktivität — die
+  Gilden-Mechanik ist entsprechend bewusst nie für mehr als ~10-15 Personen
+  gedacht, das ist ein Entwurfsparameter, keine technische Zufallsgrenze.
 - **Verhaltenswissenschaftliches Fundament: Selbstbestimmungstheorie (SDT,
   Deci & Ryan), nicht Spielautomaten-Konditionierung.** Variable-ratio-
   Verstärkung (Skinner, Verstärkungsmuster von Spielautomaten/Lootboxen)
@@ -42,34 +46,16 @@ nicht per Code-Änderung.
   Mastery, Klassenwahl = Autonomy, Gilde = Belonging). Variable/zufällige
   Belohnung bleibt auf Kosmetik/Nebensächliches begrenzt (z.B. Item-Drops
   wie der tägliche Manatrank).
-- **Messbarkeits-Lücke, noch ungelöst:** ein Verkaufsargument "steigert
-  Produktivität nachweisbar" braucht Vorher/Nachher- oder
-  Vergleichsgruppen-Daten — existiert aktuell nicht (ein Nutzer, keine
-  Kontrollgruppe, keine Baseline). Voraussetzung für jede spätere
-  Vertriebs-/Pitch-Aussage, noch nicht angegangen.
-- **Noch komplett offen, nur benannt:** Preismodell, Marken-/
-  Positionierungs-Sprache, Go-to-Market-Weg. Nicht von selbst
-  weiterentwickeln, nur auf erneuten Nutzeranstoß.
 
-**Nachtrag, Stresstest-Session (2026-08-11 abends):** die eigentliche
-Nische ist nicht Branche oder Firmengröße, sondern **kleine, strukturierte
-Vertriebsteams mit zählbarer, wiederholbarer Aktivität** (Calls, Termine,
-Pipeline) — validiert durch eigene gelebte Erfahrung des Nutzers (B2C-
-Vertriebsteam, 10 Personen, 1 Gilde; B2B-Regionsteam, 5 von 27 Personen).
-Die Gilden-Mechanik ist ohnehin nie für mehr als ~10-15 Personen gedacht,
-passt also eher zu kleinen Firmen/Teilteams als zu einem einzelnen
-Riesen-Konzern. Drei Erweiterungs-Ideen geprüft und verworfen/geparkt:
-Gaming-/Tech-Industrie (dort bereits etablierte Konkurrenz: Spinify,
-LevelEleven, Ambition — Sales-Gamification für genau diese Zielgruppe
-existiert seit Jahren), Kleinunternehmen ohne echtes Vertriebsverhalten
-(z.B. eine Softwareagentur — kein zählbares Verhalten zum Gamifizieren,
-anderes Produkt nötig), sozialer Bereich/Jugendhilfe (kein Vertrieb,
-sondern Fallmanagement — zusätzlich ein echtes ethisches Risiko, wenn
-Gamification auf die Bearbeitung von Fällen Schutzbefohlener angewendet
-würde, verstärkt das SDT-Prinzip oben). Eigene Kolleg:innen als Pilot
-sind zusätzlich durch strikte IT-Compliance beim Arbeitgeber blockiert
-(DIN-ISO-Compliance, kein Bluetooth/Website-Zugriff/App-Download auf
-Firmengeräten) — dauerhaft erledigte Frage, nicht wieder aufgreifen.
+Marktanalyse, Preismodell, Go-to-Market, Wettbewerbsvergleich (Pipedrive/
+Salesforce/Spinify u.a.), Erfolgswahrscheinlichkeits-Einschätzungen, die
+Begründung der Nischen-Eingrenzung (verworfene Branchen-Alternativen,
+Kolleg:innen-Pilot-Blockade) und der zeitliche Geschäfts-Fahrplan leben
+bewusst NICHT hier, sondern in Claudes Erinnerungssystem
+(`project_business_fahrplan`, außerhalb des Git-Repos, nur bei
+Business-Gesprächen gelesen) — dieser Abschnitt bleibt auf die
+Design-Prinzipien beschränkt, die tatsächlich Code-/Feature-Entscheidungen
+begründen (Business/Motivation-Engine-Trennung, PvE, Gilden-Größe, SDT).
 
 ## Tech-Stack
 
