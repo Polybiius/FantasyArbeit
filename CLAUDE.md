@@ -20,6 +20,57 @@ Regelwerk (`rule_configs.config`, JSONB)**, nicht hart im Code. Neue Kunden
 (andere Vertriebsorganisationen) sollen sich per Konfiguration anpassen lassen,
 nicht per Code-Änderung.
 
+## Geschäftsmodell / Positionierung, Leitplanken (2026-08-11)
+
+- **Architektur-Prinzip:** Business Engine (CRM-Fakten, Kern-Tabellen/
+  `rule_configs`) getrennt von Motivation Engine (XP/Level als abgeleitete
+  Schicht aus `action_log`) — entspricht der bestehenden Architektur.
+- **PvE statt PvP:** Fortschritt gegen ein gemeinsames Ziel statt
+  Mitarbeiter-Ranking, bewusst kein Leaderboard.
+- **Beachhead bleibt die eigene Versicherungs-/Vertriebs-Nische**, kein
+  branchenübergreifender Sprung, bis ein zweiter echter zahlender Kunde
+  ansteht (siehe Multi-Org-Schwelle oben).
+- **Verhaltenswissenschaftliches Fundament: Selbstbestimmungstheorie (SDT,
+  Deci & Ryan), nicht Spielautomaten-Konditionierung.** Variable-ratio-
+  Verstärkung (Skinner, Verstärkungsmuster von Spielautomaten/Lootboxen)
+  wird bewusst NICHT auf eigentliches Vertriebsverhalten oder
+  vergütungsrelevante Größen angewendet — regulatorisches Risiko (EU
+  Dark-Pattern-Regulierung) und schlechtes Verkaufsargument gegenüber
+  HR/Betriebsrat. Stattdessen bleiben die fünf SDT-Säulen (Progression,
+  Mastery, Autonomy, Recognition, Belonging) Leitlinie für neue
+  Gamification-Bausteine — passt zu bereits Gebautem (Sigil/Skills =
+  Mastery, Klassenwahl = Autonomy, Gilde = Belonging). Variable/zufällige
+  Belohnung bleibt auf Kosmetik/Nebensächliches begrenzt (z.B. Item-Drops
+  wie der tägliche Manatrank).
+- **Messbarkeits-Lücke, noch ungelöst:** ein Verkaufsargument "steigert
+  Produktivität nachweisbar" braucht Vorher/Nachher- oder
+  Vergleichsgruppen-Daten — existiert aktuell nicht (ein Nutzer, keine
+  Kontrollgruppe, keine Baseline). Voraussetzung für jede spätere
+  Vertriebs-/Pitch-Aussage, noch nicht angegangen.
+- **Noch komplett offen, nur benannt:** Preismodell, Marken-/
+  Positionierungs-Sprache, Go-to-Market-Weg. Nicht von selbst
+  weiterentwickeln, nur auf erneuten Nutzeranstoß.
+
+**Nachtrag, Stresstest-Session (2026-08-11 abends):** die eigentliche
+Nische ist nicht Branche oder Firmengröße, sondern **kleine, strukturierte
+Vertriebsteams mit zählbarer, wiederholbarer Aktivität** (Calls, Termine,
+Pipeline) — validiert durch eigene gelebte Erfahrung des Nutzers (B2C-
+Vertriebsteam, 10 Personen, 1 Gilde; B2B-Regionsteam, 5 von 27 Personen).
+Die Gilden-Mechanik ist ohnehin nie für mehr als ~10-15 Personen gedacht,
+passt also eher zu kleinen Firmen/Teilteams als zu einem einzelnen
+Riesen-Konzern. Drei Erweiterungs-Ideen geprüft und verworfen/geparkt:
+Gaming-/Tech-Industrie (dort bereits etablierte Konkurrenz: Spinify,
+LevelEleven, Ambition — Sales-Gamification für genau diese Zielgruppe
+existiert seit Jahren), Kleinunternehmen ohne echtes Vertriebsverhalten
+(z.B. eine Softwareagentur — kein zählbares Verhalten zum Gamifizieren,
+anderes Produkt nötig), sozialer Bereich/Jugendhilfe (kein Vertrieb,
+sondern Fallmanagement — zusätzlich ein echtes ethisches Risiko, wenn
+Gamification auf die Bearbeitung von Fällen Schutzbefohlener angewendet
+würde, verstärkt das SDT-Prinzip oben). Eigene Kolleg:innen als Pilot
+sind zusätzlich durch strikte IT-Compliance beim Arbeitgeber blockiert
+(DIN-ISO-Compliance, kein Bluetooth/Website-Zugriff/App-Download auf
+Firmengeräten) — dauerhaft erledigte Frage, nicht wieder aufgreifen.
+
 ## Tech-Stack
 
 - **Frontend**: eine einzige `index.html`-Datei. Vanilla JavaScript (kein Framework,
@@ -1185,6 +1236,57 @@ echtem Session-Token, nicht nur gelesen/vermutet):**
   zwei Wegwerf-Testprofile (`PatchAuditTest`/`Patch39AuditTest`) samt
   ihrer `@example.com`-Auth-Nutzer sind nicht mehr in der DB (zuletzt am
   2026-08-10 per `supabase db query --linked` gegengeprüft, 0 Treffer).
+
+## Nachtrag: locName()-XSS-Lücke + Datenbank-Advisor-Durchgang (2026-08-11)
+
+Auf die Frage "was könnten wir bei diesem Tempo übersehen haben" zwei
+echte, kleine Funde gemacht und **verifiziert behoben** (nicht nur
+behauptet):
+- `locName()` (Dungeon-/Betriebsname) escapte seinen Rückgabewert nicht —
+  drei Renderstellen betroffen (Kontakte-nach-Dungeon-Kacheln,
+  Kontakttabelle, Kanban-Karten). Gleiche Lückenklasse wie der
+  Sicherheits-Durchgang vom 2026-08-07, dort aber nicht erfasst (Locations
+  waren nicht im Scope, oder Regression durch neueren Code). Gefixt.
+- Passwortfeld (`authPassword`) ohne `maxlength` nachgetragen — reine
+  Hygiene, kein Sicherheitsrisiko.
+
+**Neu entdecktes Werkzeug fürs nächste Mal:** `supabase db advisors
+--linked --type all --level info` (Supabases offizieller Security-/
+Performance-Linter gegen die echte, verlinkte DB — lokal per `export
+PATH="$HOME/.local/share/nodejs-portable/bin:$PATH" &&
+./node_modules/.bin/supabase db advisors --linked ...`, JSON-Output gut
+mit `jq` auswertbar). Deutlich zuverlässiger als eigenes Grep-Raten für
+sowas — bei künftigen ähnlichen Audits zuerst hiermit starten.
+
+**Ergebnis dieses Durchgangs:**
+- **Gefixt, live** (Migration `20260811202349_fk_indizes_und_search_path_haertung.sql`):
+  33 fehlende Indizes auf Fremdschlüssel-Spalten bei neueren Tabellen
+  (Kalender, Gilden, Dateien, Chronik — das Muster aus Patch 17/17b wurde
+  bei ihnen nicht mitgezogen), plus fester `search_path` auf 7 Funktionen
+  mit erhöhten Rechten (`is_admin`, `current_org_id`,
+  `contacts_shared_for_org`, u.a. — Härtung gegen search_path-hijacking).
+  Per erneutem Advisor-Lauf verifiziert: 0 verbleibende
+  `unindexed_foreign_keys`-Meldungen.
+- **Geprüft, unbedenklich:** 28 als "von anon/authenticated ausführbar"
+  gemeldete Funktionen. Die vier bedrohlichsten
+  (`handle_member_offboarding`, `sync_contacts_owner_on_location_reassign`,
+  `enforce_profile_insert_defaults`, `protect_privileged_profile_fields`)
+  sind strukturell `returns trigger`-Funktionen — Postgres kann die gar
+  nicht direkt aufrufen lassen, unabhängig von vergebenen Rechten. Der
+  Rest sind RLS-Hilfsfunktionen (müssen breit ausführbar sein) oder
+  RPC-Funktionen mit eigener interner Prüfung (z.B. `admin_emergency_access`
+  prüft `is_admin()` intern).
+- **Bewusst zurückgestellt, echte "erst bei Skalierung"-Kandidaten**
+  (gleiche Logik wie "Technische Skalierungs-Schwellen" oben): 60×
+  mehrere permissive RLS-Policies pro Tabelle, 54× `auth.uid()` statt
+  `(select auth.uid())` in RLS-Policies — beides bekannte
+  Supabase-Performance-Muster, bei der aktuellen Nutzerzahl irrelevant.
+  114 Policy-Stellen jetzt hastig umzuschreiben wäre ein unnötiges
+  Zugriffsmodell-Risiko gewesen. Erst bei echtem Abfrage-Volumen
+  angehen, nicht vorbeugend. 8 ungenutzte Indizes (Rauschen bei geringer
+  Last, keine Handlung). "Leaked Password Protection" im
+  Supabase-Dashboard ist aus — reiner Klick, kein SQL, noch nicht
+  angeschaltet, bei Gelegenheit selbst aktivierbar.
 
 ## Abenteuerlog-Seite (Kalender/Tagebuch/Foto), seit 2026-08-04 neu sortiert
 
