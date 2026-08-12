@@ -779,10 +779,13 @@
         <div class="card" style="margin-top:18px;">
           <h2>Quests <span class="tag">questbaum & meilensteine</span></h2>
 
-          <h3 class="settings-subheading">🗺️ Questbaum — aktuelle Ziele <span class="tag">schaltet Titel frei</span></h3>
-          <div id="questTreeQuick"></div>
+          <h3 class="settings-subheading">🎯 Tägliche Quests <span class="tag">Bonus-XP</span></h3>
+          <div id="dailyQuestTiles" class="dungeon-tile-grid"></div>
 
-          <h3 class="settings-subheading" style="margin-top:20px;">📅 Wiederkehrend <span class="tag">täglich/wöchentlich · Bonus-XP</span></h3>
+          <h3 class="settings-subheading" style="margin-top:20px;">🗺️ Questbaum — aktuelle Ziele <span class="tag">schaltet Titel frei</span></h3>
+          <div id="questTreeQuick" class="dungeon-tile-grid"></div>
+
+          <h3 class="settings-subheading" style="margin-top:20px;">📅 Wöchentlich <span class="tag">Bonus-XP</span></h3>
           <div id="questList"></div>
 
           <h3 class="settings-subheading" style="margin-top:20px;">⛓️ Quest-Ketten <span class="tag">meilensteine · Bonus-XP</span></h3>
@@ -2756,6 +2759,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     return { chains: chains.slice(0, QUEST_QUICKVIEW_CHAIN_LIMIT), habits };
   }
 
+  // Kachel statt Liste (wiederverwendet .dungeon-tile, wie Produkte/Dungeons)
+  // - Nutzerwunsch, "wir haben ja diese schönen Kacheln". Nur eine Mini-
+  // Fortschrittsleiste (.quest-track, wie beim alten Listen-Stil) kommt dazu.
+  function questTileHtml(icon, name, sub, pct){
+    return `<div class="dungeon-tile" style="cursor:default;"><span class="dt-icon">${icon}</span><span class="dt-name">${name}</span><span class="dt-count">${sub}</span><div class="quest-track" style="width:100%;"><div class="quest-fill" style="width:${pct}%"></div></div></div>`;
+  }
+
   function renderQuestTreeQuick(){
     const el = document.getElementById('questTreeQuick');
     if(!el || !config || !config.questTree) return;
@@ -2767,8 +2777,31 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     }
     el.innerHTML = items.map(it=>{
       const pct = Math.max(0, Math.min(100, Math.round(100*it.current/it.target)));
-      return `<div class="quest"><div class="quest-top"><span class="qname">${escHtml(it.category)} · ${escHtml(it.label)}</span><span class="qprog">${it.current}/${it.target}</span></div><div class="quest-track"><div class="quest-fill" style="width:${pct}%"></div></div></div>`;
+      return questTileHtml('🗺️', escHtml(it.label), `${escHtml(it.category)} · ${it.current}/${it.target}`, pct);
     }).join('');
+  }
+
+  // Gemeinsame Fortschrittsberechnung für Tages-/Wochen-Quests, damit die
+  // Kachel- (täglich) und die Listen-Darstellung (wöchentlich) nicht
+  // denselben Cur/Max/Done-Code doppelt pflegen.
+  function recurringQuestProgress(q){
+    const progressParts = q.conditions.map(c=>Math.min(countInPeriod(c.actions,q.period), c.count));
+    const cur = progressParts.reduce((a,b)=>a+b,0);
+    const max = q.conditions.reduce((a,c)=>a+c.count,0);
+    const key = q.period==='daily' ? todayKey(new Date()) : weekKey(new Date());
+    const done = recurringQuestBonusEarned(q,key);
+    return { cur, max, done, pct: Math.round(100*cur/max) };
+  }
+
+  function renderDailyQuestTiles(){
+    const el = document.getElementById('dailyQuestTiles');
+    if(!el) return;
+    const items = (config.recurringQuests||[]).filter(q=>q.period==='daily').map(q=>({ q, p:recurringQuestProgress(q) })).filter(x=>!x.p.done);
+    if(items.length===0){
+      el.innerHTML = '<div class="empty-page-hint">Keine offenen täglichen Quests.</div>';
+      return;
+    }
+    el.innerHTML = items.map(({q,p})=>questTileHtml('🎯', escHtml(q.name), `${p.cur}/${p.max} · +${q.bonus} XP`, p.pct)).join('');
   }
 
   // Täglicher Gratis-Manatrank: hängt am Kalendertag, nicht am Login-Moment —
@@ -2931,16 +2964,16 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     // verbraucht wurde. Hier mitziehen, damit er live synchron bleibt.
     renderInventory();
     renderQuestTreeQuick();
+    renderDailyQuestTiles();
 
-    document.getElementById('questList').innerHTML = (config.recurringQuests||[]).map(q=>{
-      const progressParts = q.conditions.map(c=>Math.min(countInPeriod(c.actions,q.period), c.count));
-      const cur = progressParts.reduce((a,b)=>a+b,0);
-      const max = q.conditions.reduce((a,c)=>a+c.count,0);
-      const key = q.period==='daily'?todayKey(new Date()):weekKey(new Date());
-      const done = recurringQuestBonusEarned(q,key);
-      const pct = Math.round(100*cur/max);
-      return `<div class="quest"><div class="quest-top"><span class="qname">${q.name} <span style="color:var(--muted-2)">(+${q.bonus} XP)</span></span><span class="qprog ${done?'done':''}">${done?'✓ erfüllt':cur+'/'+max}</span></div><div class="quest-track"><div class="quest-fill" style="width:${pct}%"></div></div></div>`;
-    }).join('');
+    // Nur noch wöchentliche Quests hier - Tägliche wandern als Kacheln nach
+    // oben (renderDailyQuestTiles()), beide blenden erfüllte Quests aus
+    // (Nutzerwunsch: "nur wirklich was aktuell läuft" zeigen).
+    document.getElementById('questList').innerHTML = (config.recurringQuests||[]).filter(q=>q.period!=='daily').map(q=>{
+      const p = recurringQuestProgress(q);
+      if(p.done) return '';
+      return `<div class="quest"><div class="quest-top"><span class="qname">${q.name} <span style="color:var(--muted-2)">(+${q.bonus} XP)</span></span><span class="qprog">${p.cur}/${p.max}</span></div><div class="quest-track"><div class="quest-fill" style="width:${p.pct}%"></div></div></div>`;
+    }).filter(Boolean).join('') || '<div class="empty-page-hint">Keine offenen wöchentlichen Quests.</div>';
 
     document.getElementById('chainList').innerHTML = (config.questChains||[]).map(chain=>{
       let prevDone = true;
