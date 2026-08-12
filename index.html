@@ -566,6 +566,20 @@
   .abtn .qtally .tpip{width:7px;height:7px;border-radius:50%;background:#0e0c17;border:1px solid var(--border);}
   .abtn .qtally .tpip.on{background:var(--mana);border-color:var(--mana);box-shadow:0 0 5px rgba(34,211,200,0.6);}
 
+  /* Quest-Karten (Tägliche Quests / Questbaum-Schnellansicht) - linksbündig
+     statt zentrierter .dungeon-tile, weil Quest-Namen ganze Sätze sind, keine
+     kurzen Produktnamen (erster Versuch mit .dungeon-tile sah deshalb
+     unruhig aus, siehe Git-Historie). */
+  .qcard-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;}
+  .qcard{background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius-md);padding:12px 14px;box-shadow:var(--shadow-rest);display:flex;flex-direction:column;gap:8px;}
+  .qcard .qc-top{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;}
+  .qcard .qc-cat{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:var(--muted-2);text-transform:uppercase;letter-spacing:.05em;}
+  .qcard .qc-name{font-size:13px;font-weight:600;color:var(--text);line-height:1.35;margin-top:2px;}
+  .qcard .qc-frac{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted);white-space:nowrap;flex-shrink:0;}
+  .qcard .qc-track{height:5px;border-radius:var(--radius-xs);background:#0e0c17;border:1px solid var(--border);overflow:hidden;}
+  .qcard .qc-fill{height:100%;background:linear-gradient(90deg,var(--success),var(--mana));}
+  .qcard .qc-xp{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--success);}
+
   .quest{margin-bottom:14px;}
   .quest-top{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:6px;}
   .quest-top .qname{color:var(--text);}
@@ -777,19 +791,16 @@
         </div>
 
         <div class="card" style="margin-top:18px;">
-          <h2>Quests <span class="tag">questbaum & meilensteine</span></h2>
+          <h2>Quests <span class="tag">questbaum & täglich/wöchentlich</span></h2>
 
           <h3 class="settings-subheading">🎯 Tägliche Quests <span class="tag">Bonus-XP</span></h3>
-          <div id="dailyQuestTiles" class="dungeon-tile-grid"></div>
+          <div id="dailyQuestTiles" class="qcard-grid"></div>
 
           <h3 class="settings-subheading" style="margin-top:20px;">🗺️ Questbaum — aktuelle Ziele <span class="tag">schaltet Titel frei</span></h3>
-          <div id="questTreeQuick" class="dungeon-tile-grid"></div>
+          <div id="questTreeQuick" class="qcard-grid"></div>
 
           <h3 class="settings-subheading" style="margin-top:20px;">📅 Wöchentlich <span class="tag">Bonus-XP</span></h3>
           <div id="questList"></div>
-
-          <h3 class="settings-subheading" style="margin-top:20px;">⛓️ Quest-Ketten <span class="tag">meilensteine · Bonus-XP</span></h3>
-          <div id="chainList"></div>
         </div>
 
         <div class="card" style="margin-top:18px;">
@@ -2759,11 +2770,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     return { chains: chains.slice(0, QUEST_QUICKVIEW_CHAIN_LIMIT), habits };
   }
 
-  // Kachel statt Liste (wiederverwendet .dungeon-tile, wie Produkte/Dungeons)
-  // - Nutzerwunsch, "wir haben ja diese schönen Kacheln". Nur eine Mini-
-  // Fortschrittsleiste (.quest-track, wie beim alten Listen-Stil) kommt dazu.
-  function questTileHtml(icon, name, sub, pct){
-    return `<div class="dungeon-tile" style="cursor:default;"><span class="dt-icon">${icon}</span><span class="dt-name">${name}</span><span class="dt-count">${sub}</span><div class="quest-track" style="width:100%;"><div class="quest-fill" style="width:${pct}%"></div></div></div>`;
+  // Karte statt Liste, linksbündig - eine erste Fassung hat .dungeon-tile
+  // wiederverwendet (zentrierter Text, kurze Produktnamen-Kacheln), sah mit
+  // ganzen Quest-Sätzen aber unruhig aus. Zweiter Anlauf nach drei
+  // Layout-Optionen als Vorschau, vom Nutzer bestätigt ("das erste sieht
+  // sehr gut aus").
+  function questCardHtml(cat, name, frac, pct, xpLabel){
+    const xpHtml = xpLabel ? `<div class="qc-xp">${xpLabel}</div>` : '';
+    return `<div class="qcard"><div class="qc-top"><div><div class="qc-cat">${cat}</div><div class="qc-name">${name}</div></div><div class="qc-frac">${frac}</div></div><div class="qc-track"><div class="qc-fill" style="width:${pct}%"></div></div>${xpHtml}</div>`;
   }
 
   function renderQuestTreeQuick(){
@@ -2777,7 +2791,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     }
     el.innerHTML = items.map(it=>{
       const pct = Math.max(0, Math.min(100, Math.round(100*it.current/it.target)));
-      return questTileHtml('🗺️', escHtml(it.label), `${escHtml(it.category)} · ${it.current}/${it.target}`, pct);
+      return questCardHtml(escHtml(it.category), escHtml(it.label), `${it.current}/${it.target}`, pct, null);
     }).join('');
   }
 
@@ -2801,7 +2815,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       el.innerHTML = '<div class="empty-page-hint">Keine offenen täglichen Quests.</div>';
       return;
     }
-    el.innerHTML = items.map(({q,p})=>questTileHtml('🎯', escHtml(q.name), `${p.cur}/${p.max} · +${q.bonus} XP`, p.pct)).join('');
+    el.innerHTML = items.map(({q,p})=>questCardHtml('Täglich', escHtml(q.name), `${p.cur}/${p.max}`, p.pct, `+${q.bonus} XP`)).join('');
   }
 
   // Täglicher Gratis-Manatrank: hängt am Kalendertag, nicht am Login-Moment —
@@ -2974,19 +2988,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       if(p.done) return '';
       return `<div class="quest"><div class="quest-top"><span class="qname">${q.name} <span style="color:var(--muted-2)">(+${q.bonus} XP)</span></span><span class="qprog">${p.cur}/${p.max}</span></div><div class="quest-track"><div class="quest-fill" style="width:${p.pct}%"></div></div></div>`;
     }).filter(Boolean).join('') || '<div class="empty-page-hint">Keine offenen wöchentlichen Quests.</div>';
-
-    document.getElementById('chainList').innerHTML = (config.questChains||[]).map(chain=>{
-      let prevDone = true;
-      const stagesHtml = chain.stages.map(stage=>{
-        const awarded = log.some(e=>e.action_key==='chain_bonus' && e.meta && e.meta.chainId===chain.id && e.meta.stageId===stage.id);
-        const isLocked = !prevDone && !awarded;
-        const cls = awarded?'done':(isLocked?'locked':'');
-        const icon = awarded?'✓':(isLocked?'🔒':'▸');
-        prevDone = awarded;
-        return `<div class="chain-stage ${cls}"><span class="icon">${icon}</span><span>${stage.name}</span><span class="reward">+${stage.bonus} XP</span></div>`;
-      }).join('');
-      return `<div class="chain"><div class="chain-title">${chain.name}</div>${stagesHtml}</div>`;
-    }).join('');
 
     document.getElementById('logCount').textContent = log.length+' einträge';
     const logListEl = document.getElementById('logList');
