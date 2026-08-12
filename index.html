@@ -2636,6 +2636,80 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     return { streak, thisWeekDone };
   }
 
+  // ---- Questbaum-Engine (Phase 1) ----
+  // Reine, DB-lose Auswertungsfunktionen nach demselben Prinzip wie
+  // computeJournalStreak() oben: nichts wird gespeichert, alles live aus dem
+  // bereits geladenen action_log berechnet. Vier feste Typen (siehe
+  // rule_configs.config.questTree, org-eigene Daten) - Kette/Leiter,
+  // Gewohnheits-Quest, Quoten-Kette, Epic/Wahlquest. Bewusst noch OHNE
+  // Bonus-XP (reine Titel-/Recognition-Schicht) und ohne UI-Anbindung -
+  // das kommt als eigener, späterer Schritt (Nutzerentscheidung 2026-08-12).
+  //
+  // locationTypeById: {location_id: 'krankenhaus'|...} - vom Aufrufer
+  // bereitgestellt (kein globaler State hier), damit diese Funktionen rein
+  // und unabhängig vom Ladezeitpunkt testbar bleiben.
+  function questMatchesLocationType(entry, locationType, locationTypeById){
+    if(!locationType) return true;
+    return !!entry.location_id && locationTypeById[entry.location_id]===locationType;
+  }
+
+  function evaluateLadderQuest(q, log, locationTypeById){
+    const m = q.metric;
+    const matching = log.filter(e=>e.action_key===m.action && questMatchesLocationType(e, m.locationType, locationTypeById));
+    if(m.aggregate==='groupsAtLeast'){
+      // Breiten-Leiter: wie viele verschiedene Gruppen (z.B. Krankenhäuser) haben je Stufe genug Treffer.
+      const counts = {};
+      matching.forEach(e=>{ if(e[m.groupBy]) counts[e[m.groupBy]] = (counts[e[m.groupBy]]||0)+1; });
+      return q.stages.map(s=>{
+        const groupsReached = Object.values(counts).filter(c=>c>=s.minPerGroup).length;
+        return { ...s, current: groupsReached, target: s.minGroups, done: groupsReached>=s.minGroups };
+      });
+    }
+    let value;
+    if(m.aggregate==='maxPerGroup'){
+      // Tiefen-Leiter: die höchste Treffer-Anzahl in EINER Gruppe (z.B. einem Krankenhaus).
+      const counts = {};
+      matching.forEach(e=>{ if(e[m.groupBy]) counts[e[m.groupBy]] = (counts[e[m.groupBy]]||0)+1; });
+      value = Object.values(counts).reduce((a,b)=>Math.max(a,b), 0);
+    } else {
+      value = matching.length;
+    }
+    return q.stages.map(s=>({ ...s, current:value, target:s.threshold, done: value>=s.threshold }));
+  }
+
+  function evaluateHabitQuest(q, log, locationTypeById, now){
+    const m = q.metric;
+    const f = q.period==='daily' ? e=>todayKey(e.created_at)===todayKey(now) : e=>weekKey(e.created_at)===weekKey(now);
+    const current = log.filter(e=>e.action_key===m.action && questMatchesLocationType(e, m.locationType, locationTypeById) && f(e)).length;
+    return { current, target:q.threshold, done: current>=q.threshold };
+  }
+
+  // Erste Näherung, kein per-Ereignis-Kausalnachweis (siehe Erscheinquote-
+  // Kalibrierungshinweis in CLAUDE.md fürs selbe Prinzip): Verhältnis von
+  // Zähler- zu Nenner-Aktion über den Zeitraum, den die letzten N
+  // Nenner-Ereignisse aufspannen - nicht "hat GENAU DIESE Ansprache zu
+  // GENAU DIESEM Termin geführt".
+  function evaluateRatioQuest(q, log, locationTypeById){
+    const m = q.metric;
+    const denomEntries = log.filter(e=>e.action_key===m.denominator && questMatchesLocationType(e, m.locationType, locationTypeById))
+      .sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+    const windowEntries = denomEntries.slice(-q.window);
+    if(windowEntries.length===0) return q.stages.map(s=>({ ...s, current:0, target:s.threshold, done:false }));
+    const from = new Date(windowEntries[0].created_at);
+    const numCount = log.filter(e=>e.action_key===m.numerator && new Date(e.created_at)>=from && questMatchesLocationType(e, m.locationType, locationTypeById)).length;
+    const pct = Math.round(100*numCount/windowEntries.length);
+    return q.stages.map(s=>({ ...s, current:pct, target:s.threshold, done: pct>=s.threshold }));
+  }
+
+  // stageResults: {stageId: boolean} - vom Aufrufer aus den anderen drei
+  // Auswertungen zu einer flachen Map zusammengestellt (jede Stufe jeder
+  // Kette hat eine eigene id, siehe rule_configs.config.questTree).
+  function evaluateEpicQuest(q, stageResults){
+    const met = q.requires.map(id=>!!stageResults[id]);
+    const done = q.requiresMode==='any' ? met.some(Boolean) : met.every(Boolean);
+    return { done };
+  }
+
   // Täglicher Gratis-Manatrank: hängt am Kalendertag, nicht am Login-Moment —
   // genau wie Energie-Reset und Tagebuch. Stapelt sich (kein Deckel), und
   // holt beim nächsten Öffnen auch mehrere ausgelassene Tage auf einmal nach
