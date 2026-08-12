@@ -776,6 +776,11 @@
           <div class="action-btns" id="actionGrid"></div>
         </div>
 
+        <div class="card" style="margin-top:18px;">
+          <h2>Questbaum <span class="tag">aktive ziele</span></h2>
+          <div id="questTreeQuick"></div>
+        </div>
+
         <div class="grid" style="margin-top:18px;">
           <div class="card">
             <h2>Quests <span class="tag">täglich/wöchentlich</span></h2>
@@ -1682,6 +1687,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   let session=null, profile=null, org=null, config=null, log=[];
   let products=[];
   let phoneTally = 0;
+  let locationTypeById = {}; // {location_id: 'krankenhaus'|...} - fürs Questbaum-Engine, siehe evaluateLadderQuest() etc.
   let lastKnownLevel = 1;
   // telefon_5 sammelt 5 Antippen zu EINER echten Aktion (verhindert XP-Inflation
   // durch reines Wähl-Spam) - einziger Sonderfall im sonst einheitlichen Aktionsraster.
@@ -2395,6 +2401,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     catch{ document.getElementById('loading').style.display='none'; return; }
     if(justCreatedCharacter){ await grantClassStarterEquipment(); justCreatedCharacter = false; }
     await loadProducts();
+    await loadLocationTypes();
     phoneTally = Number(localStorage.getItem('phoneTally_'+profile.id) || 0);
     lastKnownLevel = levelInfo(computeTotals().totalXp).level;
     document.getElementById('loading').style.display='none';
@@ -2710,6 +2717,64 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     return { done };
   }
 
+  async function loadLocationTypes(){
+    const { data, error } = await sb.from('locations').select('id,type').eq('org_id', profile.org_id);
+    if(error){ logSilentError('Location-Typen laden', error); return; }
+    locationTypeById = {};
+    (data||[]).forEach(l=>{ locationTypeById[l.id] = l.type; });
+  }
+
+  function lastQuestActivity(matchAction, matchLocationType){
+    const matching = log.filter(e=>e.action_key===matchAction && questMatchesLocationType(e, matchLocationType, locationTypeById));
+    if(matching.length===0) return null;
+    return matching.reduce((a,b)=> new Date(a.created_at)>new Date(b.created_at) ? a : b).created_at;
+  }
+
+  // Schnellansicht-Auswahl (Handlungen-Seite): pro Kette nur die nächste noch
+  // nicht erreichte Stufe (kein Sonderfall für 0 Fortschritt - dann ist das
+  // einfach automatisch die erste Stufe), begrenzt auf die Ketten mit
+  // jüngster Aktivität. Aktive Gewohnheits-Quests immer alle, unbegrenzt.
+  // Epics/Wahlquests bewusst nicht hier - die gehören ins spätere Tableau.
+  const QUEST_QUICKVIEW_CHAIN_LIMIT = 4;
+  function computeQuestTreeQuickView(){
+    const now = new Date();
+    const chains = [];
+    const habits = [];
+    (config.questTree||[]).forEach(q=>{
+      if(q.type==='ladder'){
+        const stages = evaluateLadderQuest(q, log, locationTypeById);
+        const active = stages.find(s=>!s.done);
+        if(active) chains.push({ category:q.category, label:active.label, current:active.current, target:active.target,
+          lastActivity: lastQuestActivity(q.metric.action, q.metric.locationType) });
+      } else if(q.type==='ratio'){
+        const stages = evaluateRatioQuest(q, log, locationTypeById);
+        const active = stages.find(s=>!s.done);
+        if(active) chains.push({ category:q.category, label:active.label, current:active.current, target:active.target,
+          lastActivity: lastQuestActivity(q.metric.denominator, q.metric.locationType) });
+      } else if(q.type==='habit'){
+        const r = evaluateHabitQuest(q, log, locationTypeById, now);
+        if(!r.done) habits.push({ category:q.category, label:q.label, current:r.current, target:r.target });
+      }
+    });
+    chains.sort((a,b)=> new Date(b.lastActivity||0) - new Date(a.lastActivity||0));
+    return { chains: chains.slice(0, QUEST_QUICKVIEW_CHAIN_LIMIT), habits };
+  }
+
+  function renderQuestTreeQuick(){
+    const el = document.getElementById('questTreeQuick');
+    if(!el || !config || !config.questTree) return;
+    const { chains, habits } = computeQuestTreeQuickView();
+    const items = [...habits, ...chains];
+    if(items.length===0){
+      el.innerHTML = '<div class="empty-page-hint">Noch keine aktiven Ziele im Questbaum.</div>';
+      return;
+    }
+    el.innerHTML = items.map(it=>{
+      const pct = Math.max(0, Math.min(100, Math.round(100*it.current/it.target)));
+      return `<div class="quest"><div class="quest-top"><span class="qname">${escHtml(it.category)} · ${escHtml(it.label)}</span><span class="qprog">${it.current}/${it.target}</span></div><div class="quest-track"><div class="quest-fill" style="width:${pct}%"></div></div></div>`;
+    }).join('');
+  }
+
   // Täglicher Gratis-Manatrank: hängt am Kalendertag, nicht am Login-Moment —
   // genau wie Energie-Reset und Tagebuch. Stapelt sich (kein Deckel), und
   // holt beim nächsten Öffnen auch mehrere ausgelassene Tage auf einmal nach
@@ -2869,6 +2934,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     // Login und Öffnen des Inventars auf einer anderen Seite Energie
     // verbraucht wurde. Hier mitziehen, damit er live synchron bleibt.
     renderInventory();
+    renderQuestTreeQuick();
 
     document.getElementById('questList').innerHTML = (config.recurringQuests||[]).map(q=>{
       const progressParts = q.conditions.map(c=>Math.min(countInPeriod(c.actions,q.period), c.count));
