@@ -2791,6 +2791,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('qbtn_termin').disabled = config.actions.termin_vereinbart.energy > remaining;
     document.getElementById('qbtn_ansprache').disabled = config.actions.ansprache.energy > remaining;
 
+    // Der Manatrank-"Benutzen"-Knopf im Inventar hängt am Energiestand
+    // (deaktiviert nur bei voller Energie) — renderInventory() lief bisher
+    // nur einmalig beim Login, dadurch blieb der Knopf grau, wenn zwischen
+    // Login und Öffnen des Inventars auf einer anderen Seite Energie
+    // verbraucht wurde. Hier mitziehen, damit er live synchron bleibt.
+    renderInventory();
+
     document.getElementById('questList').innerHTML = (config.recurringQuests||[]).map(q=>{
       const progressParts = q.conditions.map(c=>Math.min(countInPeriod(c.actions,q.period), c.count));
       const cur = progressParts.reduce((a,b)=>a+b,0);
