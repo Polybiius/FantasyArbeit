@@ -535,6 +535,30 @@
   .card h2 .tag,.settings-subheading .tag{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted-2);text-transform:none;letter-spacing:0;}
 
   #sigil{display:block;margin:0 auto;width:100%;max-width:530px;height:auto;}
+
+  /* Questbaum-Tableau: eigenes Nebel-des-Krieges-Tableau, per Klasse eine
+     andere räumliche Anordnung (siehe QUEST_LAYOUTS in JS) - Farb-/Optik-
+     Sprache bleibt unser eigener Stil (CSS-Variablen), keine Fremdthematik. */
+  .qt-legend{display:flex;flex-wrap:wrap;gap:14px;margin:2px 0 14px;font-size:11px;color:var(--muted);}
+  .qt-legend-dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:5px;vertical-align:middle;}
+  .qt-legend-dot.done{background:var(--success);}
+  .qt-legend-dot.active{background:var(--arcane);box-shadow:0 0 5px var(--arcane-glow);}
+  .qt-legend-dot.locked{background:var(--muted-2);opacity:.5;}
+  .qt-legend-dot.habit{background:var(--mana);}
+  .qt-legend-dot.epic{background:var(--danger);}
+  .qt-tableau{display:block;margin:0 auto;width:100%;max-width:640px;height:auto;}
+  .qt-edge{stroke:var(--border);stroke-width:2;}
+  .qt-node circle{fill:var(--panel-2);stroke:var(--border);stroke-width:2;transition:all .2s;}
+  .qt-node text{font-family:'Inter',sans-serif;font-size:9px;fill:var(--muted);text-anchor:middle;}
+  .qt-node.habit circle{fill:rgba(34,211,200,0.16);stroke:var(--mana);}
+  .qt-node.active circle{fill:var(--arcane);stroke:var(--arcane-glow);stroke-width:3;filter:drop-shadow(0 0 7px var(--arcane-glow));}
+  .qt-node.active text{fill:var(--text);font-weight:600;}
+  .qt-node.done circle{fill:rgba(52,211,153,0.22);stroke:var(--success);}
+  .qt-node.done text{fill:var(--success);}
+  .qt-node .qt-blur-target{filter:blur(3px);opacity:.6;}
+  .qt-epic-glow{fill:var(--danger);opacity:.30;filter:blur(9px);}
+  .qt-node.epic .qt-epic-core circle{fill:rgba(241,101,101,0.22);stroke:var(--danger);}
+  .qt-node.epic.done .qt-epic-core circle{fill:rgba(52,211,153,0.22);stroke:var(--success);}
   .skill-list{margin-top:14px;display:flex;flex-direction:column;gap:10px;}
   .skill-row{font-size:12px;}
   .skill-row-top{display:flex;justify-content:space-between;margin-bottom:4px;color:var(--muted);}
@@ -796,7 +820,7 @@
           <h3 class="settings-subheading">🎯 Tägliche Quests <span class="tag">Bonus-XP</span></h3>
           <div id="dailyQuestTiles" class="qcard-grid"></div>
 
-          <h3 class="settings-subheading" style="margin-top:20px;">🗺️ Questbaum — aktuelle Ziele <span class="tag">schaltet Titel frei</span></h3>
+          <h3 class="settings-subheading qt-open-link" id="questTreeOpenBtn" style="margin-top:20px;cursor:pointer;">🗺️ Questbaum — aktuelle Ziele <span class="tag">schaltet Titel frei · voller Baum öffnen ↗</span></h3>
           <div id="questTreeQuick" class="qcard-grid"></div>
 
           <h3 class="settings-subheading" style="margin-top:20px;">📅 Wöchentlich <span class="tag">Bonus-XP</span></h3>
@@ -913,6 +937,7 @@
             <svg id="friendSigilSvg" width="530" height="530" viewBox="-95 -65 530 530" style="display:block;margin:0 auto;width:100%;max-width:420px;height:auto;"></svg>
           </div>
         </div>
+
       </div>
 
       <!-- SEITE: KONTAKTE -->
@@ -1333,6 +1358,23 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       </div>
 
     </div>
+  </div>
+</div>
+
+<div class="loc-modal" id="questTreeModal" style="display:none;">
+  <div class="loc-modal-inner" style="max-width:720px;">
+    <div class="loc-modal-header">
+      <span>Questbaum</span>
+      <button type="button" id="questTreeModalCloseBtn">✕</button>
+    </div>
+    <div class="qt-legend">
+      <span><i class="qt-legend-dot done"></i>Erreicht</span>
+      <span><i class="qt-legend-dot active"></i>Aktuelles Ziel</span>
+      <span><i class="qt-legend-dot locked"></i>Noch verborgen</span>
+      <span><i class="qt-legend-dot habit"></i>Gewohnheit</span>
+      <span><i class="qt-legend-dot epic"></i>Epic</span>
+    </div>
+    <svg id="questTreeTableauSvg" viewBox="-320 -320 640 640" class="qt-tableau"></svg>
   </div>
 </div>
 
@@ -2794,6 +2836,173 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       return questCardHtml(escHtml(it.category), escHtml(it.label), `${it.current}/${it.target}`, pct, null);
     }).join('');
   }
+
+  // ---- Questbaum-Tableau (Nebel des Krieges) ----
+  // Baut aus questTree einen Graphen (Knoten+Kanten) unabhängig vom Layout -
+  // welche Form daraus wird, entscheidet erst die gewählte Layout-Funktion
+  // weiter unten. Ketten-Stufen sind erreicht/aktiv/verborgen, Gewohnheiten
+  // immer sichtbar, Epics immer sichtbar-aber-verschwommen bis erreicht
+  // (Leuchtfeuer-Effekt) - siehe mit dem Nutzer abgestimmtes Design.
+  function questTreeGraph(){
+    const nodes = [];
+    const edges = [];
+    const stageDoneMap = {};
+    const chains = [];
+    (config.questTree||[]).forEach(q=>{
+      if(q.type==='ladder' || q.type==='ratio'){
+        const stages = (q.type==='ladder' ? evaluateLadderQuest : evaluateRatioQuest)(q, log, locationTypeById);
+        const firstActiveIdx = stages.findIndex(s=>!s.done);
+        const stageIds = [];
+        stages.forEach((s,i)=>{
+          stageDoneMap[s.id] = s.done;
+          nodes.push({ id:s.id, label:s.label, category:q.category, kind:'stage',
+            chainIndex:chains.length, stageIndex:i, done:s.done, active:i===firstActiveIdx, title:s.title||null });
+          stageIds.push(s.id);
+          if(i>0) edges.push({ from:stageIds[i-1], to:s.id });
+        });
+        chains.push({ stageIds });
+      } else if(q.type==='habit'){
+        const r = evaluateHabitQuest(q, log, locationTypeById, new Date());
+        nodes.push({ id:q.id, label:q.label, category:q.category, kind:'habit', done:r.done, active:true, title:null });
+      }
+    });
+    (config.questTree||[]).forEach(q=>{
+      if(q.type==='epic'){
+        const r = evaluateEpicQuest(q, stageDoneMap);
+        nodes.push({ id:q.id, label:q.label, category:q.category, kind:'epic', done:r.done, active:false, title:q.title||null });
+        (q.requires||[]).forEach(reqId=>edges.push({ from:reqId, to:q.id }));
+      }
+    });
+    return { nodes, edges, chains };
+  }
+
+  // Gemeinsame Platzierung für Gewohnheiten (Ring nahe der Mitte, immer
+  // sichtbar) und Epics (am Mittelpunkt ihrer Voraussetzungen, etwas nach
+  // außen versetzt) - unabhängig von der gewählten Ketten-Form.
+  // Gewohnheiten als eigener kleiner Ring um die Mitte (nicht als gerade
+  // Reihe quer durchs Bild - kollidierte bei langen Labels mit den
+  // Ketten-Knoten). Epics am Mittelpunkt ihrer Voraussetzungen, spürbar
+  // nach außen versetzt.
+  function layoutHabitsAndEpics(graph, pos){
+    const habits = graph.nodes.filter(n=>n.kind==='habit');
+    habits.forEach((n,i)=>{
+      const angle = (i/Math.max(habits.length,1))*Math.PI*2 + Math.PI/2;
+      pos[n.id] = { x:Math.cos(angle)*46, y:Math.sin(angle)*46 };
+    });
+    graph.nodes.filter(n=>n.kind==='epic').forEach(n=>{
+      const pts = graph.edges.filter(e=>e.to===n.id).map(e=>pos[e.from]).filter(Boolean);
+      if(pts.length===0){ pos[n.id] = {x:0,y:0}; return; }
+      const avgX = pts.reduce((a,p)=>a+p.x,0)/pts.length, avgY = pts.reduce((a,p)=>a+p.y,0)/pts.length;
+      const dist = Math.sqrt(avgX*avgX+avgY*avgY) || 1;
+      const scale = (dist+130)/dist;
+      pos[n.id] = { x:avgX*scale, y:avgY*scale };
+    });
+  }
+
+  // Drei Formen, eine pro Klasse - arbeiten alle nur mit chainIndex/
+  // stageIndex, keine festen Koordinaten pro Quest, damit das automatisch
+  // mitwächst, wenn der Baum größer wird. Radien/Abstände großzügig genug
+  // bemessen, dass auch lange Quest-Sätze als Label nicht kollidieren.
+  function layoutSpiral(graph){ // Zauberer: nach außen wachsende Spiralarme
+    const pos = {}; const N = Math.max(graph.chains.length,1);
+    graph.nodes.filter(n=>n.kind==='stage').forEach(n=>{
+      const angle = (n.chainIndex/N)*Math.PI*2 + n.stageIndex*0.5;
+      const radius = 110 + n.stageIndex*95;
+      pos[n.id] = { x:Math.cos(angle)*radius, y:Math.sin(angle)*radius };
+    });
+    layoutHabitsAndEpics(graph, pos);
+    return pos;
+  }
+  function layoutLinear(graph){ // Krieger: gerade Spalten, marschieren nach oben
+    const pos = {}; const N = Math.max(graph.chains.length,1);
+    graph.nodes.filter(n=>n.kind==='stage').forEach(n=>{
+      pos[n.id] = { x:(n.chainIndex-(N-1)/2)*175, y:120-n.stageIndex*88 };
+    });
+    layoutHabitsAndEpics(graph, pos);
+    return pos;
+  }
+  function layoutRadial(graph){ // Schütze: gerade Speichen aus der Mitte
+    const pos = {}; const N = Math.max(graph.chains.length,1);
+    graph.nodes.filter(n=>n.kind==='stage').forEach(n=>{
+      const angle = (n.chainIndex/N)*Math.PI*2 - Math.PI/2;
+      const radius = 100 + n.stageIndex*98;
+      pos[n.id] = { x:Math.cos(angle)*radius, y:Math.sin(angle)*radius };
+    });
+    layoutHabitsAndEpics(graph, pos);
+    return pos;
+  }
+  const QUEST_LAYOUTS = { zauberer:layoutSpiral, krieger:layoutLinear, schuetze:layoutRadial };
+
+  // Zweizeiliger Umbruch statt einzeiliger Kürzung - Quest-Namen sind ganze
+  // Sätze (siehe questCardHtml-Lehre oben), eine Zeile allein reißt zu viel
+  // ab. Bricht am nächsten Leerzeichen zur Wortmitte, kein Silbentrennen.
+  function wrapLabelLines(label, maxChars){
+    if(label.length<=maxChars) return [label];
+    const words = label.split(' ');
+    let line1 = '';
+    while(words.length && (line1+' '+words[0]).trim().length<=maxChars){
+      line1 = (line1+' '+words.shift()).trim();
+    }
+    let line2 = words.join(' ');
+    if(line2.length>maxChars) line2 = line2.slice(0,maxChars-1)+'…';
+    return line2 ? [line1, line2] : [line1];
+  }
+
+  function questTreeNodeHtml(n, p){
+    const isLocked = n.kind==='stage' && !n.done && !n.active;
+    const cls = ['qt-node', n.kind, n.done?'done':'', n.active?'active':''].filter(Boolean).join(' ');
+    const tip = `${n.category} · ${n.label}${n.title?' — 🏅 '+n.title:''}`;
+    if(n.kind==='epic'){
+      const glow = !n.done ? `<circle class="qt-epic-glow" r="30"></circle>` : '';
+      return `<g class="${cls}" transform="translate(${p.x},${p.y})"><title>${escHtml(tip)}</title>${glow}<g class="qt-epic-core ${!n.done?'qt-blur-target':''}"><circle r="20"></circle></g></g>`;
+    }
+    const r = n.kind==='habit' ? 15 : 14;
+    const showLabel = n.kind!=='stage' || n.active || n.done;
+    let textHtml = '';
+    if(showLabel){
+      const lines = wrapLabelLines(n.label, 15);
+      textHtml = `<text>${lines.map((ln,i)=>`<tspan x="0" y="${r+11+i*11}">${escHtml(ln)}</tspan>`).join('')}</text>`;
+    }
+    const inner = `<circle r="${r}"></circle>${textHtml}`;
+    return `<g class="${cls}" transform="translate(${p.x},${p.y})"><title>${escHtml(tip)}</title><g class="${isLocked?'qt-blur-target':''}">${inner}</g></g>`;
+  }
+
+  function renderQuestTreeTableau(){
+    const svg = document.getElementById('questTreeTableauSvg');
+    if(!svg || !config || !config.questTree) return;
+    const graph = questTreeGraph();
+    const layoutFn = QUEST_LAYOUTS[profile.character_class] || layoutLinear;
+    const pos = layoutFn(graph);
+    const edgesHtml = graph.edges.map(e=>{
+      const a=pos[e.from], b=pos[e.to];
+      if(!a||!b) return '';
+      return `<line class="qt-edge" x1="${a.x}" y1="${a.y}" x2="${b.x}" y2="${b.y}"></line>`;
+    }).join('');
+    const nodesHtml = graph.nodes.map(n=>{
+      const p = pos[n.id];
+      return p ? questTreeNodeHtml(n, p) : '';
+    }).join('');
+    svg.innerHTML = edgesHtml + nodesHtml;
+
+    // ViewBox dynamisch aus der tatsächlichen Ausdehnung berechnen (statt
+    // fest), damit das Tableau bei wenigen Knoten (heute) genauso gut
+    // gefüllt aussieht wie später bei einem großen Baum - kein Leerraum,
+    // kein Abschneiden.
+    const coords = Object.values(pos);
+    if(coords.length===0) return;
+    const pad = 90;
+    const minX = Math.min(...coords.map(c=>c.x))-pad, maxX = Math.max(...coords.map(c=>c.x))+pad;
+    const minY = Math.min(...coords.map(c=>c.y))-pad, maxY = Math.max(...coords.map(c=>c.y))+pad;
+    svg.setAttribute('viewBox', `${minX} ${minY} ${maxX-minX} ${maxY-minY}`);
+  }
+
+  document.getElementById('questTreeOpenBtn').addEventListener('click', ()=>{
+    document.getElementById('questTreeModal').style.display = 'flex';
+    renderQuestTreeTableau();
+  });
+  document.getElementById('questTreeModalCloseBtn').addEventListener('click', ()=>{
+    document.getElementById('questTreeModal').style.display = 'none';
+  });
 
   // Gemeinsame Fortschrittsberechnung für Tages-/Wochen-Quests, damit die
   // Kachel- (täglich) und die Listen-Darstellung (wöchentlich) nicht
