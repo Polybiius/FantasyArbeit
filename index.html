@@ -2737,13 +2737,33 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     return !!entry.location_id && locationTypeById[entry.location_id]===locationType;
   }
 
+  // Ein Eintrag darf auf eine echte Spalte gruppiert werden (z.B.
+  // location_id, für "welches Krankenhaus") ODER auf den Kalendermonat/das
+  // -jahr des Zeitstempels - Letzteres bildet "bester Monat/bestes Jahr
+  // bisher" ab (z.B. Kundenausbau "X Kunden im Monat"), ohne dafür einen
+  // eigenen Aggregat-Typ zu brauchen. Bewusst nur diese drei festen Werte,
+  // kein Freitext-Ausdruck (siehe Grenze in project_questbaum_schema_design).
+  function questGroupKey(e, groupBy){
+    if(groupBy==='month') return e.created_at ? e.created_at.slice(0,7) : null;
+    if(groupBy==='year') return e.created_at ? e.created_at.slice(0,4) : null;
+    return e[groupBy] || null;
+  }
+
+  // metric.numerator/denominator dürfen ein einzelner Aktions-Schlüssel oder
+  // ein Array davon sein - Letzteres für Fälle, in denen es keine einzelne
+  // "es gab eine Gelegenheit"-Aktion gibt, sondern nur die beiden
+  // sich ausschließenden Ausgänge (z.B. anruf_erreicht/anruf_nicht_erreicht).
+  function questActionMatches(actionKey, spec){
+    return Array.isArray(spec) ? spec.includes(actionKey) : actionKey===spec;
+  }
+
   function evaluateLadderQuest(q, log, locationTypeById){
     const m = q.metric;
     const matching = log.filter(e=>e.action_key===m.action && questMatchesLocationType(e, m.locationType, locationTypeById));
     if(m.aggregate==='groupsAtLeast'){
       // Breiten-Leiter: wie viele verschiedene Gruppen (z.B. Krankenhäuser) haben je Stufe genug Treffer.
       const counts = {};
-      matching.forEach(e=>{ if(e[m.groupBy]) counts[e[m.groupBy]] = (counts[e[m.groupBy]]||0)+1; });
+      matching.forEach(e=>{ const k=questGroupKey(e,m.groupBy); if(k) counts[k] = (counts[k]||0)+1; });
       return q.stages.map(s=>{
         const groupsReached = Object.values(counts).filter(c=>c>=s.minPerGroup).length;
         return { ...s, current: groupsReached, target: s.minGroups, done: groupsReached>=s.minGroups };
@@ -2751,9 +2771,9 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     }
     let value;
     if(m.aggregate==='maxPerGroup'){
-      // Tiefen-Leiter: die höchste Treffer-Anzahl in EINER Gruppe (z.B. einem Krankenhaus).
+      // Tiefen-Leiter: die höchste Treffer-Anzahl in EINER Gruppe (z.B. einem Krankenhaus, oder einem Monat/Jahr).
       const counts = {};
-      matching.forEach(e=>{ if(e[m.groupBy]) counts[e[m.groupBy]] = (counts[e[m.groupBy]]||0)+1; });
+      matching.forEach(e=>{ const k=questGroupKey(e,m.groupBy); if(k) counts[k] = (counts[k]||0)+1; });
       value = Object.values(counts).reduce((a,b)=>Math.max(a,b), 0);
     } else {
       value = matching.length;
@@ -2775,12 +2795,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // GENAU DIESEM Termin geführt".
   function evaluateRatioQuest(q, log, locationTypeById){
     const m = q.metric;
-    const denomEntries = log.filter(e=>e.action_key===m.denominator && questMatchesLocationType(e, m.locationType, locationTypeById))
+    const denomEntries = log.filter(e=>questActionMatches(e.action_key, m.denominator) && questMatchesLocationType(e, m.locationType, locationTypeById))
       .sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
     const windowEntries = denomEntries.slice(-q.window);
     if(windowEntries.length===0) return q.stages.map(s=>({ ...s, current:0, target:s.threshold, done:false }));
     const from = new Date(windowEntries[0].created_at);
-    const numCount = log.filter(e=>e.action_key===m.numerator && new Date(e.created_at)>=from && questMatchesLocationType(e, m.locationType, locationTypeById)).length;
+    const numCount = log.filter(e=>questActionMatches(e.action_key, m.numerator) && new Date(e.created_at)>=from && questMatchesLocationType(e, m.locationType, locationTypeById)).length;
     const pct = Math.round(100*numCount/windowEntries.length);
     return q.stages.map(s=>({ ...s, current:pct, target:s.threshold, done: pct>=s.threshold }));
   }
@@ -2788,9 +2808,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // stageResults: {stageId: boolean} - vom Aufrufer aus den anderen drei
   // Auswertungen zu einer flachen Map zusammengestellt (jede Stufe jeder
   // Kette hat eine eigene id, siehe rule_configs.config.questTree).
+  // requiresMode: 'all' (Standard) | 'any' | eine Zahl N ("mindestens N von
+  // den genannten Voraussetzungen") - z.B. "Top-Stufe in ZWEI von drei
+  // Meisterschafts-Quoten".
   function evaluateEpicQuest(q, stageResults){
     const met = q.requires.map(id=>!!stageResults[id]);
-    const done = q.requiresMode==='any' ? met.some(Boolean) : met.every(Boolean);
+    let done;
+    if(q.requiresMode==='any') done = met.some(Boolean);
+    else if(typeof q.requiresMode==='number') done = met.filter(Boolean).length >= q.requiresMode;
+    else done = met.every(Boolean);
     return { done };
   }
 
