@@ -2737,6 +2737,16 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     return !!entry.location_id && locationTypeById[entry.location_id]===locationType;
   }
 
+  // Kanal (online/buero/betrieb) steckt nicht in einer echten Spalte,
+  // sondern in action_log.meta.kanal - wird nur bei termin_vereinbart
+  // mitgeschrieben, wenn der Kanal an der Log-Stelle bekannt ist (siehe
+  // logKanbanAction/createLeadAndLogTerminVereinbart). Ältere Einträge ohne
+  // meta.kanal zählen bei einer Kanal-gefilterten Quest schlicht nicht mit.
+  function questMatchesKanal(entry, kanal){
+    if(!kanal) return true;
+    return !!entry.meta && entry.meta.kanal===kanal;
+  }
+
   // Ein Eintrag darf auf eine echte Spalte gruppiert werden (z.B.
   // location_id, für "welches Krankenhaus") ODER auf den Kalendermonat/das
   // -jahr des Zeitstempels - Letzteres bildet "bester Monat/bestes Jahr
@@ -2759,7 +2769,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   function evaluateLadderQuest(q, log, locationTypeById){
     const m = q.metric;
-    const matching = log.filter(e=>e.action_key===m.action && questMatchesLocationType(e, m.locationType, locationTypeById));
+    const matching = log.filter(e=>e.action_key===m.action && questMatchesLocationType(e, m.locationType, locationTypeById) && questMatchesKanal(e, m.kanal));
     if(m.aggregate==='groupsAtLeast'){
       // Breiten-Leiter: wie viele verschiedene Gruppen (z.B. Krankenhäuser) haben je Stufe genug Treffer.
       const counts = {};
@@ -5498,7 +5508,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
           location_id: loc.id, kanban_stage:'ersttermin_vereinbart', naechster_kontakt: datum
         }).select().single();
         if(cErr){ reportError('Kontakt anlegen', cErr, statusEl); return; }
-        await logKanbanAction(contact, 'termin_vereinbart');
+        await logKanbanAction(contact, 'termin_vereinbart', terminLeadKanal ? {kanal:terminLeadKanal} : null);
         await insertTermineIfTimeGiven(contact, 'Ersttermin', datum, startEl.value, endeEl.value, terminLeadKanal);
         await renderContactsPage();
         finish();
@@ -6276,7 +6286,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('kanbanMoveClose').onclick = ()=>{ modal.style.display = 'none'; };
   }
 
-  async function logKanbanAction(contact, actionKey){
+  // extraMeta (optional): landet unverändert in action_log.meta, z.B.
+  // {kanal:'online'} bei termin_vereinbart, wenn der Kanal an der
+  // Aufrufstelle bereits bekannt ist (siehe questMatchesKanal). Rückgabe
+  // bei Erfolg ist die neue action_log-Zeilen-ID (truthy, bestehende
+  // "if(!ok)"-Prüfungen an allen Aufrufstellen bleiben unverändert gültig)
+  // statt nur `true` - damit lässt sich meta bei Bedarf auch nachträglich
+  // per Update ergänzen, wenn der Kanal erst NACH dem Loggen bekannt wird.
+  async function logKanbanAction(contact, actionKey, extraMeta){
     const a = config.actions[actionKey];
     if(!a) return false;
     const remaining = config.energyMax - energyUsedToday();
@@ -6286,13 +6303,27 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       xp:a.xp, energy:a.energy, skill:a.skill||null, skill2:a.skill2||null,
       context: contact.name, location_id: contact.location_id||null, contact_id: contact.id
     };
+    if(extraMeta) row.meta = extraMeta;
     const { data, error } = await sb.from('action_log').insert(row).select().single();
     if(error){ reportError(`Kanban-Aktion speichern (${a.label})`, error); return false; }
     log.push(data);
     await checkAndAwardRecurringQuests();
     await checkAndAwardChains();
     render();
-    return true;
+    return data.id;
+  }
+
+  // Trägt den Kanal nachträglich in eine bereits geloggte Aktion ein - für
+  // den Fall, dass promptKanbanTermin() (Kanal-Auswahl) erst NACH dem
+  // ursprünglichen logKanbanAction()-Aufruf läuft (moveKanbanCard bei
+  // Ersttermin). Non-kritisch: schlägt der Update fehl, bleibt die Quest
+  // einfach ohne Kanal-Zuordnung, kein Abbruch nötig.
+  async function attachKanalToLoggedAction(logId, kanal){
+    if(!logId || !kanal) return;
+    const { data, error } = await sb.from('action_log').update({ meta:{kanal} }).eq('id', logId).select().single();
+    if(error){ logSilentError('Kanal nachtragen', error); return; }
+    const idx = log.findIndex(e=>e.id===logId);
+    if(idx>=0) log[idx] = data;
   }
 
   // Katalog-Gruppierung: "Kategorie" oder "Kategorie — Unterkategorie",
@@ -6504,6 +6535,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     // "Angebot versendet" ist kein Treffen, bekommt deshalb keins.
     if(toStage==='ersttermin_vereinbart'){
       await promptKanbanTermin(contact, 'Ersttermin');
+      // Kanal war beim ursprünglichen logKanbanAction() oben noch nicht
+      // bekannt (kommt erst aus diesem Popup) - deshalb hier nachtragen,
+      // `ok` ist an dieser Stelle die zurückgegebene action_log-ID.
+      await attachKanalToLoggedAction(ok, kanbanTerminKanal);
     }
     if(toStage==='zweittermin'){
       await promptKanbanTermin(contact, 'Zweittermin');
