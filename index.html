@@ -2723,11 +2723,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // ---- Questbaum-Engine (Phase 1) ----
   // Reine, DB-lose Auswertungsfunktionen nach demselben Prinzip wie
   // computeJournalStreak() oben: nichts wird gespeichert, alles live aus dem
-  // bereits geladenen action_log berechnet. Vier feste Typen (siehe
+  // bereits geladenen action_log berechnet. Fünf feste Typen (siehe
   // rule_configs.config.questTree, org-eigene Daten) - Kette/Leiter,
-  // Gewohnheits-Quest, Quoten-Kette, Epic/Wahlquest. Bewusst noch OHNE
-  // Bonus-XP (reine Titel-/Recognition-Schicht) und ohne UI-Anbindung -
-  // das kommt als eigener, späterer Schritt (Nutzerentscheidung 2026-08-12).
+  // Gewohnheits-Quest, Quoten-Kette, Serie/Streak, Epic/Wahlquest. Bewusst
+  // noch OHNE Bonus-XP (reine Titel-/Recognition-Schicht) - das kommt als
+  // eigener, späterer Schritt (Nutzerentscheidung 2026-08-12).
   //
   // locationTypeById: {location_id: 'krankenhaus'|...} - vom Aufrufer
   // bereitgestellt (kein globaler State hier), damit diese Funktionen rein
@@ -2815,6 +2815,24 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     return q.stages.map(s=>({ ...s, current:pct, target:s.threshold, done: pct>=s.threshold }));
   }
 
+  // Fünfter Quest-Typ (Streak) - "Konstanz statt Rohvolumen"
+  // (Telefonakquise-/Termine-Serien aus dem Questbaum). Wrapper um
+  // computeDailyThresholdStreak()/computeWeeklyThresholdStreak(), die schon
+  // für die Konstanz-Kachel existieren (kein Doppelbau der Kernlogik). Jede
+  // Stufe trägt ihr EIGENES perPeriodThreshold+streakTarget-Paar, nicht nur
+  // ein wachsendes streakTarget bei fixem Schwellenwert - deckt sowohl den
+  // Telefon-Fall (fixe Serienlänge, wachsender Tages-Schwellenwert) als auch
+  // den Termine-Fall (beide Achsen wachsen zugleich) mit demselben Schema ab.
+  function evaluateStreakQuest(q, log, now){
+    const m = q.metric;
+    return q.stages.map(s=>{
+      const r = m.period==='weekly'
+        ? computeWeeklyThresholdStreak(log, m.action, s.perPeriodThreshold, now)
+        : computeDailyThresholdStreak(log, m.action, m.perEntryQty||1, s.perPeriodThreshold, todayKey(now));
+      return { ...s, current: r.streak, target: s.streakTarget, done: r.streak>=s.streakTarget };
+    });
+  }
+
   // stageResults: {stageId: boolean} - vom Aufrufer aus den anderen drei
   // Auswertungen zu einer flachen Map zusammengestellt (jede Stufe jeder
   // Kette hat eine eigene id, siehe rule_configs.config.questTree).
@@ -2867,6 +2885,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       } else if(q.type==='habit'){
         const r = evaluateHabitQuest(q, log, locationTypeById, now);
         if(!r.done) habits.push({ category:q.category, label:q.label, current:r.current, target:r.target });
+      } else if(q.type==='streak'){
+        const stages = evaluateStreakQuest(q, log, now);
+        const active = stages.find(s=>!s.done);
+        if(active) chains.push({ category:q.category, label:active.label, current:active.current, target:active.target,
+          lastActivity: lastQuestActivity(q.metric.action, null) });
       }
     });
     chains.sort((a,b)=> new Date(b.lastActivity||0) - new Date(a.lastActivity||0));
@@ -2924,26 +2947,32 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // stageDoneMap wird bewusst GLOBAL über alle Sparten gebildet (nicht nur
   // die gerade offene) - ein Epic könnte theoretisch eine Stufe aus einer
   // fremden Sparte voraussetzen, das Schema erzwingt keine Gleichheit.
+  function questTreeEvaluateChain(q){
+    if(q.type==='ladder') return evaluateLadderQuest(q, log, locationTypeById);
+    if(q.type==='ratio') return evaluateRatioQuest(q, log, locationTypeById);
+    if(q.type==='streak') return evaluateStreakQuest(q, log, new Date());
+    return null;
+  }
+
   function renderZunftbuchCategory(cat, byCat){
     const stageDoneMap = {};
     Object.values(byCat).flat().forEach(q=>{
-      if(q.type==='ladder' || q.type==='ratio'){
-        (q.type==='ladder' ? evaluateLadderQuest : evaluateRatioQuest)(q, log, locationTypeById)
-          .forEach(s=>{ stageDoneMap[s.id] = s.done; });
-      }
+      const stages = questTreeEvaluateChain(q);
+      if(stages) stages.forEach(s=>{ stageDoneMap[s.id] = s.done; });
     });
     const entries = byCat[cat]||[];
     let html = '';
     entries.forEach(q=>{
-      if(q.type!=='ladder' && q.type!=='ratio') return;
-      const stages = (q.type==='ladder' ? evaluateLadderQuest : evaluateRatioQuest)(q, log, locationTypeById);
+      const stages = questTreeEvaluateChain(q);
+      if(!stages) return;
       const firstActiveIdx = stages.findIndex(s=>!s.done);
       html += `<div class="qtb-chain"><h3>${escHtml(q.label)}</h3>`;
       stages.forEach((s,i)=>{
         const isActive = i===firstActiveIdx;
         const cls = s.done ? 'done' : isActive ? 'active' : 'locked';
         const icon = s.done ? '✓' : isActive ? '▸' : '○';
-        const extra = q.type==='ratio' ? `${s.current}% / ${s.target}%` : `${s.current}/${s.target}`;
+        const unit = q.type==='ratio' ? '%' : q.type==='streak' ? (q.metric.period==='weekly' ? ' Wochen' : ' Tage') : '';
+        const extra = q.type==='ratio' ? `${s.current}% / ${s.target}%` : `${s.current}/${s.target}${unit}`;
         const label = s.title ? `${s.label} — 🏅 ${s.title}` : s.label;
         html += qtbRowHtml(icon, cls, label, `<span>${extra}</span>`);
       });
