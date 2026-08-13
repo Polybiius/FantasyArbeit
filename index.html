@@ -2883,12 +2883,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // Reihe quer durchs Bild - kollidierte bei langen Labels mit den
   // Ketten-Knoten). Epics am Mittelpunkt ihrer Voraussetzungen, spürbar
   // nach außen versetzt.
-  function layoutHabitsAndEpics(graph, pos){
-    const habits = graph.nodes.filter(n=>n.kind==='habit');
-    habits.forEach((n,i)=>{
-      const angle = (i/Math.max(habits.length,1))*Math.PI*2 + Math.PI/2;
-      pos[n.id] = { x:Math.cos(angle)*46, y:Math.sin(angle)*46 };
-    });
+  // Epics sitzen am Mittelpunkt ihrer bereits platzierten Voraussetzungen,
+  // spürbar nach außen versetzt - unabhängig davon, ob die Voraussetzungen
+  // aus einer globalen Form oder einem einzelnen Sternbild stammen, deshalb
+  // eigenständig herausgelöst und von allen Layouts wiederverwendbar.
+  function placeEpics(graph, pos){
     graph.nodes.filter(n=>n.kind==='epic').forEach(n=>{
       const pts = graph.edges.filter(e=>e.to===n.id).map(e=>pos[e.from]).filter(Boolean);
       if(pts.length===0){ pos[n.id] = {x:0,y:0}; return; }
@@ -2897,6 +2896,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       const scale = (dist+130)/dist;
       pos[n.id] = { x:avgX*scale, y:avgY*scale };
     });
+  }
+  function layoutHabitsAndEpics(graph, pos){
+    const habits = graph.nodes.filter(n=>n.kind==='habit');
+    habits.forEach((n,i)=>{
+      const angle = (i/Math.max(habits.length,1))*Math.PI*2 + Math.PI/2;
+      pos[n.id] = { x:Math.cos(angle)*46, y:Math.sin(angle)*46 };
+    });
+    placeEpics(graph, pos);
   }
 
   // Drei Formen, eine pro Klasse - arbeiten alle nur mit chainIndex/
@@ -2921,17 +2928,60 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     layoutHabitsAndEpics(graph, pos);
     return pos;
   }
-  function layoutRadial(graph){ // Schütze: gerade Speichen aus der Mitte
-    const pos = {}; const N = Math.max(graph.chains.length,1);
-    graph.nodes.filter(n=>n.kind==='stage').forEach(n=>{
-      const angle = (n.chainIndex/N)*Math.PI*2 - Math.PI/2;
-      const radius = 100 + n.stageIndex*98;
-      pos[n.id] = { x:Math.cos(angle)*radius, y:Math.sin(angle)*radius };
+  // Schütze: Sternbild-Atlas - jede Sparte (q.category) ist ihr eigenes,
+  // in sich geschlossenes Sternbild statt einer gemeinsamen Speiche aus
+  // einer globalen Mitte (das war layoutRadial, ersetzt). Sternbild-
+  // Mittelpunkte liegen auf einem äußeren Ring, Ketten einer Sparte
+  // bilden innerhalb ihres Sternbilds einen eigenen kleinen Spiralarm -
+  // getrennte Formen bleiben auch bei vielen Sparten auseinanderhaltbar,
+  // statt eines einzigen wachsenden Gesamtnetzes. Gewohnheiten hängen
+  // bewusst NICHT an einem gemeinsamen globalen Ring (wie bei Spirale/
+  // Spalten), sondern an einem kleinen Ring um das jeweils eigene
+  // Sternbild - sonst würden z.B. Gewohnheiten der Sachsparte optisch
+  // mitten zwischen fremden Sternbildern landen.
+  function layoutConstellations(graph){
+    const pos = {};
+    const stageNodes = graph.nodes.filter(n=>n.kind==='stage');
+    const categories = [...new Set(graph.nodes.map(n=>n.category))];
+    const M = Math.max(categories.length,1);
+    const clusterRadius = categories.length<=1 ? 150 : 260;
+    const clusterCenters = {};
+    categories.forEach((cat,i)=>{
+      const angle = (i/M)*Math.PI*2 - Math.PI/2;
+      clusterCenters[cat] = { x:Math.cos(angle)*clusterRadius, y:Math.sin(angle)*clusterRadius };
     });
-    layoutHabitsAndEpics(graph, pos);
+    const chainsByCategory = {};
+    graph.chains.forEach((c,ci)=>{
+      const first = graph.nodes.find(n=>n.id===c.stageIds[0]);
+      if(!first) return;
+      (chainsByCategory[first.category] = chainsByCategory[first.category]||[]).push(ci);
+    });
+    Object.entries(chainsByCategory).forEach(([cat, chainIdxs])=>{
+      const center = clusterCenters[cat] || {x:0,y:0};
+      const K = Math.max(chainIdxs.length,1);
+      chainIdxs.forEach((ci, localIdx)=>{
+        stageNodes.filter(n=>n.chainIndex===ci).forEach(n=>{
+          const angle = (localIdx/K)*Math.PI*2 + n.stageIndex*0.4;
+          const radius = 34 + n.stageIndex*44;
+          pos[n.id] = { x:center.x+Math.cos(angle)*radius, y:center.y+Math.sin(angle)*radius };
+        });
+      });
+    });
+    const habitsByCategory = {};
+    graph.nodes.filter(n=>n.kind==='habit').forEach(n=>{
+      (habitsByCategory[n.category] = habitsByCategory[n.category]||[]).push(n);
+    });
+    Object.entries(habitsByCategory).forEach(([cat, habits])=>{
+      const center = clusterCenters[cat] || {x:0,y:0};
+      habits.forEach((n,i)=>{
+        const angle = (i/Math.max(habits.length,1))*Math.PI*2 + Math.PI/2;
+        pos[n.id] = { x:center.x+Math.cos(angle)*24, y:center.y+Math.sin(angle)*24 };
+      });
+    });
+    placeEpics(graph, pos);
     return pos;
   }
-  const QUEST_LAYOUTS = { zauberer:layoutSpiral, krieger:layoutLinear, schuetze:layoutRadial };
+  const QUEST_LAYOUTS = { zauberer:layoutSpiral, krieger:layoutLinear, schuetze:layoutConstellations };
 
   // Zweizeiliger Umbruch statt einzeiliger Kürzung - Quest-Namen sind ganze
   // Sätze (siehe questCardHtml-Lehre oben), eine Zeile allein reißt zu viel
