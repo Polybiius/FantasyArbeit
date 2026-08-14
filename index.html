@@ -389,7 +389,7 @@
   .kc-move-btn{display:none;position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--panel-2);color:var(--muted-2);font-size:12px;line-height:1;align-items:center;justify-content:center;cursor:pointer;}
   .kc-move-btn:hover, .kc-move-btn:active{border-color:var(--arcane);color:var(--text);}
   .kanban-newlead-form{display:flex;flex-direction:column;gap:6px;margin-bottom:10px;}
-  .kanban-newlead-form input, .kanban-newlead-form textarea{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-sm);padding:7px 9px;color:var(--text);font-size:12.5px;font-family:inherit;resize:vertical;}
+  .kanban-newlead-form input, .kanban-newlead-form select, .kanban-newlead-form textarea{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-sm);padding:7px 9px;color:var(--text);font-size:12.5px;font-family:inherit;resize:vertical;}
 
   @media (max-width: 760px){
     .kanban-board{flex-direction:column;align-items:stretch;overflow-x:visible;padding:20px 8px;}
@@ -1439,9 +1439,9 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       <button class="cal-nav-btn" id="saleEntryAddBtn">+ Produkt hinzufügen</button>
       <div class="empty-page-hint" id="saleEntryStatus"></div>
       <div class="empty-page-hint" id="saleEntryList"></div>
+      <label class="cdl" style="display:block;margin-top:4px;">Wiedervorlage (optional) – wann meldest du dich wieder?</label>
+      <input type="date" id="saleEntryWiedervorlage">
     </div>
-    <label class="cdl" style="display:block;margin-top:10px;">Wiedervorlage (optional) – wann meldest du dich wieder?</label>
-    <input type="date" id="saleEntryWiedervorlage" style="width:100%;">
     <button class="cal-nav-btn" id="saleEntryDoneBtn" style="width:100%;margin-top:8px;">Fertig</button>
   </div>
 </div>
@@ -4604,11 +4604,18 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const saleBtn = document.getElementById('cdAddSaleBtn');
     if(saleBtn) saleBtn.addEventListener('click', async ()=>{
       const gewonnen = confirm('Gewonnen? (Abbrechen = Verloren)');
-      if(gewonnen) await recordWonSalesLoop(c); else await recordLostSale(c);
-      if(gewonnen){
-        const { error } = await sb.from('contacts').update({status:'kunde'}).eq('id', c.id);
-        if(error) logSilentError('Kontaktstatus aktualisieren', error);
+      const status = gewonnen ? 'gewonnen' : 'verloren';
+      // Steht der Kontakt schon im Kanban, muss dieser Weg dieselbe Wirkung
+      // haben wie das Ziehen der Karte -- fehlte hier bisher komplett (Bug,
+      // 2026-08-14 gemeldet: Verkauf eingetragen, Ersttermin blieb stehen).
+      // Ein Kontakt ganz ohne Kanban-Zugehörigkeit wird dadurch NICHT
+      // nachträglich ins Board gezogen, gleiches Prinzip wie überall sonst.
+      if(c.kanban_stage){
+        const { error: stageErr } = await sb.from('contacts').update({ kanban_stage: status }).eq('id', c.id);
+        if(stageErr) reportError('Kanban-Spalte aktualisieren', stageErr);
+        else c.kanban_stage = status;
       }
+      await recordWinOrLoss(c, status);
       await renderContactsPage();
       await refreshContactPageIfCurrent(c.id);
     });
@@ -6493,6 +6500,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         updateBwsPreview();
       }
       async function finish(){
+        // Ein ausgefülltes, aber nicht per "+ Produkt hinzufügen" bestätigtes
+        // Produkt beim Schließen automatisch mit übernehmen -- sonst geht der
+        // Verkauf bei nur einem Produkt stillschweigend verloren, wenn direkt
+        // "Fertig" geklickt wird (echter Bug, 2026-08-14 gemeldet: Verkauf
+        // eingetragen, aber sales blieb leer).
+        if(beginnEl.value){
+          await addProduct();
+          if(statusEl.textContent) return;
+        }
         if(wiedervorlageEl.value){
           const { error } = await sb.from('contacts').update({ naechster_kontakt: wiedervorlageEl.value }).eq('id', contact.id);
           if(error) logSilentError('Wiedervorlage speichern', error);
