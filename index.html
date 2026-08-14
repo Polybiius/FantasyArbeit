@@ -1430,7 +1430,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     <div class="kanban-newlead-form">
       <select id="saleEntryCategory"></select>
       <select id="saleEntryProdukt"></select>
-      <input type="number" id="saleEntryMenge" placeholder="Stückzahl" min="1" value="1">
       <input type="text" id="saleEntryVertragsnummer" placeholder="Vertragsnummer (optional)" maxlength="60">
       <input type="number" id="saleEntryBeitrag" placeholder="Laufender Beitrag (€)" step="0.01" min="0">
       <label class="cdl" style="display:block;margin-top:4px;">Vertragsbeginn</label>
@@ -4583,7 +4582,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const row = (s, showKuendigen) => {
       const p = productById(s.product_id);
       return `<div class="cc-notes kd-contract-row" data-sale="${s.id}">
-        <span class="kdc-main"><strong>${p ? p.name : '?'}</strong>${s.vertragsnummer ? ` <span class="kdc-meta">${escHtml(s.vertragsnummer)}</span>` : ''} — Start: ${fmtDate(s.vertragsbeginn)} · Stückzahl: ${s.menge}
+        <span class="kdc-main"><strong>${p ? p.name : '?'}</strong>${s.vertragsnummer ? ` <span class="kdc-meta">${escHtml(s.vertragsnummer)}</span>` : ''} — Start: ${fmtDate(s.vertragsbeginn)}
         · laufender Beitrag: ${fmtEuro(s.laufender_beitrag)} · ausgeschüttete Provision: —
         ${s.status==='verloren' ? ' · <span style="color:var(--danger)">verloren</span>' : ''}
         ${s.vertragsende ? ` · gekündigt zum ${fmtDate(s.vertragsende)}` : ''}</span>
@@ -4999,6 +4998,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     render();
     await renderContactsPage();
+    // Fehlte hier bisher komplett -- eine offene Kontakt-Seite zeigte den
+    // gerade eingetragenen Vertrag/die neue Kanban-Stufe erst nach einem
+    // manuellen Neuladen (gemeldet 2026-08-14), da nur die Kontakteliste,
+    // nicht die Detailseite selbst aktualisiert wurde.
+    await refreshContactPageIfCurrent(contact.id);
   }
 
   // ---- Anruf/Email am Kontakt loggen (echte CRM-Aktivität, getrennt von
@@ -6436,7 +6440,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     return new Promise(resolve=>{
       const catEl = document.getElementById('saleEntryCategory');
       const produktEl = document.getElementById('saleEntryProdukt');
-      const mengeEl = document.getElementById('saleEntryMenge');
       const vertragsnummerEl = document.getElementById('saleEntryVertragsnummer');
       const beitragEl = document.getElementById('saleEntryBeitrag');
       const beginnEl = document.getElementById('saleEntryVertragsbeginn');
@@ -6451,7 +6454,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       document.getElementById('saleEntryContactName').textContent = contact.name;
       populateCategorySelect(catEl);
       populateProductSelect(catEl, produktEl);
-      mengeEl.value = '1'; vertragsnummerEl.value = ''; beitragEl.value = ''; beginnEl.value = ''; wiedervorlageEl.value = '';
+      vertragsnummerEl.value = ''; beitragEl.value = ''; beginnEl.value = ''; wiedervorlageEl.value = '';
       statusEl.textContent = ''; listEl.textContent = '';
       const added = [];
 
@@ -6489,11 +6492,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
       async function addProduct(){
         const product = productById(produktEl.value);
-        const menge = parseInt(mengeEl.value, 10) || 1;
+        // Bewusst kein Stückzahl-Feld mehr (Nutzervorgabe 2026-08-14): eine
+        // Versicherung kauft man nicht mehrfach, ein höherer Bedarf erhöht
+        // stattdessen den Beitrag -- jede Zeile ist immer genau ein Vertrag.
         if(!product){ statusEl.textContent = 'Bitte Produkt auswählen.'; return; }
         if(!beginnEl.value){ statusEl.textContent = 'Bitte Vertragsbeginn eintragen.'; return; }
         const { error } = await sb.from('sales').insert({
-          contact_id: contact.id, org_id: profile.org_id, product_id: product.id, menge,
+          contact_id: contact.id, org_id: profile.org_id, product_id: product.id, menge: 1,
           vertragsnummer: vertragsnummerEl.value.trim() || null,
           laufender_beitrag: beitragEl.value ? parseFloat(beitragEl.value) : null,
           vertragsbeginn: beginnEl.value,
@@ -6501,9 +6506,9 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         });
         if(error){ reportError('Verkauf eintragen', error, statusEl); return; }
         mySalesCache = null;
-        added.push(`${escHtml(product.name)} × ${menge}`);
+        added.push(escHtml(product.name));
         listEl.innerHTML = added.map(x=>'✓ '+x).join('<br>');
-        mengeEl.value = '1'; vertragsnummerEl.value = ''; beitragEl.value = ''; beginnEl.value = ''; statusEl.textContent = '';
+        vertragsnummerEl.value = ''; beitragEl.value = ''; beginnEl.value = ''; statusEl.textContent = '';
         updateBwsPreview();
       }
       async function finish(){
