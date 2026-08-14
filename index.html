@@ -1295,18 +1295,17 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
           <div class="empty-page-hint" style="margin-bottom:8px;">Der Produktkatalog, aus dem beim Verkaufen ausgewählt wird. Nichts wird gelöscht, nur deaktiviert — alte Verkäufe zeigen weiterhin das damalige Produkt.</div>
           <div class="kanban-newlead-form" style="margin-bottom:14px;">
             <input type="text" id="prodNameInput" placeholder="Produktname" maxlength="100">
-            <select id="prodArtInput">
-              <option value="">Art wählen…</option>
-              <option value="LV">Lebensversicherung (LV)</option>
-              <option value="KV">Krankenversicherung (KV)</option>
-              <option value="SH">Sach/Hausrat (SH)</option>
-              <option value="KFZ">Kfz (KFZ)</option>
-              <option value="RS">Rechtsschutz (RS)</option>
-              <option value="pmaSUH">pma-Vermittlung SUH</option>
-              <option value="pmaKV">pma-Vermittlung KV</option>
-            </select>
-            <input type="text" id="prodSubcategoryInput" placeholder="Unterkategorie (optional)" maxlength="80">
-            <button class="cal-nav-btn" id="prodAddBtn">+ Produkt anlegen</button>
+            <label class="cdl" style="display:block;">Art</label>
+            <div class="view-switch" id="prodArtSwitch" style="flex-wrap:wrap;margin-bottom:0;">
+              <button type="button" class="cal-nav-btn view-switch-btn art-toggle-btn" data-art="LV" style="flex:1;min-width:130px;">Lebensversicherung</button>
+              <button type="button" class="cal-nav-btn view-switch-btn art-toggle-btn" data-art="KV" style="flex:1;min-width:130px;">Krankenversicherung</button>
+              <button type="button" class="cal-nav-btn view-switch-btn art-toggle-btn" data-art="SH" style="flex:1;min-width:130px;">Sach/Hausrat</button>
+              <button type="button" class="cal-nav-btn view-switch-btn art-toggle-btn" data-art="KFZ" style="flex:1;min-width:130px;">Kfz</button>
+              <button type="button" class="cal-nav-btn view-switch-btn art-toggle-btn" data-art="RS" style="flex:1;min-width:130px;">Rechtsschutz</button>
+              <button type="button" class="cal-nav-btn view-switch-btn art-toggle-btn" data-art="pmaSUH" style="flex:1;min-width:130px;">pma-Vermittlung SUH</button>
+              <button type="button" class="cal-nav-btn view-switch-btn art-toggle-btn" data-art="pmaKV" style="flex:1;min-width:130px;">pma-Vermittlung KV</button>
+            </div>
+            <button class="cal-nav-btn" id="prodAddBtn" style="margin-top:8px;">+ Produkt anlegen</button>
             <div class="empty-page-hint" id="prodAddStatus"></div>
           </div>
           <div class="empty-page-hint" style="margin-bottom:8px;">Provision/Bewertungspunkte laufen automatisch über die Art — kein Faktor mehr von Hand einstellen. Auf eine Kachel klicken für Nachfass-Empfehlung oder zum (De)Aktivieren.</div>
@@ -6726,22 +6725,31 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('filePreviewBody').innerHTML = '';
   });
 
+  // Art-Auswahl beim Produktanlegen als .view-switch-Tastenreihe statt eines
+  // nativen <select> -- gleiches Muster wie Kanal/Wochentage im Projekt.
+  let selectedProdArt = null;
+  document.querySelectorAll('#prodArtSwitch .art-toggle-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('#prodArtSwitch .art-toggle-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      selectedProdArt = btn.dataset.art;
+    });
+  });
+
   document.getElementById('prodAddBtn').addEventListener('click', async ()=>{
     const name = document.getElementById('prodNameInput').value.trim();
-    const art = document.getElementById('prodArtInput').value;
-    const subcategory = document.getElementById('prodSubcategoryInput').value.trim();
     const statusEl = document.getElementById('prodAddStatus');
-    const artCfg = PRODUCT_ART_CONFIG[art];
+    const artCfg = PRODUCT_ART_CONFIG[selectedProdArt];
     if(!name || !artCfg){ statusEl.textContent = 'Bitte mindestens Name und Art eingeben.'; return; }
     const { error } = await sb.from('products').insert({
       org_id: profile.org_id, key: slugifyProductKey(name) || name, name,
-      art, category: artCfg.category, subcategory: subcategory || null,
+      art: selectedProdArt, category: artCfg.category,
       provision_mode: artCfg.provision_mode, provision_faktor: artCfg.provision_faktor, bwp_faktor: artCfg.bwp_faktor
     });
     if(error){ reportError('Produkt anlegen', error, statusEl); return; }
     document.getElementById('prodNameInput').value = '';
-    document.getElementById('prodArtInput').value = '';
-    document.getElementById('prodSubcategoryInput').value = '';
+    document.querySelectorAll('#prodArtSwitch .art-toggle-btn').forEach(b=>b.classList.remove('active'));
+    selectedProdArt = null;
     statusEl.textContent = '';
     await loadProducts();
     await renderProductsPage();
