@@ -1664,6 +1664,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         <option value="fest">Fester Faktor</option>
         <option value="individuell_lv">Individuelle Leben-Rate (je Mitarbeiter)</option>
         <option value="individuell_kv">Individuelle Kranken-Rate (je Mitarbeiter)</option>
+        <option value="individuell_pma_suh">Individuelle PMA-SUH-Rate (je Mitarbeiter)</option>
+        <option value="individuell_pma_kv">Individuelle PMA-KV-Rate (je Mitarbeiter)</option>
       </select>
       <label class="cdl" style="display:block;margin-top:4px;">Bewertungspunkte-Faktor</label>
       <input type="number" id="productDetailBwpInput" step="0.001" placeholder="z.B. 0.05">
@@ -4007,6 +4009,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const basis = saleBasisValue(s,p);
     if(p.provision_mode==='individuell_lv') return basis * ((profile.lv_promille_satz||0)/1000);
     if(p.provision_mode==='individuell_kv') return basis * (profile.kv_mb_satz||0);
+    if(p.provision_mode==='individuell_pma_suh') return basis * (p.provision_faktor||0) * (profile.pma_suh_satz||0);
+    if(p.provision_mode==='individuell_pma_kv') return basis * (p.provision_faktor||0) * (profile.pma_kv_satz||0);
     return basis * (p.provision_faktor||0);
   }
   function saleDiffProvision(s,p){
@@ -6613,7 +6617,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       .replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
   }
 
-  const PROVISION_MODE_LABELS = { fest:'Fester Faktor', individuell_lv:'Individuelle Leben-Rate', individuell_kv:'Individuelle Kranken-Rate' };
+  const PROVISION_MODE_LABELS = { fest:'Fester Faktor', individuell_lv:'Individuelle Leben-Rate', individuell_kv:'Individuelle Kranken-Rate', individuell_pma_suh:'Individuelle PMA-SUH-Rate', individuell_pma_kv:'Individuelle PMA-KV-Rate' };
+  // Modi, bei denen die Provision ausschließlich aus dem persönlichen Satz
+  // kommt (kein Produkt-Faktor beteiligt) -- im Unterschied zu PMA SUH/KV,
+  // wo Produkt-Faktor UND persönlicher Satz miteinander multipliziert werden.
+  const PROVISION_MODES_WITHOUT_PRODUCT_FAKTOR = ['individuell_lv','individuell_kv'];
 
   async function renderProductsPage(){
     const listEl = document.getElementById('productsList');
@@ -6653,16 +6661,16 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     modeEl.value = p.provision_mode;
     bwpEl.value = p.bwp_faktor ?? '';
     provEl.value = p.provision_faktor ?? '';
-    provEl.disabled = modeEl.value !== 'fest';
-    hintEl.textContent = modeEl.value !== 'fest' ? '(ignoriert bei individuellem Modus)' : '';
+    provEl.disabled = PROVISION_MODES_WITHOUT_PRODUCT_FAKTOR.includes(modeEl.value);
+    hintEl.textContent = provEl.disabled ? '(ignoriert bei individuellem Modus)' : (modeEl.value.startsWith('individuell_pma') ? '(fester Teilfaktor, wird mit der persönlichen PMA-Rate multipliziert)' : '');
     document.getElementById('productDetailRecontactAmountInput').value = p.recontact_amount ?? '';
     document.getElementById('productDetailRecontactUnitInput').value = p.recontact_unit || 'monate';
     statusEl.textContent = '';
     toggleBtn.textContent = p.active ? 'Deaktivieren' : 'Reaktivieren';
 
     modeEl.onchange = ()=>{
-      provEl.disabled = modeEl.value !== 'fest';
-      hintEl.textContent = modeEl.value !== 'fest' ? '(ignoriert bei individuellem Modus)' : '';
+      provEl.disabled = PROVISION_MODES_WITHOUT_PRODUCT_FAKTOR.includes(modeEl.value);
+      hintEl.textContent = provEl.disabled ? '(ignoriert bei individuellem Modus)' : (modeEl.value.startsWith('individuell_pma') ? '(fester Teilfaktor, wird mit der persönlichen PMA-Rate multipliziert)' : '');
     };
     document.getElementById('productDetailSaveBtn').onclick = async ()=>{
       const mode = modeEl.value;
@@ -6670,7 +6678,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       const { error } = await sb.from('products').update({
         provision_mode: mode,
         bwp_faktor: bwpEl.value ? parseFloat(bwpEl.value) : null,
-        provision_faktor: (mode==='fest' && provEl.value) ? parseFloat(provEl.value) : null,
+        provision_faktor: (!PROVISION_MODES_WITHOUT_PRODUCT_FAKTOR.includes(mode) && provEl.value) ? parseFloat(provEl.value) : null,
         recontact_amount: recontactAmountVal ? parseInt(recontactAmountVal, 10) : null,
         recontact_unit: recontactAmountVal ? document.getElementById('productDetailRecontactUnitInput').value : null
       }).eq('id', p.id);
@@ -6737,9 +6745,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     { id:'real_name', group:'profil', label:'Echter Name', desc:'Dein Name, wie ihn Kolleg:innen sehen — getrennt vom Charakternamen (der bleibt oben im Header editierbar).', type:'text', field:'real_name', maxlength:60, placeholder:'Dein Name' },
     { id:'company', group:'profil', label:'Unternehmen', desc:'Optional — wo arbeitest du?', type:'text', field:'company', maxlength:80, placeholder:'Unternehmen (optional)' },
 
-    { id:'h_provision', group:'provision', type:'heading', label:'Individuelle Provision', desc:'Nur bei Leben/Kranken relevant — andere Sparten nutzen den festen Faktor am Produkt.' },
+    { id:'h_grundlage', group:'provision', type:'heading', label:'Rechnungsgrundlage', desc:'Aktuelles Jahr: ' + new Date().getFullYear() + ' (automatisch erkannt, kein Eingabefeld).' },
+    { id:'taetig_seit_jahr', group:'provision', label:'Tätig seit (Jahr)', desc:'Seit wann bist du im Vertrieb tätig?', type:'number', field:'taetig_seit_jahr', step:'1', placeholder:'z.B. 2020' },
+    { id:'h_provision', group:'provision', type:'heading', label:'Individuelle Provision', desc:'Nur bei Leben/Kranken/PMA relevant — andere Sparten nutzen den festen Faktor am Produkt.' },
     { id:'lv_promille_satz', group:'provision', label:'Leben-Satz (‰)', type:'number', field:'lv_promille_satz', step:'0.01', placeholder:'z.B. 32' },
     { id:'kv_mb_satz', group:'provision', label:'Kranken-MB-Satz', type:'number', field:'kv_mb_satz', step:'0.001', placeholder:'z.B. 6' },
+    { id:'pma_suh_satz', group:'provision', label:'Provision PMA SUH', type:'number', field:'pma_suh_satz', step:'0.001', placeholder:'z.B. 0.05' },
+    { id:'pma_kv_satz', group:'provision', label:'Provision PMA KV', type:'number', field:'pma_kv_satz', step:'0.001', placeholder:'z.B. 0.282' },
     { id:'h_planung', group:'provision', type:'heading', label:'Persönliche Planungsziele', desc:'Deine eigenen Jahresziele — daraus berechnet das Kompendium später deinen Zielerreichungsgrad.' },
     { id:'planung_lv_bws', group:'provision', label:'Planung Leben-BWS', type:'number', field:'planung_lv_bws', step:'0.01', placeholder:'Ziel-Bewertungssumme Leben' },
     { id:'planung_kv_mb', group:'provision', label:'Planung Kranken-Beitrag', type:'number', field:'planung_kv_mb', step:'0.01', placeholder:'Ziel-Bewertungsbeitrag Kranken' },
