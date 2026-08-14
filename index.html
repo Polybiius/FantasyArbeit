@@ -4597,7 +4597,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     html += `<div class="cc-sales-block" style="margin-top:10px;"><span class="cdl">Historisch</span>`;
     html += historisch.length ? historisch.map(s=>row(s,false)).join('') : '<div class="cc-notes">Noch nichts Historisches.</div>';
     html += `</div>`;
-    if(canEdit) html += `<button id="cdAddSaleBtn" style="margin-top:10px;">+ Verkauf eintragen</button>`;
+    if(canEdit) html += `<button class="cal-nav-btn" id="cdAddSaleBtn" style="margin-top:10px;">+ Verkauf eintragen</button>`;
 
     document.getElementById('contactDetailSales').innerHTML = html;
 
@@ -4963,6 +4963,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const { data, error } = await sb.from('action_log').insert(row).select().single();
     if(error){ reportError('Aktion für Kontakt speichern', error); return; }
     log.push(data);
+    // Dialog schon hier schließen, nicht erst am Ende der Funktion --
+    // sonst hängt er während des nachfolgend geöffneten Verkaufs-Popups
+    // (Zweig "abschluss" unten) noch sichtbar im Hintergrund/davor, weil
+    // recordWinOrLoss() erst nach dessen Schließen zurückkehrt (gemeldeter
+    // Bug 2026-08-14, gleiches Muster wie das seriesScopeModal-z-index-
+    // Problem früher -- hier aber an der Wurzel behoben: gar nicht erst
+    // zwei Modals gleichzeitig offen haben).
+    document.getElementById('locActionModal').style.display='none';
     await checkAndAwardRecurringQuests();
     await checkAndAwardChains();
 
@@ -4989,7 +4997,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       await recordWinOrLoss(contact, 'gewonnen');
     }
 
-    document.getElementById('locActionModal').style.display='none';
     render();
     await renderContactsPage();
   }
