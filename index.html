@@ -1295,12 +1295,21 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
           <div class="empty-page-hint" style="margin-bottom:8px;">Der Produktkatalog, aus dem beim Verkaufen ausgewählt wird. Nichts wird gelöscht, nur deaktiviert — alte Verkäufe zeigen weiterhin das damalige Produkt.</div>
           <div class="kanban-newlead-form" style="margin-bottom:14px;">
             <input type="text" id="prodNameInput" placeholder="Produktname" maxlength="100">
-            <input type="text" id="prodCategoryInput" placeholder="Kategorie (z.B. Lebensversicherungen)" maxlength="80">
+            <select id="prodArtInput">
+              <option value="">Art wählen…</option>
+              <option value="LV">Lebensversicherung (LV)</option>
+              <option value="KV">Krankenversicherung (KV)</option>
+              <option value="SH">Sach/Hausrat (SH)</option>
+              <option value="KFZ">Kfz (KFZ)</option>
+              <option value="RS">Rechtsschutz (RS)</option>
+              <option value="pmaSUH">pma-Vermittlung SUH</option>
+              <option value="pmaKV">pma-Vermittlung KV</option>
+            </select>
             <input type="text" id="prodSubcategoryInput" placeholder="Unterkategorie (optional)" maxlength="80">
             <button class="cal-nav-btn" id="prodAddBtn">+ Produkt anlegen</button>
             <div class="empty-page-hint" id="prodAddStatus"></div>
           </div>
-          <div class="empty-page-hint" style="margin-bottom:8px;">Auf eine Kachel klicken, um Bewertungspunkte-/Provisions-Faktor einzustellen oder zu (de)aktivieren.</div>
+          <div class="empty-page-hint" style="margin-bottom:8px;">Provision/Bewertungspunkte laufen automatisch über die Art — kein Faktor mehr von Hand einstellen. Auf eine Kachel klicken für Nachfass-Empfehlung oder zum (De)Aktivieren.</div>
           <div id="productsList"></div>
         </div>
       </div>
@@ -1427,7 +1436,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       <input type="number" id="saleEntryBeitrag" placeholder="Laufender Beitrag (€)" step="0.01" min="0">
       <label class="cdl" style="display:block;margin-top:4px;">Vertragsbeginn</label>
       <input type="date" id="saleEntryVertragsbeginn">
-      <input type="number" id="saleEntryBws" placeholder="Bewertungssumme (BWS)" step="0.01" min="0">
+      <div class="empty-page-hint" id="saleEntryBwsPreview" style="display:none;"></div>
       <button class="cal-nav-btn" id="saleEntryAddBtn">+ Produkt hinzufügen</button>
       <div class="empty-page-hint" id="saleEntryStatus"></div>
       <div class="empty-page-hint" id="saleEntryList"></div>
@@ -1659,18 +1668,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       <button id="productDetailClose">✕</button>
     </div>
     <div class="kanban-newlead-form">
-      <label class="cdl" style="display:block;">Provisions-Modus</label>
-      <select id="productDetailModeInput">
-        <option value="fest">Fester Faktor</option>
-        <option value="individuell_lv">Individuelle Leben-Rate (je Mitarbeiter)</option>
-        <option value="individuell_kv">Individuelle Kranken-Rate (je Mitarbeiter)</option>
-        <option value="individuell_pma_suh">Individuelle PMA-SUH-Rate (je Mitarbeiter)</option>
-        <option value="individuell_pma_kv">Individuelle PMA-KV-Rate (je Mitarbeiter)</option>
-      </select>
-      <label class="cdl" style="display:block;margin-top:4px;">Bewertungspunkte-Faktor</label>
-      <input type="number" id="productDetailBwpInput" step="0.001" placeholder="z.B. 0.05">
-      <label class="cdl" style="display:block;margin-top:4px;">Provisions-Faktor <span id="productDetailProvHint" style="font-weight:normal;"></span></label>
-      <input type="number" id="productDetailProvInput" step="0.001" placeholder="z.B. 0.1">
+      <div class="empty-page-hint" id="productDetailArtInfo"></div>
       <label class="cdl" style="display:block;margin-top:4px;">Nachfass-Empfehlung (optional) — wann nach Vertragsbeginn wieder melden?</label>
       <div class="contact-add-row">
         <input type="number" id="productDetailRecontactAmountInput" min="0" placeholder="z.B. 3" style="flex:1;">
@@ -3977,11 +3975,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // BWS-Verrechnung: aus einem gewonnenen Verkauf + seinem Produkt werden
   // Bewertungspunkte/Provision/Differenzprovision berechnet, nie gespeichert
   // (wie XP/Level: bei jedem Aufruf frisch aus sales+products+profile
-  // zusammengerechnet). Annahme, die noch gegenzuprüfen ist: der Eingabewert
-  // je Verkauf ist "bewertungssumme" für Leben (provision_mode='individuell_lv'),
-  // sonst "laufender_beitrag" - beide Felder existieren bereits am Verkauf
-  // (Patch 23), "menge" wird NICHT nochmal multipliziert (Annahme: die
-  // eingetragene Summe ist bereits der Gesamtwert der Zeile).
+  // zusammengerechnet). "laufender_beitrag" ist die einzige echte Eingabe;
+  // "menge" wird NICHT nochmal multipliziert (die eingetragene Summe ist
+  // bereits der Gesamtwert der Zeile). Für Leben (individuell_lv) wird die
+  // Bewertungssumme aus dem Beitrag abgeleitet, nicht mehr separat erfasst
+  // -- Nutzervorgabe 2026-08-14: Beitrag × 12 Monate × 30 Jahre (Beispiel:
+  // 200€ Beitrag → 72.000€ BWS). sales.bewertungssumme wird seitdem nicht
+  // mehr beschrieben, bleibt als Spalte aber bestehen (keine Migration
+  // nötig, war zum Umstellungszeitpunkt ohnehin leer).
+  const LV_BWS_MONTHS = 360; // 12 * 30
   const STAT_MONTH_NAMES = ['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
   const STAT_CATEGORICAL = ['#3987e5','#d95926','#199e70','#c98500','#d55181','#008300','#9085e9','#e66767'];
   let statSelectedPeriod = 'jahr';
@@ -4003,7 +4005,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       return String(parseInt(d.slice(5,7),10)-1)===period;
     });
   }
-  function saleBasisValue(s,p){ return p.provision_mode==='individuell_lv' ? (s.bewertungssumme||0) : (s.laufender_beitrag||0); }
+  function saleBasisValue(s,p){ const beitrag = s.laufender_beitrag||0; return p.provision_mode==='individuell_lv' ? beitrag*LV_BWS_MONTHS : beitrag; }
   function saleBwp(s,p){ return p.bwp_faktor==null ? 0 : saleBasisValue(s,p)*p.bwp_faktor; }
   function saleProvision(s,p){
     const basis = saleBasisValue(s,p);
@@ -6422,7 +6424,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       const vertragsnummerEl = document.getElementById('saleEntryVertragsnummer');
       const beitragEl = document.getElementById('saleEntryBeitrag');
       const beginnEl = document.getElementById('saleEntryVertragsbeginn');
-      const bwsEl = document.getElementById('saleEntryBws');
+      const bwsPreviewEl = document.getElementById('saleEntryBwsPreview');
       const wiedervorlageEl = document.getElementById('saleEntryWiedervorlage');
       const statusEl = document.getElementById('saleEntryStatus');
       const listEl = document.getElementById('saleEntryList');
@@ -6433,9 +6435,23 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       document.getElementById('saleEntryContactName').textContent = contact.name;
       populateCategorySelect(catEl);
       populateProductSelect(catEl, produktEl);
-      mengeEl.value = '1'; vertragsnummerEl.value = ''; beitragEl.value = ''; beginnEl.value = ''; bwsEl.value = ''; wiedervorlageEl.value = '';
+      mengeEl.value = '1'; vertragsnummerEl.value = ''; beitragEl.value = ''; beginnEl.value = ''; wiedervorlageEl.value = '';
       statusEl.textContent = ''; listEl.textContent = '';
       const added = [];
+
+      // Bewertungssumme (nur Leben) wird nicht mehr eingegeben, sondern live
+      // aus dem Beitrag vorgerechnet (Beitrag × 360, siehe LV_BWS_MONTHS) —
+      // reine Anzeige, saleBasisValue() rechnet beim Auswerten genauso.
+      function updateBwsPreview(){
+        const product = productById(produktEl.value);
+        if(product && product.provision_mode==='individuell_lv' && beitragEl.value){
+          const bws = parseFloat(beitragEl.value) * LV_BWS_MONTHS;
+          bwsPreviewEl.textContent = 'Bewertungssumme (automatisch, Beitrag × 360): ' + fmtEuro(bws);
+          bwsPreviewEl.style.display = '';
+        } else {
+          bwsPreviewEl.style.display = 'none';
+        }
+      }
 
       // Produktweite Nachfass-Empfehlung (Patch 35) füllt die Wiedervorlage
       // nur vor, solange der Nutzer sie nicht selbst angefasst hat — reine
@@ -6447,9 +6463,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         const suggestion = computeRecontactDate(productById(produktEl.value), beginnEl.value);
         if(suggestion) wiedervorlageEl.value = suggestion;
       }
-      catEl.onchange = ()=>{ populateProductSelect(catEl, produktEl); updateWiedervorlageSuggestion(); };
-      produktEl.onchange = updateWiedervorlageSuggestion;
+      catEl.onchange = ()=>{ populateProductSelect(catEl, produktEl); updateWiedervorlageSuggestion(); updateBwsPreview(); };
+      produktEl.onchange = ()=>{ updateWiedervorlageSuggestion(); updateBwsPreview(); };
       beginnEl.onchange = updateWiedervorlageSuggestion;
+      beitragEl.oninput = updateBwsPreview;
+      updateBwsPreview();
 
       modal.style.display = 'flex';
 
@@ -6463,14 +6481,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
           vertragsnummer: vertragsnummerEl.value.trim() || null,
           laufender_beitrag: beitragEl.value ? parseFloat(beitragEl.value) : null,
           vertragsbeginn: beginnEl.value,
-          bewertungssumme: bwsEl.value ? parseFloat(bwsEl.value) : null,
           status: 'gewonnen', created_by: profile.id
         });
         if(error){ reportError('Verkauf eintragen', error, statusEl); return; }
         mySalesCache = null;
         added.push(`${escHtml(product.name)} × ${menge}`);
         listEl.innerHTML = added.map(x=>'✓ '+x).join('<br>');
-        mengeEl.value = '1'; vertragsnummerEl.value = ''; beitragEl.value = ''; beginnEl.value = ''; bwsEl.value = ''; statusEl.textContent = '';
+        mengeEl.value = '1'; vertragsnummerEl.value = ''; beitragEl.value = ''; beginnEl.value = ''; statusEl.textContent = '';
+        updateBwsPreview();
       }
       async function finish(){
         if(wiedervorlageEl.value){
@@ -6617,11 +6635,20 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       .replace(/[^a-z0-9]+/g,'_').replace(/^_+|_+$/g,'');
   }
 
-  const PROVISION_MODE_LABELS = { fest:'Fester Faktor', individuell_lv:'Individuelle Leben-Rate', individuell_kv:'Individuelle Kranken-Rate', individuell_pma_suh:'Individuelle PMA-SUH-Rate', individuell_pma_kv:'Individuelle PMA-KV-Rate' };
-  // Modi, bei denen die Provision ausschließlich aus dem persönlichen Satz
-  // kommt (kein Produkt-Faktor beteiligt) -- im Unterschied zu PMA SUH/KV,
-  // wo Produkt-Faktor UND persönlicher Satz miteinander multipliziert werden.
-  const PROVISION_MODES_WITHOUT_PRODUCT_FAKTOR = ['individuell_lv','individuell_kv'];
+  // Art bestimmt Kategorie + Provisions-Modus + beide Faktoren komplett --
+  // beim Anlegen wird nur noch Name+Art gewählt, kein manuelles
+  // Faktoren-Einstellen mehr (siehe CLAUDE.md/Chat 2026-08-14). Die 5
+  // übrigen Excel-Arten (D/DP/KAP/KontoAPO/KontoStud) bewusst noch nicht
+  // aufgenommen, auf Nutzerwunsch.
+  const PRODUCT_ART_CONFIG = {
+    LV:     { label:'Lebensversicherung',   category:'Lebensversicherung',   provision_mode:'individuell_lv',     provision_faktor:null, bwp_faktor:0.05 },
+    KV:     { label:'Krankenversicherung',  category:'Krankenversicherung',  provision_mode:'individuell_kv',     provision_faktor:null, bwp_faktor:8 },
+    SH:     { label:'Sach/Hausrat',         category:'Sach/Hausrat',         provision_mode:'fest',               provision_faktor:0.1,  bwp_faktor:1 },
+    KFZ:    { label:'Kfz',                  category:'Kfz',                  provision_mode:'fest',               provision_faktor:0.08, bwp_faktor:0.3 },
+    RS:     { label:'Rechtsschutz',         category:'Rechtsschutz',         provision_mode:'fest',               provision_faktor:0.365,bwp_faktor:0.75 },
+    pmaSUH: { label:'pma-Vermittlung SUH',  category:'pma-Vermittlung SUH',  provision_mode:'individuell_pma_suh',provision_faktor:0.23, bwp_faktor:1 },
+    pmaKV:  { label:'pma-Vermittlung KV',   category:'pma-Vermittlung KV',   provision_mode:'individuell_pma_kv', provision_faktor:0.75, bwp_faktor:0 },
+  };
 
   async function renderProductsPage(){
     const listEl = document.getElementById('productsList');
@@ -6641,7 +6668,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
             <div class="dungeon-tile" data-prodtile="${p.id}" style="${p.active ? '' : 'opacity:0.5;'}">
               <span class="dt-icon">${p.active ? '📦' : '🚫'}</span>
               <span class="dt-name">${escHtml(p.name)}</span>
-              <span class="dt-count">${PROVISION_MODE_LABELS[p.provision_mode] || p.provision_mode}</span>
+              <span class="dt-count">${PRODUCT_ART_CONFIG[p.art]?.label || p.art || '?'}</span>
             </div>`).join('')}
         </div>
       </div>`).join('');
@@ -6652,37 +6679,24 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   function openProductDetailModal(p){
     document.getElementById('productDetailName').textContent = p.name;
-    const modeEl = document.getElementById('productDetailModeInput');
-    const bwpEl = document.getElementById('productDetailBwpInput');
-    const provEl = document.getElementById('productDetailProvInput');
-    const hintEl = document.getElementById('productDetailProvHint');
+    const artCfg = PRODUCT_ART_CONFIG[p.art];
+    document.getElementById('productDetailArtInfo').textContent = artCfg
+      ? `Art: ${artCfg.label} — Provision/Bewertungspunkte laufen automatisch über diese Art, kein manueller Faktor nötig.`
+      : 'Keine Art hinterlegt.';
     const statusEl = document.getElementById('productDetailStatus');
     const toggleBtn = document.getElementById('productDetailToggleBtn');
-    modeEl.value = p.provision_mode;
-    bwpEl.value = p.bwp_faktor ?? '';
-    provEl.value = p.provision_faktor ?? '';
-    provEl.disabled = PROVISION_MODES_WITHOUT_PRODUCT_FAKTOR.includes(modeEl.value);
-    hintEl.textContent = provEl.disabled ? '(ignoriert bei individuellem Modus)' : (modeEl.value.startsWith('individuell_pma') ? '(fester Teilfaktor, wird mit der persönlichen PMA-Rate multipliziert)' : '');
     document.getElementById('productDetailRecontactAmountInput').value = p.recontact_amount ?? '';
     document.getElementById('productDetailRecontactUnitInput').value = p.recontact_unit || 'monate';
     statusEl.textContent = '';
     toggleBtn.textContent = p.active ? 'Deaktivieren' : 'Reaktivieren';
 
-    modeEl.onchange = ()=>{
-      provEl.disabled = PROVISION_MODES_WITHOUT_PRODUCT_FAKTOR.includes(modeEl.value);
-      hintEl.textContent = provEl.disabled ? '(ignoriert bei individuellem Modus)' : (modeEl.value.startsWith('individuell_pma') ? '(fester Teilfaktor, wird mit der persönlichen PMA-Rate multipliziert)' : '');
-    };
     document.getElementById('productDetailSaveBtn').onclick = async ()=>{
-      const mode = modeEl.value;
       const recontactAmountVal = document.getElementById('productDetailRecontactAmountInput').value;
       const { error } = await sb.from('products').update({
-        provision_mode: mode,
-        bwp_faktor: bwpEl.value ? parseFloat(bwpEl.value) : null,
-        provision_faktor: (!PROVISION_MODES_WITHOUT_PRODUCT_FAKTOR.includes(mode) && provEl.value) ? parseFloat(provEl.value) : null,
         recontact_amount: recontactAmountVal ? parseInt(recontactAmountVal, 10) : null,
         recontact_unit: recontactAmountVal ? document.getElementById('productDetailRecontactUnitInput').value : null
       }).eq('id', p.id);
-      if(error){ reportError('Produkt-Faktoren speichern', error, statusEl); return; }
+      if(error){ reportError('Produkt-Einstellungen speichern', error, statusEl); return; }
       await loadProducts();
       await renderProductsPage();
       document.getElementById('productDetailModal').style.display = 'none';
@@ -6711,17 +6725,19 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   document.getElementById('prodAddBtn').addEventListener('click', async ()=>{
     const name = document.getElementById('prodNameInput').value.trim();
-    const category = document.getElementById('prodCategoryInput').value.trim();
+    const art = document.getElementById('prodArtInput').value;
     const subcategory = document.getElementById('prodSubcategoryInput').value.trim();
     const statusEl = document.getElementById('prodAddStatus');
-    if(!name || !category){ statusEl.textContent = 'Bitte mindestens Name und Kategorie eingeben.'; return; }
+    const artCfg = PRODUCT_ART_CONFIG[art];
+    if(!name || !artCfg){ statusEl.textContent = 'Bitte mindestens Name und Art eingeben.'; return; }
     const { error } = await sb.from('products').insert({
-      org_id: profile.org_id, key: slugifyProductKey(name) || name, name, category,
-      subcategory: subcategory || null
+      org_id: profile.org_id, key: slugifyProductKey(name) || name, name,
+      art, category: artCfg.category, subcategory: subcategory || null,
+      provision_mode: artCfg.provision_mode, provision_faktor: artCfg.provision_faktor, bwp_faktor: artCfg.bwp_faktor
     });
     if(error){ reportError('Produkt anlegen', error, statusEl); return; }
     document.getElementById('prodNameInput').value = '';
-    document.getElementById('prodCategoryInput').value = '';
+    document.getElementById('prodArtInput').value = '';
     document.getElementById('prodSubcategoryInput').value = '';
     statusEl.textContent = '';
     await loadProducts();
