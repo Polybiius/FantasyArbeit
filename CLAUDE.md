@@ -2213,26 +2213,30 @@ Supabase-Tabelle `rule_configs`. **Erster echter Schritt dieser
 Übersetzung seit 2026-08-09 abends live**, siehe nächster Abschnitt.
 
 **Unterpunkt, festgelegt 2026-08-10 — Item-/Mengen-System-Umbau folgt
-NACH diesem Nebenstrang, nicht parallel:** der tägliche Gratis-Manatrank
-(`grantDailyManatrank()`) war laut Nutzer nur ein Bauphase-Hilfsmittel,
-das eigentliche Item-System soll noch umgebaut werden — aber erst,
-nachdem der Questbaum in die App übersetzt ist (eins folgt aufs
-andere). Bündelt drei bisher einzeln notierte Punkte:
-1. **Manatrank-Vergabe an Quests knüpfen** (statt/zusätzlich zum
-   täglichen Gratis-Trank) — vom Nutzer am 2026-07-31 als "wird sich
-   noch ändern" angekündigt, noch ohne Details, wie genau (ersetzt der
-   Gratis-Trank die Quest-Vergabe, oder kommt beides zusammen —
-   `grantItem()` für Quest-Belohnungen existiert bereits und ist
-   unabhängig nutzbar).
-2. **`reward_item_key`+`qty`-Feld für Quests** (Items als
-   Quest-Belohnung gewinnen) — technisch trivial über das bestehende
-   `grantItem()`, aber noch nicht verdrahtet.
+NACH diesem Nebenstrang, nicht parallel.** Der Questbaum ist seit
+2026-08-15 vollständig in die App übersetzt (siehe
+[[project_questbaum_schema_design]]), damit ist die Wartebedingung
+erfüllt. Von den drei ursprünglich gebündelten Punkten sind die ersten
+beiden noch am selben Tag erledigt worden:
+1. ~~**Manatrank-Vergabe an Quests knüpfen**~~ — **erledigt,
+   2026-08-15.** `grantDailyManatrank()` (der automatische
+   Gratis-Trank pro Kalendertag) ist komplett entfernt. Stattdessen
+   hängt der Manatrank jetzt an der täglichen Quest `daily1` (3
+   Ansprachen + 1 Termin vereinbart) — `config.recurringQuests`
+   bekam ein `itemReward:{key:"mana_trank",qty:1}`-Feld.
+2. ~~**`reward_item_key`+`qty`-Feld für Quests**~~ — **erledigt im
+   selben Zug.** `checkAndAwardRecurringQuests()` unterstützte
+   `q.itemReward` bereits (ungenutzt seit dem Krankenhausakquise-Pilot),
+   war nur nie befüllt — reine Datenänderung, kein neuer Code nötig.
+   Neuer Belohnungs-Toast (`showQuestRewardToast()`, unten links XP,
+   unten rechts Icon+Name des Items) zeigt jede erfüllte
+   `recurringQuest` an, nicht nur die mit Item-Belohnung.
 3. **`user_inventory`-RLS-Lücke** (`item_key`/`quantity` ohne
    Katalog-Prüfung selbst zuteilbar, siehe Sicherheits-Durchgang
-   2026-08-07) — ein Katalog-Prüf-Trigger war ursprünglich mit im
-   org_id-Pinning-Patch (2026-08-08) geplant, wurde aber bewusst
-   rausgenommen, um nicht doppelte Arbeit zu bauen, bevor der Umbau
-   steht.
+   2026-08-07) bleibt weiterhin offen — ein Katalog-Prüf-Trigger war
+   ursprünglich mit im org_id-Pinning-Patch (2026-08-08) geplant, wurde
+   aber bewusst rausgenommen. Einziger noch offener Punkt aus diesem
+   Bündel.
 
 ## Questbaum-Übersetzung, erster Schritt: Termin-Kanal + Vertriebsserien (Patch 40, 2026-08-09)
 
