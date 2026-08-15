@@ -2636,8 +2636,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(phoneTally>=5){
       phoneTally=0;
       localStorage.setItem('phoneTally_'+profile.id, 0);
-      const row = { user_id:profile.id, org_id:profile.org_id, action_key:key, label:a.label, xp:a.xp, energy:a.energy, skill:a.skill||null };
-      const { data, error } = await sb.from('action_log').insert(row).select().single();
+      const { data, error } = await sb.rpc('log_action_for_self', { p_action_key: key });
       if(error){ reportError('Aktion speichern', error); }
       else{ log.push(data); await checkAndAwardRecurringQuests(); await checkAndAwardChains(); }
     }
@@ -3171,8 +3170,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       const key = q.period==='daily' ? todayKey(now) : weekKey(now);
       const allMet = q.conditions.every(c=>countInPeriod(c.actions,q.period)>=c.count);
       if(allMet && !recurringQuestBonusEarned(q,key)){
-        const row = { user_id:profile.id, org_id:profile.org_id, action_key:'quest_bonus', label:'Quest erfüllt: '+q.name, xp:q.bonus, energy:0, meta:{questId:q.id, periodKey:key} };
-        const { data, error } = await sb.from('action_log').insert(row).select().single();
+        const { data, error } = await sb.rpc('grant_quest_bonus_to_self', { p_kind:'recurring', p_quest_id:q.id, p_period_key:key });
         if(error){ logSilentError('Quest-Bonus verbuchen', error); continue; }
         if(data) log.push(data);
         let rewardDef = null, rewardQty = 0;
@@ -3194,8 +3192,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         if(already) continue;
         const prevDone = i===0 || log.some(e=>e.action_key==='chain_bonus' && e.meta && e.meta.chainId===chain.id && e.meta.stageId===chain.stages[i-1].id);
         if(prevDone && evalChainRule(stage.rule, ctxGroups)){
-          const row = { user_id:profile.id, org_id:profile.org_id, action_key:'chain_bonus', label:'Kette erfüllt: '+chain.name+' — '+stage.name, xp:stage.bonus, energy:0, meta:{chainId:chain.id, stageId:stage.id} };
-          const { data, error } = await sb.from('action_log').insert(row).select().single();
+          const { data, error } = await sb.rpc('grant_quest_bonus_to_self', { p_kind:'chain', p_quest_id:chain.id, p_stage_id:stage.id });
           if(error){ logSilentError('Ketten-Bonus verbuchen', error); continue; }
           if(data) log.push(data);
           if(stage.itemReward) await grantItem(stage.itemReward.key, stage.itemReward.qty||1);
@@ -3214,8 +3211,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       context = prompt(`${a.context} eintragen (optional, für Quest-Ketten wichtig):`, '');
       if(context===null) return;
     }
-    const row = { user_id:profile.id, org_id:profile.org_id, action_key:key, label:a.label, xp:a.xp, energy:a.energy, skill:a.skill||null, skill2:a.skill2||null, context: context ? context.trim() : null };
-    const { data, error } = await sb.from('action_log').insert(row).select().single();
+    const { data, error } = await sb.rpc('log_action_for_self', { p_action_key: key, p_context: context ? context.trim() : null });
     if(error){ reportError('Aktion speichern', error); return; }
     log.push(data);
     await checkAndAwardRecurringQuests();
@@ -3804,8 +3800,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(def.effect==='full_energy_refill'){
       const usedToday = energyUsedToday();
       if(usedToday<=0) return; // Energie schon voll - Trank wäre wirkungslos, nicht verbrauchen
-      const row = { user_id:profile.id, org_id:profile.org_id, action_key:'item_use', label:'Benutzt: '+def.label, xp:0, energy:-usedToday, meta:{itemKey} };
-      const { data, error } = await sb.from('action_log').insert(row).select().single();
+      const { data, error } = await sb.rpc('log_item_energy_refill_for_self', { p_item_key: itemKey });
       if(error){ reportError('Item-Effekt verbuchen', error); return; }
       if(data) log.push(data);
     }
@@ -5024,12 +5019,9 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(!a) return;
     const remaining = config.energyMax - energyUsedToday();
     if(a.energy > remaining) return;
-    const row = {
-      user_id:profile.id, org_id:profile.org_id, action_key:key, label:a.label,
-      xp:a.xp, energy:a.energy, skill:a.skill||null, skill2:a.skill2||null,
-      context: contact.name, location_id: contact.location_id||null, contact_id: contact.id
-    };
-    const { data, error } = await sb.from('action_log').insert(row).select().single();
+    const { data, error } = await sb.rpc('log_action_for_self', {
+      p_action_key: key, p_context: contact.name, p_location_id: contact.location_id||null, p_contact_id: contact.id
+    });
     if(error){ reportError('Aktion für Kontakt speichern', error); return; }
     log.push(data);
     // Dialog schon hier schließen, nicht erst am Ende der Funktion --
@@ -5141,13 +5133,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     let actionLogId = null;
     if(a){
-      const row = {
-        user_id:profile.id, org_id:profile.org_id, action_key:actionKey, label:a.label,
-        xp:a.xp, energy:a.energy, skill:a.skill||null, skill2:a.skill2||null,
-        context: contact.name, location_id: contact.location_id||null, contact_id: contact.id,
-        created_at: occurredAt
-      };
-      const { data, error } = await sb.from('action_log').insert(row).select().single();
+      const { data, error } = await sb.rpc('log_action_for_self', {
+        p_action_key: actionKey, p_context: contact.name, p_location_id: contact.location_id||null,
+        p_contact_id: contact.id, p_occurred_at: occurredAt
+      });
       if(error){ reportError('Aktivität: XP-Buchung', error, statusEl); return; }
       log.push(data);
       actionLogId = data.id;
@@ -5579,12 +5568,9 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     }
     const remaining = config.energyMax - energyUsedToday();
     if(a.energy > remaining) return;
-    const row = {
-      user_id:profile.id, org_id:profile.org_id, action_key:key, label:a.label,
-      xp:a.xp, energy:a.energy, skill:a.skill||null, skill2:a.skill2||null,
-      context: loc.name, location_id: loc.id
-    };
-    const { data, error } = await sb.from('action_log').insert(row).select().single();
+    const { data, error } = await sb.rpc('log_action_for_self', {
+      p_action_key: key, p_context: loc.name, p_location_id: loc.id
+    });
     if(error){ reportError('Aktion am Dungeon speichern', error); return; }
     log.push(data);
     await checkAndAwardRecurringQuests();
@@ -6423,13 +6409,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(!a) return false;
     const remaining = config.energyMax - energyUsedToday();
     if(a.energy > remaining){ alert(`Nicht genug Energie heute für "${a.label}".`); return false; }
-    const row = {
-      user_id:profile.id, org_id:profile.org_id, action_key:actionKey, label:a.label,
-      xp:a.xp, energy:a.energy, skill:a.skill||null, skill2:a.skill2||null,
-      context: contact.name, location_id: contact.location_id||null, contact_id: contact.id
-    };
-    if(extraMeta) row.meta = extraMeta;
-    const { data, error } = await sb.from('action_log').insert(row).select().single();
+    const { data, error } = await sb.rpc('log_action_for_self', {
+      p_action_key: actionKey, p_context: contact.name, p_location_id: contact.location_id||null,
+      p_contact_id: contact.id, p_meta: extraMeta || null
+    });
     if(error){ reportError(`Kanban-Aktion speichern (${a.label})`, error); return false; }
     log.push(data);
     await checkAndAwardRecurringQuests();
