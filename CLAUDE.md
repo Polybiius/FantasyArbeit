@@ -1189,20 +1189,9 @@ echtem Session-Token, nicht nur gelesen/vermutet):**
   tatsächlich gespeicherte Zeile hatte trotzdem `role:'member'` und die
   korrekte Standard-Org, `character_class` blieb wie gewollt frei wählbar.
   Schutz bestätigt wirksam.
-- **Gefunden, noch NICHT gefixt (Priorität niedriger, Nutzer-Entscheidung
-  offen):** `user_inventory` hat dieselbe Lücke bei `item_key`/`quantity`
-  (`inventory_insert_own`/`inventory_update_own` prüfen nur `user_id`).
-  Live bestätigt: per direktem POST eine Test-Item-Zeile mit
-  `quantity:9999` angelegt, existierte danach echt in der DB. Da es keine
-  `inventory_delete`-Policy gibt, ließ sie sich nicht per API entfernen,
-  nur auf `quantity:0` zurücksetzen (unsichtbar, aber die Zeile
-  `item_key='xss_audit_testitem'` liegt noch in `user_inventory` — bei
-  Gelegenheit per SQL-Editor `delete from public.user_inventory where
-  item_key='xss_audit_testitem';` aufräumen). Auswirkung: ein Nutzer
-  könnte sich beliebige Items/Mengen selbst zuteilen, statt sie über
-  `grantItem()`/Quests zu bekommen — eher ein "Schummel"-Problem unter
-  vertrauten Kolleg:innen als ein Datenschutz-Vorfall, deshalb bewusst
-  zurückgestellt statt sofort mitgefixt.
+- ~~Gefunden, noch NICHT gefixt: `user_inventory` hat dieselbe Lücke bei
+  `item_key`/`quantity`~~ — **behoben, 2026-08-15, siehe eigener
+  Abschnitt "Serverseitige Schreib-Härtung" weiter unten.**
 - **Restliche `update`-Policies ohne explizite `with check`** (contacts,
   termine, termin_series, contact_activities, journal_entries, friends,
   guild_members) sind trotz desselben Musters **nicht** betroffen — ihre
@@ -2231,12 +2220,9 @@ beiden noch am selben Tag erledigt worden:
    Neuer Belohnungs-Toast (`showQuestRewardToast()`, unten links XP,
    unten rechts Icon+Name des Items) zeigt jede erfüllte
    `recurringQuest` an, nicht nur die mit Item-Belohnung.
-3. **`user_inventory`-RLS-Lücke** (`item_key`/`quantity` ohne
-   Katalog-Prüfung selbst zuteilbar, siehe Sicherheits-Durchgang
-   2026-08-07) bleibt weiterhin offen — ein Katalog-Prüf-Trigger war
-   ursprünglich mit im org_id-Pinning-Patch (2026-08-08) geplant, wurde
-   aber bewusst rausgenommen. Einziger noch offener Punkt aus diesem
-   Bündel.
+3. ~~**`user_inventory`-RLS-Lücke**~~ — **behoben, 2026-08-15 abends**,
+   siehe Abschnitt "Serverseitige Schreib-Härtung" weiter unten. Damit
+   ist dieses Bündel komplett abgeschlossen.
 
 ## Questbaum-Übersetzung, erster Schritt: Termin-Kanal + Vertriebsserien (Patch 40, 2026-08-09)
 
@@ -2762,6 +2748,99 @@ jede andere Seite auch. **Lehre:** eine neue `.page` muss strukturell
 Seiten stehen, sonst greift das Sidebar-Layout nicht — beim nächsten Mal
 vor dem ersten Screenshot direkt gegenprüfen, nicht erst nach
 Nutzer-Beschwerde.
+
+## Serverseitige Schreib-Härtung: user_inventory / action_log / sales / locations (2026-08-15 abends)
+
+Löst die am 2026-08-07 gefundene, damals bewusst zurückgestellte
+`user_inventory`-RLS-Lücke endgültig — auf Nutzerwunsch ("will das vom
+Tisch haben"), danach auf die Nachfrage "haben wir noch dringliche
+Themen davon" um drei weitere, im selben Zug gefundene Stellen erweitert
+(`action_log`, `sales`, `locations`). **Wiederkehrendes Muster über alle
+vier:** die RLS-Regel prüfte bisher nur "gehört dir die Zeile", nicht ob
+der geschriebene WERT plausibel ist — dieselbe Lückenklasse wie die
+XSS-Lücke vom 2026-08-07, nur auf der Schreib- statt der Lese-Seite.
+
+**Migrationen:** `20260815223000_user_inventory_rpc_haertung.sql` +
+`20260815230000_action_log_sales_locations_haertung.sql`.
+
+**`user_inventory`** (Items/Ausrüstung): direktes Schreiben komplett
+gesperrt (`inventory_insert_own`/`inventory_update_own` entfernt). Zwei
+neue `SECURITY DEFINER`-Funktionen sind der einzige verbleibende Weg:
+`grant_item_to_self(item_key)` (immer exakt +1, prüft `item_key` gegen
+`rule_configs.config.items`) und `consume_item_from_self(item_key)`
+(immer exakt -1, lehnt ab wenn nichts mehr da ist). `grantItem(key, qty)`
+in `index.html` ruft die Grant-Funktion jetzt `qty`-mal in einer Schleife
+auf statt selbst eine absolute Menge zu berechnen — ein einzelner Sprung
+auf einen beliebigen Wert ist dadurch strukturell unmöglich.
+
+**`action_log`** (das komplette XP-/Level-System — **die wichtigste der
+vier Stellen**, da Level nie gespeichert, sondern immer live aus dieser
+Tabelle aufsummiert wird): direktes Schreiben ebenfalls komplett gesperrt
+(`log_insert_own` entfernt). Drei neue Funktionen decken alle vorher 9
+Insert-Stellen in `index.html` ab:
+- `log_action_for_self(action_key, context, location_id, contact_id,
+  meta, occurred_at)` — der Normalfall (Ansprache, Kalttelefonie,
+  Kanban-Übergänge, Kontakt-Chronik-Einträge, Dungeon-Aktionen). xp/
+  energy/skill/skill2/label werden IMMER aus `rule_configs.config.
+  actions[action_key]` gelesen, nie vom Client übernommen — ein neuer,
+  im Regelwerk noch nicht existierender `action_key` wird abgelehnt.
+- `grant_quest_bonus_to_self(kind, quest_id, period_key, stage_id)` —
+  tägliche/wöchentliche Quests (`kind:'recurring'`) und Quest-Ketten
+  (`kind:'chain'`). Bonus-XP kommt aus `config.recurringQuests`/
+  `config.questChains`, zusätzlich ein Duplikat-Schutz (kann nicht
+  zweimal für denselben Zeitraum/dieselbe Stufe vergeben werden — sonst
+  wäre der eigentliche Katalog-Wert zwar korrekt, aber beliebig oft
+  wiederholbar gewesen).
+- `log_item_energy_refill_for_self(item_key)` — der Manatrank-Effekt.
+  Einziger Sonderfall mit einem nicht-festen Wert: wie viel Energie
+  aufgefüllt wird, hängt von der heute schon verbrauchten Energie ab.
+  Wird jetzt serverseitig aus der echten Tagessumme (Zeitzone
+  `Europe/Berlin`, wie `todayKey()` im Frontend) berechnet, nicht vom
+  Client übernommen.
+
+**`sales`** (Verkäufe/Provision): anders als bei den beiden obigen gibt
+es hier keinen Katalogwert zum Gegenprüfen — Bewertungssumme/laufender
+Beitrag/Menge sind echte, frei einzugebende Vertragsdaten. Deshalb kein
+vollständiger Verschluss, sondern CHECK-Constraints als
+Plausibilitätsgrenzen (`bewertungssumme`/`laufender_beitrag` 0 bis
+100 Mio./1 Mio., `menge` 1 bis 1000 — großzügig genug, um nie im echten
+Betrieb zu stören, aber "9999"-artigen Unsinn zu blocken). Zusätzlich
+muss `created_by` beim Anlegen die eigene ID sein (verhindert
+Verkäufe unter fremdem Namen).
+
+**`locations`** (Dungeons): `owner_id`/`created_by` dürfen beim Anlegen
+nicht mehr auf eine fremde Person zeigen — die App selbst tat das nie
+(setzt beide immer auf sich selbst bzw. `owner_id` NULL für den
+Gilden-Pool), die Lücke war nur über einen direkten API-Aufruf
+ausnutzbar und hätte höchstens zu falscher Zuordnung geführt, kein
+echter Sicherheitsvorfall.
+
+**Verbindliche Regel für neuen Code, ab jetzt:** wer eine Aktion loggen
+will, ruft `log_action_for_self()`/`grant_quest_bonus_to_self()`/
+`log_item_energy_refill_for_self()` per `sb.rpc(...)` auf — ein direktes
+`sb.from('action_log').insert(...)` schlägt seit dieser Migration mit
+einem RLS-Fehler fehl (keine Policy mehr dafür). Genauso bei Items: immer
+`grant_item_to_self()`/`consume_item_from_self()`, nie direktes
+insert/update/upsert auf `user_inventory`. Ein neuer `action_key` oder
+Item braucht dafür KEINE Schema-Änderung — einfach im Regelwerk
+(`rule_configs.config.actions`/`items`) ergänzen, die Funktionen lesen
+das live.
+
+**Bewusst nicht geschlossen (gleiche Abwägung wie beim ursprünglichen
+Nutzer-Gespräch, ausführlich besprochen):** ob eine Quest/Handlung
+wirklich verdient wurde, wird weiterhin nicht serverseitig nachgeprüft —
+die Funktionen verhindern nur "erfundener Wert"/"erfundener Schlüssel"/
+"doppelt kassiert", nicht "wurde wirklich gehandelt". Das würde die
+komplette Quest-Auswertung (`evaluateLadderQuest()` & Co., aktuell nur im
+Browser) zusätzlich serverseitig nachbauen — ein eigenes großes Projekt,
+als künftige Skalierungs-Schwelle in Claudes Erinnerungssystem
+(`project_business_fahrplan`, Phase 5) vermerkt, nicht sofort gebaut.
+
+End-to-end gegen die echte DB verifiziert (jede Sperre UND jeder
+legitime Ablauf einzeln getestet, u.a. `set_config('request.jwt.claim.
+sub', ...)` + `set role authenticated` gegen den echten Admin-Account),
+Testzustand danach exakt auf den Ausgangswert zurückgesetzt (alle
+Zeilenzahlen unverändert).
 
 ## Bekannte, bewusst in Kauf genommene Lücken
 
