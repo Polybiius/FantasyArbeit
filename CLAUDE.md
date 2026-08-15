@@ -2770,8 +2770,13 @@ Nutzer-Beschwerde.
   Sichtbarkeit folgt der Kontakt-Freigabe". "Zuletzt kontaktiert (von
   dir)" bleibt bewusst weiterhin eigentümerbezogen (so gekennzeichnet).
 - Level-Kurve basiert auf geschätzten, nicht gemessenen Aktivitätswerten.
-- Kein automatisiertes Testen — der Nutzer testet manuell mit sich selbst und
-  zwei Kollegen (Safari/iPhone + Brave/Desktop).
+- Kein automatisiertes Testen — der Nutzer testet manuell selbst
+  (Safari/iPhone + Brave/Desktop). **Team ist inzwischen auf 7 echte
+  Profile gewachsen** (Stand 2026-08-15, per SQL bestätigt — ursprünglich
+  waren hier nur "zwei Kollegen" dokumentiert), CI/CD-Schwelle aus
+  "Technische Skalierungs-Schwellen" oben (mehrere Personen bearbeiten
+  das Repo gleichzeitig) betrifft weiterhin nur Code-Bearbeitung, nicht
+  App-Nutzung — bleibt also unverändert nicht ausgelöst.
 
 ## Wie mit dem Nutzer arbeiten (Ton/Stil aus dem bisherigen Chat)
 
