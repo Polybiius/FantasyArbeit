@@ -363,6 +363,12 @@
   .settings-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 16px;display:flex;align-items:center;gap:14px;font-size:12.5px;color:var(--text);box-shadow:var(--shadow-raised);z-index:1002;animation:settingsToastIn .15s ease;}
   .settings-toast button{background:transparent;border:none;color:var(--arcane-glow);font-weight:600;cursor:pointer;font-size:12.5px;padding:0;}
   @keyframes settingsToastIn{from{opacity:0;transform:translate(-50%,8px);}to{opacity:1;transform:translate(-50%,0);}}
+  .quest-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 18px;min-width:240px;color:var(--text);box-shadow:var(--shadow-raised);z-index:1002;animation:settingsToastIn .15s ease;}
+  .quest-toast-title{font-size:12px;color:var(--muted);margin-bottom:6px;}
+  .quest-toast-row{display:flex;align-items:center;justify-content:space-between;gap:20px;}
+  .quest-toast-xp{color:var(--success);font-weight:600;font-size:14px;font-family:'JetBrains Mono',monospace;}
+  .quest-toast-reward{display:flex;align-items:center;gap:6px;font-size:13px;}
+  .quest-toast-reward .inv-icon{width:20px;height:20px;font-size:16px;}
   .card.settings-danger-zone{border-color:var(--danger);}
   .card.settings-danger-zone h2{color:var(--danger);}
   .cal-nav-btn.settings-danger-btn{border-color:var(--danger);color:var(--danger);}
@@ -2499,7 +2505,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     buildActionGrid();
     render();
     initJournal();
-    await grantDailyManatrank();
     await topUpAllSeriesForUser();
     initInventory();
     renderCharacterEquipment();
@@ -2650,19 +2655,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     renderInventory();
   }
 
-  // Zwei Kalendertag-Schlüssel ('YYYY-MM-DD') auf ganze Tage Differenz
-  // umrechnen — über UTC-Mittag statt lokaler Zeit, damit Zeitzone/Sommerzeit
-  // die Differenz nicht verfälschen (gleiches Prinzip wie in weekKey()).
-  function daysBetweenKeys(fromKey, toKey){
-    const [fy,fm,fd] = fromKey.split('-').map(Number);
-    const [ty,tm,td] = toKey.split('-').map(Number);
-    const from = Date.UTC(fy, fm-1, fd);
-    const to = Date.UTC(ty, tm-1, td);
-    return Math.round((to-from)/86400000);
-  }
-
   // Einen Kalendertag-Schlüssel um `delta` Tage verschieben (über UTC-Mittag,
-  // gleiches Prinzip wie daysBetweenKeys()).
+  // gleiches Prinzip wie in weekKey()).
   function addDaysToKey(key, delta){
     const [y,m,d] = key.split('-').map(Number);
     const dt = new Date(Date.UTC(y, m-1, d) + delta*86400000);
@@ -3086,37 +3080,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     el.innerHTML = items.map(({q,p})=>questCardHtml('Täglich', escHtml(q.name), `${p.cur}/${p.max}`, p.pct, `+${q.bonus} XP`)).join('');
   }
 
-  // Täglicher Gratis-Manatrank: hängt am Kalendertag, nicht am Login-Moment —
-  // genau wie Energie-Reset und Tagebuch. Stapelt sich (kein Deckel), und
-  // holt beim nächsten Öffnen auch mehrere ausgelassene Tage auf einmal nach
-  // (z.B. 3 Tage nicht in der App gewesen -> 3 nachgeholte Tränke). Läuft für
-  // Handy und Desktop identisch, da beide dieselbe enterApp()-Initialisierung
-  // durchlaufen. Eigener Log-Marker (action_key 'manatrank_taeglich') statt
-  // user_inventory.updated_at, weil Letzteres auch beim Trinken selbst
-  // verändert wird und sich sonst mit der Gutschrift überschneiden würde.
-  async function grantDailyManatrank(){
-    const today = todayKey(new Date());
-    const priorGrants = log.filter(e=>e.action_key==='manatrank_taeglich');
-    if(priorGrants.some(e=>todayKey(e.created_at)===today)) return; // heute schon gutgeschrieben
-
-    const lastGrant = priorGrants.sort((a,b)=>new Date(b.created_at)-new Date(a.created_at))[0];
-    const missedDays = lastGrant ? daysBetweenKeys(todayKey(lastGrant.created_at), today) : 1;
-    if(missedDays<=0) return;
-
-    const { data: existing, error: readErr } = await sb.from('user_inventory').select('*').eq('user_id', profile.id).eq('item_key','mana_trank').maybeSingle();
-    if(readErr){ logSilentError('Manatrank-Bestand lesen', readErr); return; }
-    const newQty = (existing ? existing.quantity : 0) + missedDays;
-    const { error: upsertErr } = await sb.from('user_inventory').upsert({ user_id:profile.id, org_id:profile.org_id, item_key:'mana_trank', quantity:newQty, updated_at:new Date().toISOString() }, { onConflict:'user_id,item_key' });
-    if(upsertErr){ logSilentError('Manatrank gutschreiben', upsertErr); return; }
-
-    const { data, error: logErr } = await sb.from('action_log').insert({
-      user_id:profile.id, org_id:profile.org_id, action_key:'manatrank_taeglich',
-      label:'Täglicher Manatrank', xp:0, energy:0, meta:{qty:missedDays}
-    }).select().single();
-    if(logErr){ logSilentError('Manatrank-Gutschrift protokollieren', logErr); return; }
-    if(data) log.push(data);
-  }
-
   // ---- Changelog-Popup für angewendete SQL-Patches ----
   // Jeder künftige Patch trägt sich selbst in schema_patches ein (Titel kommt
   // 1:1 aus der Kopfzeile der Patch-Datei, kein separater Handschreib-Schritt
@@ -3148,6 +3111,26 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(updErr) logSilentError('Gesehene Patches speichern', updErr);
   }
 
+  // Belohnungs-Toast bei erfüllter Quest: links die XP, rechts (falls
+  // vorhanden) das Item mit Icon/Name — gleiches Grundmuster wie
+  // settingsShowToast(), aber eigener Name/eigene Klasse, da hier zwei
+  // Werte statt einer einzelnen Nachricht angezeigt werden.
+  let questToastTimer = null;
+  function showQuestRewardToast(title, xp, itemDef, qty){
+    const old = document.getElementById('questRewardToast');
+    if(old) old.remove();
+    if(questToastTimer) clearTimeout(questToastTimer);
+    const el = document.createElement('div');
+    el.className = 'quest-toast';
+    el.id = 'questRewardToast';
+    const rewardHtml = itemDef
+      ? `<span class="quest-toast-reward">${invIconHtml(itemDef)}<span>${escHtml(itemDef.label)}${qty>1?` ×${qty}`:''}</span></span>`
+      : '';
+    el.innerHTML = `<div class="quest-toast-title">✓ ${escHtml(title)}</div><div class="quest-toast-row"><span class="quest-toast-xp">+${xp} XP</span>${rewardHtml}</div>`;
+    document.body.appendChild(el);
+    questToastTimer = setTimeout(()=>el.remove(), 5000);
+  }
+
   async function checkAndAwardRecurringQuests(){
     const now=new Date();
     for(const q of (config.recurringQuests||[])){
@@ -3158,7 +3141,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         const { data, error } = await sb.from('action_log').insert(row).select().single();
         if(error){ logSilentError('Quest-Bonus verbuchen', error); continue; }
         if(data) log.push(data);
-        if(q.itemReward) await grantItem(q.itemReward.key, q.itemReward.qty||1);
+        let rewardDef = null, rewardQty = 0;
+        if(q.itemReward){
+          rewardDef = (config.items||{})[q.itemReward.key];
+          rewardQty = q.itemReward.qty||1;
+          await grantItem(q.itemReward.key, rewardQty);
+        }
+        showQuestRewardToast(q.name, q.bonus, rewardDef, rewardQty);
       }
     }
   }
