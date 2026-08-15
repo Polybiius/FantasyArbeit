@@ -2842,6 +2842,57 @@ sub', ...)` + `set role authenticated` gegen den echten Admin-Account),
 Testzustand danach exakt auf den Ausgangswert zurückgesetzt (alle
 Zeilenzahlen unverändert).
 
+**Direkter Folgeauftrag, noch am selben Abend: systematischer statt
+zufälliger Durchgang.** Nutzerfrage "gibt es noch andere Grundregeln,
+die wir übersehen haben" — alle `INSERT`/`UPDATE`-Policies im gesamten
+Schema auf einen Schlag geprüft (`pg_policies`), nicht mehr nur die
+Tabellen, an die zufällig gedacht wurde. Ergebnis: `rule_configs` und
+`products` sind bereits sauber admin-only (der ganze Tag hing also nicht
+in der Luft), aber zwei weitere echte Funde, beide live bestätigt und
+behoben (Migration
+`20260815233000_guild_selfjoin_und_level_cache_haertung.sql`):
+
+- **`guild_members`-Selbstbeitritt** — die ernsteste Lücke des ganzen
+  Tages, weil sie echten Zugriff auf Kolleg:innen-Daten verschafft, nicht
+  nur Kosmetik: `contacts_access`/`dungeons_access`/`team_rights` waren
+  beim Selbst-Beitritt (`joinGuild()`) komplett ungeprüft — ein Mitglied
+  hätte sich beim Beitreten sofort Schreibzugriff auf alle geteilten
+  Kontakte/Dungeons UND die Nachfolge-Berechtigung selbst geben können,
+  ganz ohne Gründer-Zutun. Live bestätigt (Wegwerf-Testmitgliedschaft,
+  danach entfernt). Fix: Selbst-Beitritt erzwingt jetzt die echten
+  Minimalrechte (Lesen, kein Team-Recht) — außer beim Gründer der eigenen
+  Gilde (`guildCreateBtn` setzt sich legitim volle Rechte, bleibt
+  erlaubt).
+- **`profiles.total_xp`/`level`** — reiner Anzeige-Cache (die Wahrheit
+  bleibt immer `action_log`), aber direkt auf einen beliebigen Wert
+  überschreibbar (Level 100 ohne einen Punkt XP, sichtbar für Freunde/
+  Gilde über die Avatar-Kacheln). Live bestätigt. Fix: neue Funktion
+  `sync_own_level_cache()` berechnet total_xp/level serverseitig aus der
+  echten `action_log`-Summe + der echten Level-Kurve
+  (`rule_configs.config.levelBase`/`levelExponent`, identische Formel wie
+  `xpForLevel()`/`levelInfo()` im Frontend) neu.
+  `protect_privileged_profile_fields()` (Patch 38/39) bekam dafür eine
+  dritte Prüfung, erkennbar an einem Transaktions-lokalen Sitzungs-Flag
+  (`app.trusted_level_sync`), das nur diese eine Funktion setzt — jeder
+  andere Schreibversuch auf diese beiden Spalten wird blockiert.
+  **Admin-Bypass bleibt bestehen**, wie bei role/character_class/org_id
+  (konsistent mit dem Rest der Funktion) — beim Testen zunächst
+  fälschlich mit dem eigenen Admin-Account geprüft (Bypass griff
+  erwartungsgemäß), danach korrekt mit einem echten Nicht-Admin-Konto
+  verifiziert (Blockade griff).
+  `syncProfileStatsCache()` in `index.html` ruft jetzt `sb.rpc('sync_
+  own_level_cache')` statt eines direkten `.update()` auf.
+
+**Bekannter Datenverlust beim Testen, offen kommuniziert:**
+`profiles.company` des Admin-Accounts wurde während eines Testschritts
+mit einem Platzhalterwert überschrieben, der ursprüngliche Inhalt war
+nicht mehr rekonstruierbar (rein informatives Freitextfeld, siehe
+"Profil-Onboarding" oben) — auf `NULL` zurückgesetzt, Nutzer informiert,
+bei Bedarf in Einstellungen neu einzutragen. **Lehre fürs nächste Mal:**
+vor einem Test-Schreibvorgang auf ein Feld ohne bekannten Ausgangswert
+immer zuerst den aktuellen Wert auslesen und sichern, nicht raten oder
+mit `NULL` überschreiben.
+
 ## Bekannte, bewusst in Kauf genommene Lücken
 
 - ~~"Zuletzt kontaktiert"/Kontakt-Chronik zeigen nur eigene Einträge~~ —
