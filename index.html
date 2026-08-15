@@ -1304,7 +1304,9 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
               <button type="button" class="cal-nav-btn view-switch-btn art-toggle-btn" data-art="RS" style="flex:1;min-width:130px;">Rechtsschutz</button>
               <button type="button" class="cal-nav-btn view-switch-btn art-toggle-btn" data-art="pmaSUH" style="flex:1;min-width:130px;">pma-Vermittlung SUH</button>
               <button type="button" class="cal-nav-btn view-switch-btn art-toggle-btn" data-art="pmaKV" style="flex:1;min-width:130px;">pma-Vermittlung KV</button>
+              <button type="button" class="cal-nav-btn view-switch-btn art-toggle-btn" data-art="D" style="flex:1;min-width:130px;">Darlehen</button>
             </div>
+            <input type="text" id="prodSubcategoryInput" placeholder="Unterkategorie (optional, z.B. Haftpflicht)" maxlength="60" style="margin-top:8px;">
             <button class="cal-nav-btn" id="prodAddBtn" style="margin-top:8px;">+ Produkt anlegen</button>
             <div class="empty-page-hint" id="prodAddStatus"></div>
           </div>
@@ -2477,6 +2479,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(justCreatedCharacter){ await grantClassStarterEquipment(); justCreatedCharacter = false; }
     await loadProducts();
     await loadLocationTypes();
+    await loadMySales();
     phoneTally = Number(localStorage.getItem('phoneTally_'+profile.id) || 0);
     lastKnownLevel = levelInfo(computeTotals().totalXp).level;
     document.getElementById('loading').style.display='none';
@@ -2765,8 +2768,27 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     return Array.isArray(spec) ? spec.includes(actionKey) : actionKey===spec;
   }
 
+  // metric.source:'sales' (Default weiterhin 'log') -- für Ketten, die eine
+  // kumulierte Verkaufssumme statt einer action_log-Zählung brauchen (Sach-/
+  // Leben-/Kranken-/Finanzierungssparte). Nutzt dieselbe kumulierte
+  // eigene-gewonnene-Verkäufe-Liste wie das Kompendium (mySalesCache/
+  // saleBasisValue), gefiltert auf eine feste Produkt-Art + optionale
+  // Unterkategorie (z.B. SH+"Haftpflicht"). Kein neuer Aggregat-Typ nötig,
+  // ist immer eine reine Summe.
+  function evaluateSalesLadderQuest(q, m){
+    const matching = (mySalesCache||[]).filter(s=>{
+      const p = productById(s.product_id);
+      if(!p || p.art!==m.productArt) return false;
+      if(m.productSubcategory && p.subcategory!==m.productSubcategory) return false;
+      return true;
+    });
+    const value = matching.reduce((sum,s)=>sum + saleBasisValue(s, productById(s.product_id)), 0);
+    return q.stages.map(s=>({ ...s, current: Math.round(value), target: s.threshold, done: value>=s.threshold }));
+  }
+
   function evaluateLadderQuest(q, log, locationTypeById){
     const m = q.metric;
+    if(m.source==='sales') return evaluateSalesLadderQuest(q, m);
     const matching = log.filter(e=>e.action_key===m.action && questMatchesLocationType(e, m.locationType, locationTypeById) && questMatchesKanal(e, m.kanal));
     if(m.aggregate==='groupsAtLeast'){
       // Breiten-Leiter: wie viele verschiedene Gruppen (z.B. Krankenhäuser) haben je Stufe genug Treffer.
@@ -2859,6 +2881,22 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     return matching.reduce((a,b)=> new Date(a.created_at)>new Date(b.created_at) ? a : b).created_at;
   }
 
+  // Analog zu lastQuestActivity, nur für sales-basierte Ladder-Ketten (siehe
+  // evaluateSalesLadderQuest) -- ohne das würde jede Sach-/Leben-/Kranken-/
+  // Finanzierungs-Kette wegen fehlendem action_key immer lastActivity:null
+  // bekommen und in der Schnellansicht nie hochsortiert werden, egal wie
+  // aktiv gerade verkauft wird.
+  function lastSalesQuestActivity(productArt, productSubcategory){
+    const matching = (mySalesCache||[]).filter(s=>{
+      const p = productById(s.product_id);
+      if(!p || p.art!==productArt) return false;
+      if(productSubcategory && p.subcategory!==productSubcategory) return false;
+      return true;
+    });
+    if(matching.length===0) return null;
+    return matching.reduce((a,b)=> new Date(a.created_at)>new Date(b.created_at) ? a : b).created_at;
+  }
+
   // Schnellansicht-Auswahl (Handlungen-Seite): pro Kette nur die nächste noch
   // nicht erreichte Stufe (kein Sonderfall für 0 Fortschritt - dann ist das
   // einfach automatisch die erste Stufe), begrenzt auf die Ketten mit
@@ -2873,8 +2911,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       if(q.type==='ladder'){
         const stages = evaluateLadderQuest(q, log, locationTypeById);
         const active = stages.find(s=>!s.done);
-        if(active) chains.push({ category:q.category, label:active.label, current:active.current, target:active.target,
-          lastActivity: lastQuestActivity(q.metric.action, q.metric.locationType) });
+        const lastActivity = q.metric.source==='sales'
+          ? lastSalesQuestActivity(q.metric.productArt, q.metric.productSubcategory)
+          : lastQuestActivity(q.metric.action, q.metric.locationType);
+        if(active) chains.push({ category:q.category, label:active.label, current:active.current, target:active.target, lastActivity, isEuro: q.metric.source==='sales' });
       } else if(q.type==='ratio'){
         const stages = evaluateRatioQuest(q, log, locationTypeById);
         const active = stages.find(s=>!s.done);
@@ -2915,7 +2955,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     }
     el.innerHTML = items.map(it=>{
       const pct = Math.max(0, Math.min(100, Math.round(100*it.current/it.target)));
-      return questCardHtml(escHtml(it.category), escHtml(it.label), `${it.current}/${it.target}`, pct, null);
+      const frac = it.isEuro ? `${it.current.toLocaleString('de-DE')} € / ${it.target.toLocaleString('de-DE')} €` : `${it.current}/${it.target}`;
+      return questCardHtml(escHtml(it.category), escHtml(it.label), frac, pct, null);
     }).join('');
   }
 
@@ -2969,8 +3010,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         const isActive = i===firstActiveIdx;
         const cls = s.done ? 'done' : isActive ? 'active' : 'locked';
         const icon = s.done ? '✓' : isActive ? '▸' : '○';
+        const isSalesLadder = q.type==='ladder' && q.metric.source==='sales';
         const unit = q.type==='ratio' ? '%' : q.type==='streak' ? (q.metric.period==='weekly' ? ' Wochen' : ' Tage') : '';
-        const extra = q.type==='ratio' ? `${s.current}% / ${s.target}%` : `${s.current}/${s.target}${unit}`;
+        const fmtEuroShort = (n)=>n.toLocaleString('de-DE')+' €';
+        const extra = q.type==='ratio' ? `${s.current}% / ${s.target}%`
+          : isSalesLadder ? `${fmtEuroShort(s.current)} / ${fmtEuroShort(s.target)}`
+          : `${s.current}/${s.target}${unit}`;
         const label = s.title ? `${s.label} — 🏅 ${s.title}` : s.label;
         html += qtbRowHtml(icon, cls, label, `<span>${extra}</span>`);
       });
@@ -6678,6 +6723,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     RS:     { label:'Rechtsschutz',         category:'Rechtsschutz',         provision_mode:'fest',               provision_faktor:0.365,bwp_faktor:0.75 },
     pmaSUH: { label:'pma-Vermittlung SUH',  category:'pma-Vermittlung SUH',  provision_mode:'individuell_pma_suh',provision_faktor:0.23, bwp_faktor:1 },
     pmaKV:  { label:'pma-Vermittlung KV',   category:'pma-Vermittlung KV',   provision_mode:'individuell_pma_kv', provision_faktor:0.75, bwp_faktor:0 },
+    D:      { label:'Darlehen',             category:'Darlehen',             provision_mode:'fest',               provision_faktor:0.01, bwp_faktor:0.02 },
   };
 
   async function renderProductsPage(){
@@ -6768,14 +6814,16 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const name = document.getElementById('prodNameInput').value.trim();
     const statusEl = document.getElementById('prodAddStatus');
     const artCfg = PRODUCT_ART_CONFIG[selectedProdArt];
+    const subcategory = document.getElementById('prodSubcategoryInput').value.trim();
     if(!name || !artCfg){ statusEl.textContent = 'Bitte mindestens Name und Art eingeben.'; return; }
     const { error } = await sb.from('products').insert({
       org_id: profile.org_id, key: slugifyProductKey(name) || name, name,
-      art: selectedProdArt, category: artCfg.category,
+      art: selectedProdArt, category: artCfg.category, subcategory: subcategory || null,
       provision_mode: artCfg.provision_mode, provision_faktor: artCfg.provision_faktor, bwp_faktor: artCfg.bwp_faktor
     });
     if(error){ reportError('Produkt anlegen', error, statusEl); return; }
     document.getElementById('prodNameInput').value = '';
+    document.getElementById('prodSubcategoryInput').value = '';
     document.querySelectorAll('#prodArtSwitch .art-toggle-btn').forEach(b=>b.classList.remove('active'));
     selectedProdArt = null;
     statusEl.textContent = '';
