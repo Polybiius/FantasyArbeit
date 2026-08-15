@@ -4012,7 +4012,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     statsSyncTimer = setTimeout(async ()=>{
       profile.total_xp = totalXp;
       profile.level = level;
-      const { error } = await sb.from('profiles').update({ total_xp:totalXp, level:level }).eq('id', profile.id);
+      // Läuft seit dem RLS-Härtungs-Patch (2026-08-15) über
+      // sync_own_level_cache() -- berechnet total_xp/level serverseitig
+      // aus der echten action_log-Summe + Level-Kurve neu, statt die
+      // hier übergebenen Werte einfach zu übernehmen.
+      const { error } = await sb.rpc('sync_own_level_cache');
       if(error) logSilentError('Level-Cache synchronisieren', error);
     }, 800);
   }
