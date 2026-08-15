@@ -2646,13 +2646,17 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   function flashButton(btn){ btn.classList.add('flash'); setTimeout(()=>btn.classList.remove('flash'),400); }
 
+  // Schreibt nicht mehr direkt auf user_inventory -- läuft seit dem
+  // RLS-Härtungs-Patch (2026-08-15) über die serverseitige Funktion
+  // grant_item_to_self(), die selbst gegen den Item-Katalog prüft und
+  // die Menge pro Aufruf immer exakt um 1 erhöht. qty>1 heißt deshalb
+  // schlicht: mehrfach nacheinander aufrufen, nie ein einzelner Sprung.
   async function grantItem(itemKey, qty){
     if(!itemKey || !qty) return;
-    const { data: existing, error: readErr } = await sb.from('user_inventory').select('*').eq('user_id', profile.id).eq('item_key', itemKey).maybeSingle();
-    if(readErr){ reportError('Item-Bestand lesen', readErr); return; }
-    const newQty = (existing ? existing.quantity : 0) + qty;
-    const { error } = await sb.from('user_inventory').upsert({ user_id:profile.id, org_id:profile.org_id, item_key:itemKey, quantity:newQty, updated_at:new Date().toISOString() }, { onConflict:'user_id,item_key' });
-    if(error){ reportError('Item vergeben', error); return; }
+    for(let i=0;i<qty;i++){
+      const { error } = await sb.rpc('grant_item_to_self', { p_item_key: itemKey });
+      if(error){ reportError('Item vergeben', error); return; }
+    }
     await loadInventory();
     renderInventory();
   }
@@ -3806,8 +3810,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       if(data) log.push(data);
     }
 
-    const newQty = invRow.quantity-1;
-    const { error: qtyErr } = await sb.from('user_inventory').update({ quantity:newQty, updated_at:new Date().toISOString() }).eq('user_id', profile.id).eq('item_key', itemKey);
+    // Läuft seit dem RLS-Härtungs-Patch (2026-08-15) über
+    // consume_item_from_self() statt direktem UPDATE -- zieht serverseitig
+    // immer exakt 1 ab, direktes Schreiben auf die Tabelle ist gesperrt.
+    const { error: qtyErr } = await sb.rpc('consume_item_from_self', { p_item_key: itemKey });
     if(qtyErr){ reportError('Item-Bestand aktualisieren', qtyErr); return; }
     await loadInventory();
     renderInventory();
