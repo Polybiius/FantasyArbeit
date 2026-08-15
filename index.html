@@ -643,6 +643,7 @@
   .qcard .qc-track{height:5px;border-radius:var(--radius-xs);background:#0e0c17;border:1px solid var(--border);overflow:hidden;}
   .qcard .qc-fill{height:100%;background:linear-gradient(90deg,var(--success),var(--mana));}
   .qcard .qc-xp{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--success);}
+  .qcard .qc-sub{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--muted-2);margin-top:3px;}
 
   .quest{margin-bottom:14px;}
   .quest-top{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:6px;}
@@ -2933,9 +2934,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // ganzen Quest-Sätzen aber unruhig aus. Zweiter Anlauf nach drei
   // Layout-Optionen als Vorschau, vom Nutzer bestätigt ("das erste sieht
   // sehr gut aus").
-  function questCardHtml(cat, name, frac, pct, xpLabel){
+  function questCardHtml(cat, name, frac, pct, xpLabel, subLabel){
     const xpHtml = xpLabel ? `<div class="qc-xp">${xpLabel}</div>` : '';
-    return `<div class="qcard"><div class="qc-top"><div><div class="qc-cat">${cat}</div><div class="qc-name">${name}</div></div><div class="qc-frac">${frac}</div></div><div class="qc-track"><div class="qc-fill" style="width:${pct}%"></div></div>${xpHtml}</div>`;
+    const subHtml = subLabel ? `<div class="qc-sub">${subLabel}</div>` : '';
+    return `<div class="qcard"><div class="qc-top"><div><div class="qc-cat">${cat}</div><div class="qc-name">${name}</div>${subHtml}</div><div class="qc-frac">${frac}</div></div><div class="qc-track"><div class="qc-fill" style="width:${pct}%"></div></div>${xpHtml}</div>`;
   }
 
   function renderQuestTreeQuick(){
@@ -3049,12 +3051,27 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     panelEl.innerHTML = categories.length ? renderZunftbuchCategory(qtbActiveCategory, byCat) : `<p class="qtb-empty">Noch kein Questbaum hinterlegt.</p>`;
   }
 
+  // Questbaum ist eine Vollbild-"Unterseite" ohne eigenen Hash -- ohne
+  // eigenen History-Eintrag springt ein Browser-Zurück beim offenen
+  // Questbaum unsichtbar auf der Seite DAHINTER weiter, während das Modal
+  // optisch weiter offen bleibt. Ein zusätzlicher pushState()-Eintrag beim
+  // Öffnen (gleiche URL, nur als Marker) fängt genau EINEN Zurück-Schritt
+  // ab, um stattdessen nur das Modal zu schließen -- kein hashchange, da
+  // sich der Hash dabei nie ändert.
+  function closeQuestTreeModal(){
+    document.getElementById('questTreeModal').style.display = 'none';
+  }
   document.getElementById('questTreeOpenBtn').addEventListener('click', ()=>{
     document.getElementById('questTreeModal').style.display = 'flex';
     renderZunftbuch();
+    history.pushState({questTreeOpen:true}, '', location.href);
   });
   document.getElementById('questTreeModalCloseBtn').addEventListener('click', ()=>{
-    document.getElementById('questTreeModal').style.display = 'none';
+    if(history.state && history.state.questTreeOpen) history.back();
+    else closeQuestTreeModal();
+  });
+  window.addEventListener('popstate', ()=>{
+    if(document.getElementById('questTreeModal').style.display==='flex') closeQuestTreeModal();
   });
 
   // Gemeinsame Fortschrittsberechnung für Tages-/Wochen-Quests, damit die
@@ -3069,6 +3086,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     return { cur, max, done, pct: Math.round(100*cur/max) };
   }
 
+  // Die kombinierte Zahl aus recurringQuestProgress() (Summe über ALLE
+  // Bedingungen, z.B. "3 Ansprachen + 1 Termin" = 0/4) ist für sich allein
+  // nicht selbsterklärend -- eine zweite Zeile schlüsselt deshalb jede
+  // Bedingung einzeln auf ("0/3 Ansprache · 0/1 Termin vereinbart").
+  function conditionLabel(c){
+    return c.actions.map(a=>(config.actions[a] && config.actions[a].label) || a).join('/');
+  }
   function renderDailyQuestTiles(){
     const el = document.getElementById('dailyQuestTiles');
     if(!el) return;
@@ -3077,7 +3101,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       el.innerHTML = '<div class="empty-page-hint">Keine offenen täglichen Quests.</div>';
       return;
     }
-    el.innerHTML = items.map(({q,p})=>questCardHtml('Täglich', escHtml(q.name), `${p.cur}/${p.max}`, p.pct, `+${q.bonus} XP`)).join('');
+    el.innerHTML = items.map(({q,p})=>{
+      const breakdown = q.conditions.map(c=>`${Math.min(countInPeriod(c.actions,q.period),c.count)}/${c.count} ${conditionLabel(c)}`).join(' · ');
+      const itemDef = q.itemReward ? (config.items||{})[q.itemReward.key] : null;
+      const rewardLabel = itemDef ? ` · ${itemDef.icon||''} ${itemDef.label}${(q.itemReward.qty||1)>1?` ×${q.itemReward.qty}`:''}` : '';
+      return questCardHtml('Täglich', escHtml(q.name), `${p.cur}/${p.max}`, p.pct, `+${q.bonus} XP${rewardLabel}`, escHtml(breakdown));
+    }).join('');
   }
 
   // ---- Changelog-Popup für angewendete SQL-Patches ----
