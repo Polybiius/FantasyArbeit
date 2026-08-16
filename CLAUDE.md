@@ -452,6 +452,15 @@ Fast jede Tabelle hat `org_id` und eine RLS-Policy, die auf eine Hilfsfunktion
 **Prinzip, das durchgehend gilt:** Sichtbarkeit ist meist konfigurierbar
 (privat vs. team-weit geteilt), Schreibrechte sind enger (Eigentümer + Admin).
 
+**Verschlüsselung, dokumentiert 2026-08-16 (läuft automatisch, kein
+eigener Code):** Daten in Übertragung sind durchgehend TLS-verschlüsselt
+(Browser↔Supabase per HTTPS/PostgREST, Browser↔GitHub Pages per HTTPS) —
+beides von den jeweiligen Plattformen erzwungen, nicht selbst
+konfiguriert. Daten im Ruhezustand (Postgres-Datenbank + Storage-Buckets
+`journal-photos`/`contact-files`) sind von Supabase serverseitig
+verschlüsselt (AES-256, Standard bei jedem Supabase-Projekt, unabhängig
+vom Plan). Dieser Absatz ist der Beleg dafür, kein technischer Auftrag.
+
 ## Level-/XP-System (wichtig für jede Regelwerk-Änderung)
 
 - Aktuelle Kurve: `levelBase = 4.7`, `levelExponent = 1.5` → `XP für Level L =
