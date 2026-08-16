@@ -187,6 +187,11 @@
   .guild-tile .gt-name{font-weight:600;font-size:13px;color:var(--text);}
   .guild-tile .gt-level{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--arcane-glow);}
   .guild-tile .gt-founder{font-size:10px;color:var(--muted-2);text-transform:uppercase;letter-spacing:.05em;}
+  .guild-tile .gt-title{font-size:11px;color:var(--amber);font-weight:600;}
+  .qtb-title-btn{background:var(--panel-2);border:1px solid var(--amber);color:var(--amber);border-radius:var(--radius-pill);padding:3px 10px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;}
+  .qtb-title-btn:hover{background:var(--amber);color:#241704;}
+  .qtb-title-btn.worn{background:var(--success);border-color:var(--success);color:#052e1f;}
+  .qtb-title-btn.worn:hover{opacity:.85;}
   .friend-remove-btn{margin-top:4px;background:transparent;border:1px solid var(--border);color:var(--muted);border-radius:var(--radius-sm);padding:4px 10px;font-size:10.5px;cursor:pointer;}
   .friend-remove-btn:hover{border-color:var(--danger);color:var(--danger);}
 
@@ -2532,7 +2537,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('loading').style.display='none';
     document.getElementById('app').style.display='block';
     document.getElementById('nameInput').value = profile.display_name;
-    document.getElementById('orgSubtitle').textContent = `Klasse: ${CLASS_LABELS[profile.character_class]||profile.character_class} · Organisation: ${org ? org.name : ''}`;
+    updateOrgSubtitle();
     document.getElementById('adminToggleBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
     document.getElementById('charRespawnBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
     document.getElementById('navFehlerprotokollBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
@@ -3071,7 +3076,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       if(q.type!=='epic') return;
       const r = evaluateEpicQuest(q, stageDoneMap);
       const label = r.done && q.title ? `${q.label} — 🏅 ${q.title}` : q.label;
-      html += qtbRowHtml(r.done?'★':'✦', `epic ${r.done?'done':'locked'}`, label);
+      let extra = '';
+      if(r.done && q.title){
+        const worn = profile.active_title===q.id;
+        extra = `<button type="button" class="qtb-title-btn${worn?' worn':''}" data-set-title="${q.id}">${worn?'✓ Getragen':'Als Titel tragen'}</button>`;
+      }
+      html += qtbRowHtml(r.done?'★':'✦', `epic ${r.done?'done':'locked'}`, label, extra);
     });
     return html || `<p class="qtb-empty">Für diese Sparte gibt es noch keine Einträge.</p>`;
   }
@@ -3093,6 +3103,31 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       });
     });
     panelEl.innerHTML = categories.length ? renderZunftbuchCategory(qtbActiveCategory, byCat) : `<p class="qtb-empty">Noch kein Questbaum hinterlegt.</p>`;
+  }
+
+  // Delegierter Klick-Handler statt Einzel-Listener pro Button -- qtbPanel
+  // selbst wird nie neu erzeugt (nur sein innerHTML), ein einziger
+  // Listener hier reicht für alle künftigen renderZunftbuch()-Aufrufe.
+  document.getElementById('qtbPanel').addEventListener('click', (e)=>{
+    const btn = e.target.closest('[data-set-title]');
+    if(btn) setActiveTitle(btn.dataset.setTitle);
+  });
+
+  // Ein Titel lässt sich nur EINER erfüllten Epic gleichzeitig zuordnen --
+  // erneutes Klicken auf den bereits getragenen Titel legt ihn wieder ab.
+  // Rein kosmetisch (kein XP/Regelwerk-Bezug), deshalb ein normales
+  // .update() statt einer eigenen Härtungs-Funktion, siehe Migration.
+  async function setActiveTitle(epicId){
+    const newVal = profile.active_title===epicId ? null : epicId;
+    const { error } = await sb.from('profiles').update({ active_title:newVal }).eq('id', profile.id);
+    if(error){ reportError('Titel wählen', error); return; }
+    profile.active_title = newVal;
+    renderZunftbuch();
+    updateOrgSubtitle();
+  }
+
+  function updateOrgSubtitle(){
+    document.getElementById('orgSubtitle').textContent = `Klasse: ${CLASS_LABELS[profile.character_class]||profile.character_class} · Organisation: ${org ? org.name : ''}`;
   }
 
   // Questbaum ist eine Vollbild-"Unterseite" ohne eigenen Hash -- ohne
@@ -3932,7 +3967,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       profile.character_class = newClass;
       applyClassTheme(newClass);
       updateClassSwitcherActive();
-      document.getElementById('orgSubtitle').textContent = `Klasse: ${CLASS_LABELS[newClass]||newClass} · Organisation: ${org ? org.name : ''}`;
+      updateOrgSubtitle();
       updateGuildLabels();
       updateContactLabels();
       updateStatistikLabels();
@@ -3984,7 +4019,18 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     });
   }
 
-  const AVATAR_PROFILE_FIELDS = 'id,display_name,character_class,level,gender,skin_tone,hair_style,equipped_weapon,equipped_armor,equipped_accessory';
+  const AVATAR_PROFILE_FIELDS = 'id,display_name,character_class,level,gender,skin_tone,hair_style,equipped_weapon,equipped_armor,equipped_accessory,active_title';
+
+  // Löst eine gespeicherte Epic-id (profiles.active_title) in ihren
+  // Titel-Text auf -- lebt im Regelwerk (config.questTree), nicht als
+  // eigene Spalte, gleiches Prinzip wie überall sonst im Projekt (Wahrheit
+  // bleibt an einer Stelle). Liefert null, wenn kein Titel gesetzt ist
+  // oder die Epic (z.B. nach einer Regelwerk-Änderung) nicht mehr existiert.
+  function titleTextForEpicId(id){
+    if(!id || !config || !config.questTree) return null;
+    const q = config.questTree.find(e=>e.id===id);
+    return q ? q.title : null;
+  }
 
   // Bewegter Avatar statt statischem Emoji auf einer Gilden-/Freundes-Kachel
   // (dieselbe Sprite-Technik wie überall sonst, siehe createSpriteRenderer)
@@ -4022,13 +4068,16 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(ids.length===0){ grid.innerHTML = '<div class="empty-page-hint">Noch keine Freunde.</div>'; return; }
     const { data: friendProfiles, error: profErr } = await sb.from('profiles').select(AVATAR_PROFILE_FIELDS).in('id', ids);
     if(profErr) logSilentError('Freundes-Profile laden', profErr);
-    grid.innerHTML = (friendProfiles||[]).map(m=>`
-      <div class="guild-tile">
+    grid.innerHTML = (friendProfiles||[]).map(m=>{
+      const titleText = titleTextForEpicId(m.active_title);
+      return `<div class="guild-tile">
         <canvas class="gt-avatar" data-avatar="${m.id}" title="Sigil ansehen"></canvas>
         <span class="gt-name">${escHtml(m.display_name)}</span>
+        ${titleText ? `<span class="gt-title">🏅 ${escHtml(titleText)}</span>` : ''}
         <span class="gt-level">Level ${m.level}</span>
         <button class="friend-remove-btn" data-remove="${m.id}">Entfernen</button>
-      </div>`).join('');
+      </div>`;
+    }).join('');
     grid.querySelectorAll('[data-avatar]').forEach(canvas=>{
       mountAvatarTile(canvas, (friendProfiles||[]).find(p=>p.id===canvas.dataset.avatar));
     });
@@ -5376,10 +5425,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const amFounder = currentGuild && currentGuild.founder_id===profile.id;
     grid.innerHTML = (memberProfiles||[]).map(m=>{
       const isFounder = currentGuild && currentGuild.founder_id===m.id;
+      const titleText = titleTextForEpicId(m.active_title);
       return `<div class="guild-tile">
         ${isFounder?'<span class="gt-founder">Gründer</span>':''}
         <canvas class="gt-avatar" data-avatar="${m.id}" title="Sigil ansehen"></canvas>
         <span class="gt-name">${escHtml(m.display_name)}</span>
+        ${titleText ? `<span class="gt-title">🏅 ${escHtml(titleText)}</span>` : ''}
         <span class="gt-level">Level ${m.level}</span>
         ${(amFounder && !isFounder) ? `<button type="button" class="cal-nav-btn gt-rights-btn" data-rights="${m.id}">Rechte</button>` : ''}
       </div>`;
