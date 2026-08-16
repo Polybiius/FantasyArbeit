@@ -670,6 +670,10 @@
   .log-entry .lright{display:flex;flex-direction:column;align-items:flex-end;gap:2px;min-width:96px;flex-shrink:0;}
   .log-entry .ltime{color:var(--muted-2);text-align:right;}
   .log-entry .lxp{color:var(--success);white-space:nowrap;text-align:right;}
+  .sev-badge{display:inline-block;padding:1px 7px;border-radius:var(--radius-pill);font-size:10px;font-weight:600;letter-spacing:.3px;margin-right:6px;}
+  .sev-notice{background:rgba(144,137,168,.18);color:var(--muted);}
+  .sev-warning{background:rgba(242,161,84,.18);color:var(--amber);}
+  .sev-critical{background:rgba(241,101,101,.18);color:var(--danger);}
   .log-empty{color:var(--muted-2);font-size:12px;font-family:'JetBrains Mono',monospace;text-align:center;padding:20px 0;}
   .totalxp{font-family:'JetBrains Mono',monospace;font-size:11.5px;color:var(--muted);}
 
@@ -1326,6 +1330,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       <!-- SEITE: FEHLERPROTOKOLL (nur Admins) -->
       <div class="page" id="page-fehlerprotokoll" style="display:none;">
         <div class="card">
+          <h2>Sicherheitswarnungen <span class="tag">nur für Admins sichtbar</span></h2>
+          <div class="empty-page-hint" style="margin-bottom:8px;">Abgewehrte Manipulationsversuche (z.B. Selbst-Admin-Versuche, erfundene Level-Werte) — läuft serverseitig, greift auch wenn jemand unsere Oberfläche umgeht.</div>
+          <div id="securityAlertsList"></div>
+        </div>
+        <div class="card" style="margin-top:18px;">
           <h2>Fehlerprotokoll <span class="tag">nur für Admins sichtbar</span></h2>
           <div class="empty-page-hint" style="margin-bottom:8px;">Jeder fehlgeschlagene Speicher-/Ladevorgang der letzten Zeit, egal von welchem Team-Mitglied — damit nichts unbemerkt verloren geht.</div>
           <div id="errorLogList"></div>
@@ -1701,6 +1710,17 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       <button id="changelogClose">✕</button>
     </div>
     <div id="changelogList"></div>
+  </div>
+</div>
+
+<div class="loc-modal" id="securityAlertModal" style="display:none;">
+  <div class="loc-modal-inner">
+    <div class="loc-modal-header">
+      <span>🚨 Sicherheitswarnungen</span>
+      <button id="securityAlertClose">✕</button>
+    </div>
+    <div class="empty-page-hint" style="margin-bottom:8px;">Seit deinem letzten Login abgewehrte Manipulationsversuche — Details jederzeit im Fehlerprotokoll.</div>
+    <div id="securityAlertList"></div>
   </div>
 </div>
 
@@ -2517,6 +2537,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     updateStatistikLabels();
     restoreLastPage();
     loadUnseenPatches();
+    loadUnseenSecurityAlerts();
   }
 
   document.getElementById('nameInput').addEventListener('change', async (e)=>{
@@ -7215,6 +7236,84 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('deleteAccountModal').style.display = 'none';
   });
 
+  // ---- Sicherheitswarnungen (nur Admins) ----
+  // Serverseitig erkannte Manipulationsversuche (protect_privileged_profile_fields,
+  // enforce_guild_selfjoin_limits) -- greift auch, wenn jemand die App-
+  // Oberfläche komplett umgeht (direkter API-Aufruf), anders als das
+  // Fehlerprotokoll, das auf freiwillige Meldung durch den Browser
+  // angewiesen ist. Schweregrad wird NICHT gespeichert, sondern hier
+  // aus der geladenen Liste live berechnet (gleiches Prinzip wie
+  // computeTotals() für XP): mehrere Vorfälle derselben Person in
+  // kurzer Zeit deuten eher auf ein Skript als auf Zufall hin.
+  const SECURITY_EVENT_LABELS = {
+    profile_role_tamper: 'Versuchte Selbst-Beförderung zum Admin',
+    profile_class_tamper: 'Versuchte Charakterklassen-Manipulation',
+    profile_org_tamper: 'Versuchter Organisationswechsel',
+    profile_level_tamper: 'Versuchte Level-/XP-Fälschung',
+    guild_selfjoin_privilege_escalation: 'Versuchte Rechte-Ausweitung beim Gilden-Beitritt',
+  };
+
+  function securityAlertSeverity(list, alert){
+    const t = new Date(alert.created_at).getTime();
+    const windowMs = 15*60*1000;
+    const count = list.filter(a=>a.user_id===alert.user_id && Math.abs(new Date(a.created_at).getTime()-t)<=windowMs).length;
+    if(count>=5) return { key:'critical', label:'Kritisch' };
+    if(count>=2) return { key:'warning', label:'Häufung' };
+    return { key:'notice', label:'Einzeln' };
+  }
+
+  function securityAlertRowHtml(a, list){
+    const sev = securityAlertSeverity(list, a);
+    const label = SECURITY_EVENT_LABELS[a.event_type] || a.event_type;
+    return `
+      <div class="log-entry">
+        <span class="lname"><span class="sev-badge sev-${sev.key}">${sev.label}</span>${escHtml(label)} — ${escHtml(a.detail||'')}</span>
+        <span class="lright">
+          <span class="ltime">${fmtTime(a.created_at)}</span>
+          <span class="ltime">${a.profiles ? escHtml(a.profiles.display_name) : '?'}</span>
+        </span>
+      </div>`;
+  }
+
+  async function renderSecurityAlerts(){
+    const listEl = document.getElementById('securityAlertsList');
+    if(profile.role!=='admin') return;
+    listEl.innerHTML = '<div class="empty-page-hint">Lädt …</div>';
+    const { data, error } = await sb.from('security_alerts')
+      .select('*, profiles(display_name)')
+      .order('created_at', {ascending:false})
+      .limit(200);
+    if(error){ listEl.innerHTML = `<div class="empty-page-hint">Fehler beim Laden der Sicherheitswarnungen: ${escHtml(error.message)}</div>`; return; }
+    if(!data || data.length===0){ listEl.innerHTML = '<div class="empty-page-hint">Keine Sicherheitswarnungen — bisher wurde kein Manipulationsversuch erkannt.</div>'; return; }
+    listEl.innerHTML = data.map(a=>securityAlertRowHtml(a, data)).join('');
+  }
+
+  // Beim Login (nur Admins): zeigt alles, was seit dem letzten eigenen
+  // Login dazugekommen ist -- "gesehen" wird in dem Moment gezählt, in
+  // dem das Popup erscheint, exakt wie beim Changelog-Popup.
+  async function loadUnseenSecurityAlerts(){
+    if(profile.role!=='admin') return;
+    const since = profile.last_seen_security_alert || new Date(0).toISOString();
+    const { data, error } = await sb.from('security_alerts')
+      .select('*, profiles(display_name)')
+      .gt('created_at', since)
+      .order('created_at', {ascending:true});
+    if(error){ logSilentError('Sicherheitswarnungen laden', error); return; }
+    if(!data || data.length===0) return;
+
+    document.getElementById('securityAlertList').innerHTML = data.map(a=>securityAlertRowHtml(a, data)).join('');
+    document.getElementById('securityAlertModal').style.display = 'flex';
+
+    const nowIso = new Date().toISOString();
+    profile.last_seen_security_alert = nowIso;
+    const { error: updErr } = await sb.from('profiles').update({ last_seen_security_alert: nowIso }).eq('id', profile.id);
+    if(updErr) logSilentError('Gesehene Sicherheitswarnungen speichern', updErr);
+  }
+
+  document.getElementById('securityAlertClose').addEventListener('click', ()=>{
+    document.getElementById('securityAlertModal').style.display = 'none';
+  });
+
   // ---- Fehlerprotokoll-Seite (nur Admins) ----
   async function renderErrorLog(){
     const listEl = document.getElementById('errorLogList');
@@ -7363,7 +7462,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('page-'+pageName).style.display='block';
     if(updateHash!==false) location.hash = pageName;
     if(pageName==='dungeons'){ ensureDungeonMap(); if(dungeonMap) setTimeout(()=>dungeonMap.invalidateSize(),150); }
-    if(pageName==='fehlerprotokoll') renderErrorLog();
+    if(pageName==='fehlerprotokoll'){ renderSecurityAlerts(); renderErrorLog(); }
     if(pageName==='notfallzugriff') renderEmergencyAccessPage();
     if(pageName==='produkte') renderProductsPage();
     if(pageName==='einstellungen') renderEinstellungenPage();

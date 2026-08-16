@@ -2902,6 +2902,87 @@ vor einem Test-Schreibvorgang auf ein Feld ohne bekannten Ausgangswert
 immer zuerst den aktuellen Wert auslesen und sichern, nicht raten oder
 mit `NULL` überschreiben.
 
+## Sicherheitswarnungen (Alarm-Logging), Patch 47 (2026-08-16)
+
+Löst Punkt 9 der BaaS-Aufgabenliste ("Logging mit echter Reaktion statt
+nur Speicherung") — Auslöser: offene Selbstregistrierung + öffentlich
+erreichbare App bedeuten, dass ein Angriff nicht zwingend über die
+eigene Oberfläche laufen muss. Bisher landete ein abgewehrter
+Manipulationsversuch nur dann im Fehlerprotokoll, wenn der **Browser**
+ihn freiwillig meldete — ein direkter API-Aufruf an unserer Oberfläche
+vorbei blieb komplett unsichtbar.
+
+**Neue Tabelle `security_alerts`** (nur Admins dürfen lesen, Schreiben
+ausschließlich über die neue Funktion `log_security_alert()`, die
+absichtlich NICHT per RPC aufrufbar ist — siehe unten). Migration
+`supabase/migrations/20260816140000_security_alerts.sql`.
+
+**Kernidee — "korrigieren statt ablehnen", damit der Log-Eintrag
+niemals durch ein Rollback verloren geht:** die beiden schwerwiegendsten,
+am 2026-08-15 gehärteten Lücken (`profiles`-Rechte-Felder,
+`guild_members`-Selbstbeitritt) wurden von "hart ablehnen" (`raise
+exception`) auf "still auf einen sicheren Wert zurücksetzen UND
+protokollieren" umgestellt — dasselbe Muster, das
+`enforce_profile_insert_defaults()` (Patch 39) schon lange nutzt. Grund
+für die Umstellung: ein reines `raise exception` hätte den Log-Eintrag
+selbst mit in denselben Transaktions-Rollback gerissen — ein sauberer
+Log-auf-Rollback-Mechanismus bräuchte eine autonome Datenbank-Verbindung
+(z.B. über die `dblink`-Erweiterung), was ein eigenes
+Verbindungs-Geheimnis nötig gemacht hätte. Widerspricht dem
+Architekturprinzip dieses Projekts ("kein versteckter
+Backend-Schlüssel", siehe Sicherheits-Durchgang 2026-08-07) — deshalb
+bewusst nicht eingebaut. Für legitime Aufrufe ändert die Umstellung
+nichts: kein Weg in der App schickt diese Felder je in einem normalen
+Aufruf, Admins sind ohnehin ausgenommen.
+
+**Bewusst NICHT Teil dieses Schritts, ehrliche Grenze:** die übrigen,
+bereits am 2026-08-15 gehärteten Stellen ohne sinnvollen "korrigierten"
+Wert (erfundener `action_key`/`item_key`, doppelt eingelöste Quest,
+`sales`-Grenzwerte, `locations`-Owner-Fälschung) bleiben weiterhin
+zuverlässig blockiert — der Schreibversuch kann so oder so nie
+erfolgreich sein, es fehlt nur die Alarmierung selbst (reine
+Aufklärung "wer probiert rum", kein Datenrisiko). Bräuchte dieselbe
+Autonome-Transaktion-Frage wie oben — als Wiedervorlage vermerkt, kein
+aktueller Auslöser.
+
+**Schweregrad wird nicht gespeichert, sondern im Frontend live
+berechnet** (`securityAlertSeverity()` in `index.html`, gleiches
+Ableitungs-Prinzip wie `computeTotals()`): Best-Practice-Muster
+rate-basierter Anomalie-Erkennung (vgl. AWS GuardDuty/Auth0) — 5+
+Vorfälle derselben Person innerhalb von 15 Minuten = Kritisch, 2-4 =
+Häufung, sonst Einzeln.
+
+**Bedienung:** Popup beim nächsten Admin-Login (`securityAlertModal`,
+gleiches Muster wie das Changelog-Popup, "gesehen" wird beim Erscheinen
+gezählt über `profiles.last_seen_security_alert`), dauerhaft einsehbar
+im umbenannten Fehlerprotokoll-Reiter (jetzt zwei Karten: "Sicherheits-
+warnungen" oben, "Fehlerprotokoll" darunter).
+
+**Wichtiger Stolperstein, selbst gefunden und behoben, bevor er zum
+Problem wurde:** neue Funktionen im Schema `public` bekommen laut den
+bestehenden `ALTER DEFAULT PRIVILEGES`-Regeln automatisch `EXECUTE` für
+`anon`/`authenticated` (erklärt auch, warum der Advisor am 2026-08-11
+"28 von anon/authenticated ausführbare Funktionen" meldete). Ohne
+Gegenmaßnahme hätte jeder Nutzer eigene, erfundene Alarme per direktem
+RPC-Aufruf einschleusen können — Rauschen oder gezielte Verschleierung
+echter Vorfälle. `log_security_alert()` bekam deshalb ein explizites
+`revoke execute ... from public, anon, authenticated`. Die beiden
+Trigger-Funktionen (`protect_privileged_profile_fields`,
+`enforce_guild_selfjoin_limits`) brauchen das nicht — `returns
+trigger`-Funktionen kann Postgres strukturell nicht per RPC aufrufen
+lassen, unabhängig von vergebenen Rechten (gleiche Begründung wie beim
+Advisor-Durchgang 2026-08-11).
+
+End-to-end mit einem Wegwerf-Testprofil gegen die echte DB verifiziert
+(`set_config('request.jwt.claim.sub', ...)` + `set role authenticated`):
+Selbst-Admin-Versuch UND Level-Fälschung in einem Aufruf → beide
+Werte blieben unverändert, zwei Alarme protokolliert. Gilden-
+Selbstbeitritt mit `write`/`write`/`true` → Mitgliedschaft wurde
+angelegt, aber auf `read`/`read`/`false` zurückgesetzt, ein Alarm
+protokolliert. Direkter RPC-Aufruf von `log_security_alert()` als
+normaler Nutzer → `permission denied`, wie beabsichtigt. Testdaten
+danach vollständig entfernt (0 Reste verifiziert).
+
 ## Bekannte, bewusst in Kauf genommene Lücken
 
 - ~~"Zuletzt kontaktiert"/Kontakt-Chronik zeigen nur eigene Einträge~~ —
