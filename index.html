@@ -369,6 +369,24 @@
   .quest-toast-xp{color:var(--success);font-weight:600;font-size:14px;font-family:'JetBrains Mono',monospace;}
   .quest-toast-reward{display:flex;align-items:center;gap:6px;font-size:13px;}
   .quest-toast-reward .inv-icon{width:20px;height:20px;font-size:16px;}
+  /* Epic-Fanfare: deutlich auffälliger als der normale Quest-Toast oben
+     (goldener Rahmen, Leuchtfeuer-Ring ums Abzeichen), gleiche Position --
+     vorher als Artifact mit dem Nutzer abgestimmt. */
+  .epic-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(16px) scale(.92);opacity:0;min-width:290px;max-width:360px;background:linear-gradient(180deg,var(--panel-2),var(--panel));border:1px solid var(--amber);border-radius:var(--radius-md);padding:16px 20px;box-shadow:0 0 0 1px rgba(242,161,84,.16),var(--shadow-raised),0 0 34px -8px var(--arcane-glow);z-index:1002;animation:epicToastIn .55s cubic-bezier(.2,.8,.2,1) forwards;}
+  @keyframes epicToastIn{0%{opacity:0;transform:translateX(-50%) translateY(16px) scale(.92);}60%{opacity:1;transform:translateX(-50%) translateY(-4px) scale(1.015);}100%{opacity:1;transform:translateX(-50%) translateY(0) scale(1);}}
+  .epic-toast-eyebrow{font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--amber);margin:0 0 10px;}
+  .epic-toast-main{display:flex;align-items:center;gap:14px;}
+  .epic-toast-badge{position:relative;width:46px;height:46px;flex-shrink:0;display:flex;align-items:center;justify-content:center;}
+  .epic-toast-badge-glow{position:absolute;inset:-8px;border-radius:50%;background:radial-gradient(circle,var(--arcane-glow) 0%,transparent 70%);opacity:.5;filter:blur(3px);}
+  .epic-toast-badge-ring{position:absolute;inset:-8px;border-radius:50%;border:2px solid var(--amber);opacity:.85;animation:epicToastRing .8s ease-out .12s 1;}
+  @keyframes epicToastRing{0%{opacity:.85;transform:scale(.6);}100%{opacity:0;transform:scale(1.9);}}
+  .epic-toast-icon{position:relative;font-size:26px;filter:drop-shadow(0 0 6px var(--arcane-glow));}
+  .epic-toast-title{font-family:'Cinzel',serif;font-weight:700;font-size:19px;color:var(--text);margin:0 0 3px;}
+  .epic-toast-sub{font-size:12.5px;color:var(--muted);line-height:1.4;}
+  @media (prefers-reduced-motion: reduce){
+    .epic-toast{animation:none;opacity:1;transform:translateX(-50%) translateY(0) scale(1);}
+    .epic-toast-badge-ring{animation:none;display:none;}
+  }
   .card.settings-danger-zone{border-color:var(--danger);}
   .card.settings-danger-zone h2{color:var(--danger);}
   .cal-nav-btn.settings-danger-btn{border-color:var(--danger);color:var(--danger);}
@@ -2508,6 +2526,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     await loadProducts();
     await loadLocationTypes();
     await loadMySales();
+    checkAndAwardEpics(); // legt nur den Ausgangszustand fest, feiert beim Login nichts nach
     phoneTally = Number(localStorage.getItem('phoneTally_'+profile.id) || 0);
     lastKnownLevel = levelInfo(computeTotals().totalXp).level;
     document.getElementById('loading').style.display='none';
@@ -2659,7 +2678,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       localStorage.setItem('phoneTally_'+profile.id, 0);
       const { data, error } = await sb.rpc('log_action_for_self', { p_action_key: key });
       if(error){ reportError('Aktion speichern', error); }
-      else{ log.push(data); await checkAndAwardRecurringQuests(); await checkAndAwardChains(); }
+      else{ log.push(data); await checkAndAwardRecurringQuests(); await checkAndAwardChains(); checkAndAwardEpics(); }
     }
     render();
   }
@@ -3185,6 +3204,68 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     questToastTimer = setTimeout(()=>el.remove(), 5000);
   }
 
+  // Epic-Fanfare: deutlich auffälligerer Toast, wenn eine Epic (großes
+  // Quest-Ziel im Zunftbuch, requires-Liste aus mehreren Ketten) erfüllt
+  // wird. Design vorher mit dem Nutzer als Artifact abgestimmt.
+  let epicToastTimer = null;
+  function showEpicToast(q){
+    const old = document.getElementById('epicToast');
+    if(old) old.remove();
+    if(epicToastTimer) clearTimeout(epicToastTimer);
+    const el = document.createElement('div');
+    el.className = 'epic-toast';
+    el.id = 'epicToast';
+    const titleLine = q.title ? `${escHtml(q.label)} — 🏅 ${escHtml(q.title)}` : escHtml(q.label);
+    el.innerHTML = `
+      <div class="epic-toast-eyebrow">Epic erfüllt</div>
+      <div class="epic-toast-main">
+        <div class="epic-toast-badge">
+          <span class="epic-toast-badge-glow"></span>
+          <span class="epic-toast-badge-ring"></span>
+          <span class="epic-toast-icon">🏅</span>
+        </div>
+        <div>
+          <div class="epic-toast-title">${titleLine}</div>
+          <div class="epic-toast-sub">Titel freigeschaltet — im Zunftbuch gespeichert</div>
+        </div>
+      </div>`;
+    document.body.appendChild(el);
+    epicToastTimer = setTimeout(()=>el.remove(), 6500);
+  }
+
+  // Erkennung "gerade neu erfüllt": kein eigener Speicherzustand in der DB
+  // (Epics geben in Phase 1 bewusst keine XP, siehe CLAUDE.md) -- deshalb
+  // rein im Browser-Speicher gemerkt, welche Epics beim letzten Check schon
+  // erfüllt waren. celebratedEpicIds===null heißt "noch nie geprüft" (erster
+  // Aufruf nach Login) -- dort wird nur der Ausgangszustand festgehalten,
+  // absichtlich OHNE zu feiern, sonst würde jeder Login alte Erfolge erneut
+  // zelebrieren.
+  let celebratedEpicIds = null;
+  function computeDoneEpicIds(){
+    const stageDoneMap = {};
+    (config.questTree||[]).forEach(q=>{
+      const stages = questTreeEvaluateChain(q);
+      if(stages) stages.forEach(s=>{ stageDoneMap[s.id] = s.done; });
+    });
+    const done = new Set();
+    (config.questTree||[]).forEach(q=>{
+      if(q.type==='epic' && evaluateEpicQuest(q, stageDoneMap).done) done.add(q.id);
+    });
+    return done;
+  }
+  function checkAndAwardEpics(){
+    if(!config || !config.questTree) return;
+    const doneNow = computeDoneEpicIds();
+    if(celebratedEpicIds===null){ celebratedEpicIds = doneNow; return; }
+    doneNow.forEach(id=>{
+      if(!celebratedEpicIds.has(id)){
+        const q = config.questTree.find(e=>e.id===id);
+        if(q) showEpicToast(q);
+      }
+    });
+    celebratedEpicIds = doneNow;
+  }
+
   async function checkAndAwardRecurringQuests(){
     const now=new Date();
     for(const q of (config.recurringQuests||[])){
@@ -3237,6 +3318,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     log.push(data);
     await checkAndAwardRecurringQuests();
     await checkAndAwardChains();
+    checkAndAwardEpics();
     render();
   }
 
@@ -5059,6 +5141,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('locActionModal').style.display='none';
     await checkAndAwardRecurringQuests();
     await checkAndAwardChains();
+    checkAndAwardEpics();
 
     // Kundenausbau bei einem Kontakt ohne Kanban-Zugehörigkeit holt ihn aktiv
     // zurück in die Pipeline — zusätzlich "Termin vereinbart" loggen und bei
@@ -5176,6 +5259,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     await checkAndAwardRecurringQuests();
     await checkAndAwardChains();
+    checkAndAwardEpics();
 
     document.getElementById('contactActivityModal').style.display = 'none';
     render();
@@ -5600,6 +5684,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     log.push(data);
     await checkAndAwardRecurringQuests();
     await checkAndAwardChains();
+    checkAndAwardEpics();
     document.getElementById('locActionModal').style.display='none';
     render();
   }
@@ -6442,6 +6527,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     log.push(data);
     await checkAndAwardRecurringQuests();
     await checkAndAwardChains();
+    checkAndAwardEpics();
     render();
     return data.id;
   }
