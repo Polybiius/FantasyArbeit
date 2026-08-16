@@ -1924,23 +1924,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   function recurringQuestBonusEarned(q, key){
     return log.some(e=>e.action_key==='quest_bonus' && e.meta && e.meta.questId===q.id && e.meta.periodKey===key);
   }
-  function abschlussContextGroups(){
-    const groups={};
-    log.filter(e=>e.action_key==='abschluss').forEach(e=>{
-      const k = e.location_id ? ('loc:'+e.location_id) : (e.context ? e.context.trim().toLowerCase() : null);
-      if(!k) return;
-      groups[k]=(groups[k]||0)+1;
-    });
-    return groups;
-  }
-  function evalChainRule(ruleStr, ctxGroups){
-    const m = ruleStr.match(/^(same_context_count|distinct_contexts)>=(\d+)$/);
-    if(!m) return false;
-    const num=+m[2];
-    if(m[1]==='same_context_count') return Object.values(ctxGroups).some(c=>c>=num);
-    return Object.keys(ctxGroups).length>=num;
-  }
-
   // ---- Auth ----
   let isSignUpMode = false;
   document.getElementById('authToggleLink').addEventListener('click', ()=>{
@@ -2532,6 +2515,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     await loadLocationTypes();
     await loadMySales();
     checkAndAwardEpics(); // legt nur den Ausgangszustand fest, feiert beim Login nichts nach
+    await checkAndAwardQuestTreeBonuses(); // zahlt bereits erfüllte Stufen sofort aus, nicht erst bei der nächsten Aktion
     phoneTally = Number(localStorage.getItem('phoneTally_'+profile.id) || 0);
     lastKnownLevel = levelInfo(computeTotals().totalXp).level;
     document.getElementById('loading').style.display='none';
@@ -2683,7 +2667,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       localStorage.setItem('phoneTally_'+profile.id, 0);
       const { data, error } = await sb.rpc('log_action_for_self', { p_action_key: key });
       if(error){ reportError('Aktion speichern', error); }
-      else{ log.push(data); await checkAndAwardRecurringQuests(); await checkAndAwardChains(); checkAndAwardEpics(); }
+      else{ log.push(data); await checkAndAwardRecurringQuests(); await checkAndAwardQuestTreeBonuses(); checkAndAwardEpics(); }
     }
     render();
   }
@@ -3301,6 +3285,30 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     celebratedEpicIds = doneNow;
   }
 
+  // Echte XP-Vergabe für Questbaum-Stufen (ladder/ratio/streak -- Epics
+  // bleiben bewusst XP-frei, siehe checkAndAwardEpics/Phase-1-Entscheidung).
+  // Ersetzt seit 2026-08-16 das alte, parallele config.questChains-System
+  // (dessen einzige Kette "Krankenhaus-Meister" jetzt hier als reguläre
+  // Questbaum-Einträge lebt) -- gleiches Duplikat-Schutz-Prinzip wie
+  // checkAndAwardRecurringQuests(): ein Blick in log VOR dem RPC-Aufruf,
+  // damit nicht jedes Mal unnötig die Datenbank gefragt werden muss.
+  async function checkAndAwardQuestTreeBonuses(){
+    if(!config || !config.questTree) return;
+    for(const q of config.questTree){
+      const stages = questTreeEvaluateChain(q); // liefert null für epic/habit -- automatisch übersprungen
+      if(!stages) continue;
+      for(const s of stages){
+        if(!s.done || !s.bonus) continue;
+        const already = log.some(e=>e.action_key==='questtree_bonus' && e.meta && e.meta.questTreeId===q.id && e.meta.stageId===s.id);
+        if(already) continue;
+        const { data, error } = await sb.rpc('grant_quest_bonus_to_self', { p_kind:'questtree', p_quest_id:q.id, p_stage_id:s.id });
+        if(error){ logSilentError('Questbaum-Bonus verbuchen', error); continue; }
+        if(data) log.push(data);
+        showQuestRewardToast(s.label, s.bonus, null, 0);
+      }
+    }
+  }
+
   async function checkAndAwardRecurringQuests(){
     const now=new Date();
     for(const q of (config.recurringQuests||[])){
@@ -3320,24 +3328,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       }
     }
   }
-  async function checkAndAwardChains(){
-    const ctxGroups = abschlussContextGroups();
-    for(const chain of (config.questChains||[])){
-      for(let i=0;i<chain.stages.length;i++){
-        const stage = chain.stages[i];
-        const already = log.some(e=>e.action_key==='chain_bonus' && e.meta && e.meta.chainId===chain.id && e.meta.stageId===stage.id);
-        if(already) continue;
-        const prevDone = i===0 || log.some(e=>e.action_key==='chain_bonus' && e.meta && e.meta.chainId===chain.id && e.meta.stageId===chain.stages[i-1].id);
-        if(prevDone && evalChainRule(stage.rule, ctxGroups)){
-          const { data, error } = await sb.rpc('grant_quest_bonus_to_self', { p_kind:'chain', p_quest_id:chain.id, p_stage_id:stage.id });
-          if(error){ logSilentError('Ketten-Bonus verbuchen', error); continue; }
-          if(data) log.push(data);
-          if(stage.itemReward) await grantItem(stage.itemReward.key, stage.itemReward.qty||1);
-        }
-      }
-    }
-  }
-
   async function logAction(key){
     const a = config.actions[key];
     if(!a) return;
@@ -3352,7 +3342,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(error){ reportError('Aktion speichern', error); return; }
     log.push(data);
     await checkAndAwardRecurringQuests();
-    await checkAndAwardChains();
+    await checkAndAwardQuestTreeBonuses();
     checkAndAwardEpics();
     render();
   }
@@ -5189,7 +5179,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     // zwei Modals gleichzeitig offen haben).
     document.getElementById('locActionModal').style.display='none';
     await checkAndAwardRecurringQuests();
-    await checkAndAwardChains();
+    await checkAndAwardQuestTreeBonuses();
     checkAndAwardEpics();
 
     // Kundenausbau bei einem Kontakt ohne Kanban-Zugehörigkeit holt ihn aktiv
@@ -5307,7 +5297,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(actErr){ reportError('Aktivität speichern', actErr, statusEl); return; }
 
     await checkAndAwardRecurringQuests();
-    await checkAndAwardChains();
+    await checkAndAwardQuestTreeBonuses();
     checkAndAwardEpics();
 
     document.getElementById('contactActivityModal').style.display = 'none';
@@ -5734,7 +5724,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(error){ reportError('Aktion am Dungeon speichern', error); return; }
     log.push(data);
     await checkAndAwardRecurringQuests();
-    await checkAndAwardChains();
+    await checkAndAwardQuestTreeBonuses();
     checkAndAwardEpics();
     document.getElementById('locActionModal').style.display='none';
     render();
@@ -6577,7 +6567,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(error){ reportError(`Kanban-Aktion speichern (${a.label})`, error); return false; }
     log.push(data);
     await checkAndAwardRecurringQuests();
-    await checkAndAwardChains();
+    await checkAndAwardQuestTreeBonuses();
     checkAndAwardEpics();
     render();
     return data.id;
