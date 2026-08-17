@@ -3108,6 +3108,48 @@ Mobile 390px, Negativtest dass eine Nicht-Epic-Stufe wirklich nicht
 auftaucht, Jahres-Navigation vor/zurück inkl. Vorjahres-Trophäe, kein
 horizontales Overflow, keine Konsolenfehler).
 
+## RLS-Performance-Härtung (2026-08-17)
+
+Löst den in der "Nachtrag: locName()-XSS-Lücke + Datenbank-Advisor-
+Durchgang (2026-08-11)"-Notiz oben bewusst zurückgestellten Punkt
+("erst bei echtem Abfrage-Volumen angehen") — auf Nutzerwunsch jetzt
+vorgezogen, nachdem der Advisor-Stand seit 2026-08-11 spürbar gewachsen
+war (60 `multiple_permissive_policies`, 52 `auth_rls_initplan`). Reine
+Effizienz-Migration, **keine** Verhaltensänderung — wer was sehen/
+bearbeiten darf, ist exakt gleich geblieben.
+
+Migration `supabase/migrations/20260817210000_rls_performance_haertung.sql`.
+Zwei Muster:
+1. `auth.uid()` wird zu `(select auth.uid())` gewrappt, damit Postgres
+   es einmal pro Abfrage statt einmal pro Zeile auswertet — an der
+   Quelle in den 7 zentralen Hilfsfunktionen (`current_org_id`/
+   `is_admin`/`guild_contact_permission`/`guild_dungeon_permission`/
+   `guild_founder_of_member`/`guild_leadership_permission`/
+   `socially_visible`, die praktisch jede Policy im Schema nutzt) sowie
+   in 39 einzelnen Policies mit direktem `auth.uid()`-Aufruf.
+2. 10 Tabellen mit mehreren permissiven Policies je Aktion (21
+   Original-Policies: action_log/contact_activities/contacts×2/friends/
+   guild_members/locations/profiles×2/termine SELECT) wurden zu je
+   einer Policy zusammengelegt — mathematisch exakt dieselbe
+   ODER-Verknüpfung, die Postgres bei mehreren permissiven Policies
+   ohnehin schon bildet (USING-Klauseln separat, WITH CHECK-Klauseln
+   separat), nur als eine statt mehrerer Prüfungen pro Zeile.
+   Policy-Zahl insgesamt: 75→64.
+
+**Vor dem Schreiben der Migrationsdatei in einer `begin`/`rollback`-
+Transaktion gegen die echte DB getestet** (nichts blieb hängen): 35
+Sichtbarkeits-Snapshots (7 echte Kolleg:innen-Accounts × die 5 am
+stärksten betroffenen Tabellen) vorher/nachher exakt identisch, plus 7
+gezielte Schreibproben für die kniffligsten Fälle (Kontakt-Gildenpool-
+Zuweisung, Gildenführer aktualisiert Location eines Gildenmitglieds,
+alle zugehörigen Verweigerungsfälle) — dabei ein eigener Testaufbau-
+Fehler gefunden und korrigiert (`guild_leadership_permission()`
+verlangt `team_rights=true`, nicht nur Schreibzugriff — kein Bug in der
+Migration, nur ein zu lax konfigurierter Wegwerf-Testnutzer). Nach dem
+`supabase db push` per erneutem Advisor-Lauf bestätigt: 0 verbleibende
+`auth_rls_initplan`/`multiple_permissive_policies`-Funde (vorher
+52/60), `migration list --linked` zeigt local==remote.
+
 ## Bekannte, bewusst in Kauf genommene Lücken
 
 - ~~"Zuletzt kontaktiert"/Kontakt-Chronik zeigen nur eigene Einträge~~ —
