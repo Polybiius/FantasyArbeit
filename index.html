@@ -2514,7 +2514,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     await loadProducts();
     await loadLocationTypes();
     await loadMySales();
-    checkAndAwardEpics(); // legt nur den Ausgangszustand fest, feiert beim Login nichts nach
+    await checkAndAwardEpics(); // legt nur den Ausgangszustand fest, feiert beim Login nichts nach
     await checkAndAwardQuestTreeBonuses(); // zahlt bereits erfüllte Stufen sofort aus, nicht erst bei der nächsten Aktion
     phoneTally = Number(localStorage.getItem('phoneTally_'+profile.id) || 0);
     lastKnownLevel = levelInfo(computeTotals().totalXp).level;
@@ -2667,7 +2667,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       localStorage.setItem('phoneTally_'+profile.id, 0);
       const { data, error } = await sb.rpc('log_action_for_self', { p_action_key: key });
       if(error){ reportError('Aktion speichern', error); }
-      else{ log.push(data); await checkAndAwardRecurringQuests(); await checkAndAwardQuestTreeBonuses(); checkAndAwardEpics(); }
+      else{ log.push(data); await checkAndAwardRecurringQuests(); await checkAndAwardQuestTreeBonuses(); await checkAndAwardEpics(); }
     }
     render();
   }
@@ -2754,13 +2754,26 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // computeJournalStreak() oben: nichts wird gespeichert, alles live aus dem
   // bereits geladenen action_log berechnet. Fünf feste Typen (siehe
   // rule_configs.config.questTree, org-eigene Daten) - Kette/Leiter,
-  // Gewohnheits-Quest, Quoten-Kette, Serie/Streak, Epic/Wahlquest. Bewusst
-  // noch OHNE Bonus-XP (reine Titel-/Recognition-Schicht) - das kommt als
-  // eigener, späterer Schritt (Nutzerentscheidung 2026-08-12).
+  // Gewohnheits-Quest, Quoten-Kette, Serie/Streak, Epic/Wahlquest. Gibt seit
+  // 2026-08-17 echte Bonus-XP (siehe checkAndAwardQuestTreeBonuses()/
+  // checkAndAwardEpics()) -- Gewohnheits-Quests bleiben bewusst weiter
+  // XP-frei (kein stages-Array, siehe project_questbaum_schema_design).
   //
   // locationTypeById: {location_id: 'krankenhaus'|...} - vom Aufrufer
   // bereitgestellt (kein globaler State hier), damit diese Funktionen rein
   // und unabhängig vom Ladezeitpunkt testbar bleiben.
+  // Jahresquests (seit 2026-08-17): jede Ladder-/Quoten-/Serien-Stufe wertet
+  // nur Ereignisse des LAUFENDEN Kalenderjahres aus (Geschäftsjahr =
+  // Kalenderjahr, wie die Jahr/Monat-Reiter im Kompendium) -- Stufen
+  // resetten damit automatisch zum 1. Januar, dieselbe Stufe lässt sich in
+  // einem Folgejahr erneut verdienen. Reine Hilfsfunktionen, gleiche
+  // "reine, DB-lose Funktion"-Linie wie der Rest der Questbaum-Engine.
+  function currentBusinessYear(){ return new Date().getFullYear(); }
+  function logInCurrentYear(logEntries){
+    const y = String(currentBusinessYear());
+    return logEntries.filter(e=>e.created_at && e.created_at.slice(0,4)===y);
+  }
+
   function questMatchesLocationType(entry, locationType, locationTypeById){
     if(!locationType) return true;
     return !!entry.location_id && locationTypeById[entry.location_id]===locationType;
@@ -2804,10 +2817,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // Unterkategorie (z.B. SH+"Haftpflicht"). Kein neuer Aggregat-Typ nötig,
   // ist immer eine reine Summe.
   function evaluateSalesLadderQuest(q, m){
+    const year = String(currentBusinessYear());
     const matching = (mySalesCache||[]).filter(s=>{
       const p = productById(s.product_id);
       if(!p || p.art!==m.productArt) return false;
       if(m.productSubcategory && p.subcategory!==m.productSubcategory) return false;
+      const d = saleDate(s);
+      if(!d || d.slice(0,4)!==year) return false;
       return true;
     });
     const value = matching.reduce((sum,s)=>sum + saleBasisValue(s, productById(s.product_id)), 0);
@@ -2817,7 +2833,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   function evaluateLadderQuest(q, log, locationTypeById){
     const m = q.metric;
     if(m.source==='sales') return evaluateSalesLadderQuest(q, m);
-    const matching = log.filter(e=>e.action_key===m.action && questMatchesLocationType(e, m.locationType, locationTypeById) && questMatchesKanal(e, m.kanal));
+    const yearLog = logInCurrentYear(log);
+    const matching = yearLog.filter(e=>e.action_key===m.action && questMatchesLocationType(e, m.locationType, locationTypeById) && questMatchesKanal(e, m.kanal));
     if(m.aggregate==='groupsAtLeast'){
       // Breiten-Leiter: wie viele verschiedene Gruppen (z.B. Krankenhäuser) haben je Stufe genug Treffer.
       const counts = {};
@@ -2853,12 +2870,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // GENAU DIESEM Termin geführt".
   function evaluateRatioQuest(q, log, locationTypeById){
     const m = q.metric;
-    const denomEntries = log.filter(e=>questActionMatches(e.action_key, m.denominator) && questMatchesLocationType(e, m.locationType, locationTypeById))
+    const yearLog = logInCurrentYear(log);
+    const denomEntries = yearLog.filter(e=>questActionMatches(e.action_key, m.denominator) && questMatchesLocationType(e, m.locationType, locationTypeById))
       .sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
     const windowEntries = denomEntries.slice(-q.window);
     if(windowEntries.length===0) return q.stages.map(s=>({ ...s, current:0, target:s.threshold, done:false }));
     const from = new Date(windowEntries[0].created_at);
-    const numCount = log.filter(e=>questActionMatches(e.action_key, m.numerator) && new Date(e.created_at)>=from && questMatchesLocationType(e, m.locationType, locationTypeById)).length;
+    const numCount = yearLog.filter(e=>questActionMatches(e.action_key, m.numerator) && new Date(e.created_at)>=from && questMatchesLocationType(e, m.locationType, locationTypeById)).length;
     const pct = Math.round(100*numCount/windowEntries.length);
     return q.stages.map(s=>({ ...s, current:pct, target:s.threshold, done: pct>=s.threshold }));
   }
@@ -2873,10 +2891,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // den Termine-Fall (beide Achsen wachsen zugleich) mit demselben Schema ab.
   function evaluateStreakQuest(q, log, now){
     const m = q.metric;
+    const yearLog = logInCurrentYear(log);
     return q.stages.map(s=>{
       const r = m.period==='weekly'
-        ? computeWeeklyThresholdStreak(log, m.action, s.perPeriodThreshold, now)
-        : computeDailyThresholdStreak(log, m.action, m.perEntryQty||1, s.perPeriodThreshold, todayKey(now));
+        ? computeWeeklyThresholdStreak(yearLog, m.action, s.perPeriodThreshold, now)
+        : computeDailyThresholdStreak(yearLog, m.action, m.perEntryQty||1, s.perPeriodThreshold, todayKey(now));
       return { ...s, current: r.streak, target: s.streakTarget, done: r.streak>=s.streakTarget };
     });
   }
@@ -3252,13 +3271,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     epicToastTimer = setTimeout(()=>el.remove(), 6500);
   }
 
-  // Erkennung "gerade neu erfüllt": kein eigener Speicherzustand in der DB
-  // (Epics geben in Phase 1 bewusst keine XP, siehe CLAUDE.md) -- deshalb
-  // rein im Browser-Speicher gemerkt, welche Epics beim letzten Check schon
-  // erfüllt waren. celebratedEpicIds===null heißt "noch nie geprüft" (erster
-  // Aufruf nach Login) -- dort wird nur der Ausgangszustand festgehalten,
-  // absichtlich OHNE zu feiern, sonst würde jeder Login alte Erfolge erneut
-  // zelebrieren.
+  // Erkennung "gerade neu erfüllt": rein im Browser-Speicher gemerkt, welche
+  // Epics beim letzten Check schon erfüllt waren (steuert nur, ob JETZT in
+  // dieser Sitzung noch gefeiert wird -- die eigentliche XP-Vergabe unten ist
+  // server-seitig gegen Duplikate abgesichert, siehe grant_quest_bonus_to_self).
+  // celebratedEpicIds===null heißt "noch nie geprüft" (erster Aufruf nach
+  // Login) -- dort wird nur der Ausgangszustand festgehalten, absichtlich
+  // OHNE zu feiern, sonst würde jeder Login alte Erfolge erneut zelebrieren.
   let celebratedEpicIds = null;
   function computeDoneEpicIds(){
     const stageDoneMap = {};
@@ -3272,21 +3291,37 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     });
     return done;
   }
-  function checkAndAwardEpics(){
+  // Epics geben seit dem Jahres-Reset echte Bonus-XP wie Ladder-/Ratio-/
+  // Streak-Stufen (eigenes flaches bonus-Feld statt eines stages-Arrays,
+  // siehe grant_quest_bonus_to_self()) -- und feuern jährlich erneut, sobald
+  // ihre Voraussetzungen im selben Kalenderjahr wieder gleichzeitig erfüllt
+  // sind (Duplikat-Schutz server-seitig über questTreeId+stageId+Jahr, wie
+  // bei den Stufen -- stageId ist bei einem Epic bewusst seine eigene id).
+  async function checkAndAwardEpics(){
     if(!config || !config.questTree) return;
     const doneNow = computeDoneEpicIds();
     if(celebratedEpicIds===null){ celebratedEpicIds = doneNow; return; }
-    doneNow.forEach(id=>{
-      if(!celebratedEpicIds.has(id)){
-        const q = config.questTree.find(e=>e.id===id);
-        if(q) showEpicToast(q);
+    const year = String(currentBusinessYear());
+    for(const id of doneNow){
+      if(celebratedEpicIds.has(id)) continue;
+      const q = config.questTree.find(e=>e.id===id);
+      if(!q) continue;
+      if(q.bonus){
+        const already = log.some(e=>e.action_key==='questtree_bonus' && e.meta && e.meta.questTreeId===q.id && e.meta.stageId===q.id && e.meta.year===year);
+        if(!already){
+          const { data, error } = await sb.rpc('grant_quest_bonus_to_self', { p_kind:'questtree', p_quest_id:q.id, p_stage_id:q.id, p_period_key:year });
+          if(error) logSilentError('Epic-Bonus verbuchen', error);
+          else if(data) log.push(data);
+        }
       }
-    });
+      showEpicToast(q);
+    }
     celebratedEpicIds = doneNow;
   }
 
   // Echte XP-Vergabe für Questbaum-Stufen (ladder/ratio/streak -- Epics
-  // bleiben bewusst XP-frei, siehe checkAndAwardEpics/Phase-1-Entscheidung).
+  // laufen seit dem Jahres-Reset über denselben RPC-Mechanismus, aber in
+  // checkAndAwardEpics(), da sie kein stages-Array haben).
   // Ersetzt seit 2026-08-16 das alte, parallele config.questChains-System
   // (dessen einzige Kette "Krankenhaus-Meister" jetzt hier als reguläre
   // Questbaum-Einträge lebt) -- gleiches Duplikat-Schutz-Prinzip wie
@@ -3294,14 +3329,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // damit nicht jedes Mal unnötig die Datenbank gefragt werden muss.
   async function checkAndAwardQuestTreeBonuses(){
     if(!config || !config.questTree) return;
+    const year = String(currentBusinessYear());
     for(const q of config.questTree){
       const stages = questTreeEvaluateChain(q); // liefert null für epic/habit -- automatisch übersprungen
       if(!stages) continue;
       for(const s of stages){
         if(!s.done || !s.bonus) continue;
-        const already = log.some(e=>e.action_key==='questtree_bonus' && e.meta && e.meta.questTreeId===q.id && e.meta.stageId===s.id);
+        const already = log.some(e=>e.action_key==='questtree_bonus' && e.meta && e.meta.questTreeId===q.id && e.meta.stageId===s.id && e.meta.year===year);
         if(already) continue;
-        const { data, error } = await sb.rpc('grant_quest_bonus_to_self', { p_kind:'questtree', p_quest_id:q.id, p_stage_id:s.id });
+        const { data, error } = await sb.rpc('grant_quest_bonus_to_self', { p_kind:'questtree', p_quest_id:q.id, p_stage_id:s.id, p_period_key:year });
         if(error){ logSilentError('Questbaum-Bonus verbuchen', error); continue; }
         if(data) log.push(data);
         showQuestRewardToast(s.label, s.bonus, null, 0);
@@ -3343,7 +3379,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     log.push(data);
     await checkAndAwardRecurringQuests();
     await checkAndAwardQuestTreeBonuses();
-    checkAndAwardEpics();
+    await checkAndAwardEpics();
     render();
   }
 
@@ -5180,7 +5216,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('locActionModal').style.display='none';
     await checkAndAwardRecurringQuests();
     await checkAndAwardQuestTreeBonuses();
-    checkAndAwardEpics();
+    await checkAndAwardEpics();
 
     // Kundenausbau bei einem Kontakt ohne Kanban-Zugehörigkeit holt ihn aktiv
     // zurück in die Pipeline — zusätzlich "Termin vereinbart" loggen und bei
@@ -5298,7 +5334,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     await checkAndAwardRecurringQuests();
     await checkAndAwardQuestTreeBonuses();
-    checkAndAwardEpics();
+    await checkAndAwardEpics();
 
     document.getElementById('contactActivityModal').style.display = 'none';
     render();
@@ -5725,7 +5761,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     log.push(data);
     await checkAndAwardRecurringQuests();
     await checkAndAwardQuestTreeBonuses();
-    checkAndAwardEpics();
+    await checkAndAwardEpics();
     document.getElementById('locActionModal').style.display='none';
     render();
   }
@@ -6568,7 +6604,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     log.push(data);
     await checkAndAwardRecurringQuests();
     await checkAndAwardQuestTreeBonuses();
-    checkAndAwardEpics();
+    await checkAndAwardEpics();
     render();
     return data.id;
   }
