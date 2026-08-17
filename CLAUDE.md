@@ -101,6 +101,21 @@ begründen (Business/Motivation-Engine-Trennung, PvE, Gilden-Größe, SDT).
   CSS-Code zu lesen und zu hoffen, dass es passt. Chromium ist technisch
   derselbe Rendering-Kern (Blink) wie im vom Nutzer verwendeten Brave —
   visuell identisch für CSS/Layout-Zwecke.
+- **Regressions-Suite** (seit 2026-08-17, `~/.local/share/playwright-portable/
+  regression_suite.mjs`, Nutzerwunsch "best practice? dann bitte" — kein
+  CI/CD, dessen Auslöser noch nicht erreicht ist, siehe "Technische
+  Skalierungs-Schwellen" unten): ein wiederverwendbares Skript, das vor
+  jeder größeren Änderung an den drei riskantesten Pfaden gegen die echte
+  App laufen sollte — Login/rollenbasierte Sichtbarkeit, XP-/Level-
+  Berechnung (`computeTotals()`/`levelInfo()`, liest `levelBase`/
+  `levelExponent` live aus `rule_configs`, damit der Test auch künftige
+  Neukalibrierungen richtig einschätzt), Kanban-Spalten-Zuordnung. Nutzt
+  `page.route()`-Interception für alle drei Tests (wie in mehreren
+  bestehenden `check_*.mjs`-Skripten) statt echter Schreibvorgänge —
+  **schreibt nichts an der echten Datenbank**, unabhängig vom
+  RLS-Testmuster mit `supabase db query --linked`. Aufruf: vorher
+  `python3 -m http.server <port>` im Repo-Ordner starten, dann
+  `node regression_suite.mjs <port>`.
 - **Lokales Öffnen von HTML-Dateien beim Nutzer** (seit 2026-08-02): Brave
   läuft bei ihm sandboxed (vermutlich Flatpak) — ein direkter `file://`-Zugriff
   auf den Projektordner schlägt fehl (`ERR_FILE_NOT_FOUND`), und Dateien über
@@ -179,7 +194,14 @@ sondern auf genau diese Auslöser warten:
 - **Multi-Org-Loskopplung** (`DEFAULT_ORG_ID` fest verdrahtet → echte
   Organisationsauswahl/-Onboarding): sobald eine zweite, tatsächlich
   zahlende Vertriebsorganisation real ansteht — nicht nur angedacht oder
-  als Fernziel erwähnt.
+  als Fernziel erwähnt. **Umfasst dann nicht nur die Organisations-Ebene**,
+  sondern auch, dass Questbaum + tägliche/wöchentliche Quests inhaltlich
+  komplett neu gefüllt werden müssten (aktuell 1:1 auf die
+  Versicherungs-/Krankenhausakquise-Welt zugeschnitten) und dass die
+  Erfolgsmessung/Provisions-Schicht (`saleBasisValue()`/`saleBwp()`/
+  `saleProvision()`) aktuell hart auf Versicherungs-Provisionslogik
+  (BWS, Bewertungspunkte) läuft, nicht generisch ist — Details/Kontext in
+  `project_business_fahrplan`, Eintrag 2026-08-17.
 - **Rate Limiting:** sobald eine Organisation außerhalb der eigenen
   echten Zugriff bekommt (fremde Nutzer, potenziell missbräuchlich oder
   durch schieres Volumen andere Organisationen beeinträchtigend).
