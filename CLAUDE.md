@@ -194,14 +194,19 @@ sondern auf genau diese Auslöser warten:
 - **Multi-Org-Loskopplung** (`DEFAULT_ORG_ID` fest verdrahtet → echte
   Organisationsauswahl/-Onboarding): sobald eine zweite, tatsächlich
   zahlende Vertriebsorganisation real ansteht — nicht nur angedacht oder
-  als Fernziel erwähnt. **Umfasst dann nicht nur die Organisations-Ebene**,
-  sondern auch, dass Questbaum + tägliche/wöchentliche Quests inhaltlich
-  komplett neu gefüllt werden müssten (aktuell 1:1 auf die
-  Versicherungs-/Krankenhausakquise-Welt zugeschnitten) und dass die
-  Erfolgsmessung/Provisions-Schicht (`saleBasisValue()`/`saleBwp()`/
-  `saleProvision()`) aktuell hart auf Versicherungs-Provisionslogik
-  (BWS, Bewertungspunkte) läuft, nicht generisch ist — Details/Kontext in
-  `project_business_fahrplan`, Eintrag 2026-08-17.
+  als Fernziel erwähnt. **Onboarding-Modell geklärt (2026-08-17): kein
+  Self-Service — der Nutzer selbst richtet jede neue Kundenorganisation
+  persönlich nach deren Wünschen ein** (per SQL, wie bisher auch), kein
+  Assistenten-Interface nötig. Trotzdem noch echte Arbeit übrig: die
+  Registrierungsstelle im Code (`index.html`, `profiles`-Insert) trägt
+  aktuell JEDEN neuen Nutzer fest auf `DEFAULT_ORG_ID` ein, unabhängig
+  davon, wie viele `organizations`-Zeilen in der DB existieren — braucht
+  mindestens einen Einladungslink/-code pro Organisation, damit sich
+  Mitarbeiter der richtigen Firma zuordnen. Automatische Regelwerk-
+  Erzeugung (Questbaum + tägliche Quests + Provisions-/Erfolgsmessungs-
+  Logik automatisch statt von Hand pro Kunde befüllen) ist **explizit
+  eine spätere, eigene Aufgabe**, kein Teil dieser Schwelle — Details/
+  Kontext in `project_business_fahrplan`, Einträge 2026-08-17.
 - **Rate Limiting:** sobald eine Organisation außerhalb der eigenen
   echten Zugriff bekommt (fremde Nutzer, potenziell missbräuchlich oder
   durch schieres Volumen andere Organisationen beeinträchtigend).
