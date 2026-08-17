@@ -327,6 +327,26 @@
   .journal-book-name{font-family:'Cinzel',serif;font-weight:700;font-size:15px;color:var(--text);}
   .journal-book-chevron{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--muted);}
 
+  /* Schatzraum unter dem Kompendium/Kriegskasse/Trophäenkammer (seit
+     2026-08-17): gleiches Klick-auf-/zu-Muster wie die Buch-Kachel oben,
+     aber mit Emoji statt Pixel-Art-Icon (kein neuer Asset-Aufwand für
+     einen Bonus-Baustein). */
+  .trophy-room-tile{
+    position:relative;overflow:hidden;background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius-lg);
+    padding:20px 14px;text-align:center;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;
+    transition:all .15s;box-shadow:var(--shadow-rest);max-width:220px;margin:0 auto;
+  }
+  .trophy-room-tile:hover{border-color:var(--arcane);transform:translateY(-3px);box-shadow:var(--shadow-raised);}
+  .trophy-room-tile.open{border-color:var(--arcane);}
+  .trophy-room-icon{font-size:44px;line-height:1;}
+  .trophy-room-year-nav{display:flex;align-items:center;justify-content:center;gap:14px;}
+  .trophy-room-year-nav .cal-nav-btn:disabled{opacity:.35;cursor:default;}
+  .trophy-room-year-label{font-family:'Cinzel',serif;font-weight:700;font-size:16px;color:var(--text);min-width:4.5em;text-align:center;}
+  .trophy-room-stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-top:10px;}
+  .trophy-room-stat{background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;}
+  .trophy-room-stat .trs-label{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted-2);margin-bottom:4px;}
+  .trophy-room-stat .trs-value{display:block;font-family:'JetBrains Mono',monospace;font-size:15px;color:var(--text);}
+
   /* Einstellungen: Themen als Icon-Kacheln (wie Dungeons/Produkte) statt
      langer Balken — Klick öffnet ein Modal mit den Feldern der Gruppe. */
   .settings-subheading{font-family:'Cinzel',serif;font-weight:700;font-size:13.5px;color:var(--text);margin:0 0 6px;display:flex;align-items:center;justify-content:space-between;}
@@ -1300,6 +1320,28 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
           </div>
           <div class="empty-page-hint" id="statEmptyHint" style="display:none;">Noch keine gewonnenen Verkäufe in diesem Zeitraum.</div>
           <div class="stat-numbers-grid" id="statNumbersGrid"></div>
+        </div>
+
+        <div class="card" style="margin-top:18px;">
+          <div class="trophy-room-tile" id="trophyRoomTile">
+            <span class="trophy-room-icon" id="trophyRoomIcon"></span>
+            <div class="journal-book-name" id="trophyRoomName"></div>
+            <div class="journal-book-chevron" id="trophyRoomChevron">▾ öffnen</div>
+          </div>
+        </div>
+
+        <div id="trophyRoomWrap" style="display:none;">
+          <div class="card" style="margin-top:18px;">
+            <div class="trophy-room-year-nav">
+              <button type="button" class="cal-nav-btn" id="trophyRoomPrevYear">‹</button>
+              <span class="trophy-room-year-label" id="trophyRoomYearLabel"></span>
+              <button type="button" class="cal-nav-btn" id="trophyRoomNextYear">›</button>
+            </div>
+            <h2 style="font-size:15px;margin-top:16px;">Quest-Meilensteine</h2>
+            <div id="trophyRoomMilestones"></div>
+            <h2 style="font-size:15px;margin-top:18px;">Vertriebsjahr im Überblick</h2>
+            <div class="trophy-room-stats-grid" id="trophyRoomStats"></div>
+          </div>
         </div>
       </div>
 
@@ -2543,6 +2585,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     initContacts();
     updateKanbanLabels();
     updateStatistikLabels();
+    initTrophyRoom();
     restoreLastPage();
     loadUnseenPatches();
     loadUnseenSecurityAlerts();
@@ -3998,6 +4041,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       updateContactLabels();
       updateStatistikLabels();
       updateJournalBookTile();
+      updateTrophyRoomTile();
       renderCharacterEquipment();
     });
   });
@@ -4399,6 +4443,119 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     renderStatCategoryChart(agg.byCategory);
     renderStatNumberCards(agg.byCategory);
     renderStatStreaks();
+    if(trophyRoomOpen) renderTrophyRoom();
+  }
+
+  // ---- Schatzraum: Reliquienkammer/Ruhmeshalle/Jagdkammer, seit 2026-08-17 ----
+  // Zeigt pro Geschäftsjahr (= Kalenderjahr, wie die Jahr/Monat-Reiter oben)
+  // die erreichten Questbaum-Meilensteine PLUS eine kompakte Zusammenfassung
+  // der Vertriebszahlen -- der Ort, an dem eine Vorjahres-Leistung sichtbar
+  // bleibt, obwohl der Questbaum selbst zum 1. Januar zurückspringt (siehe
+  // project_questbaum_schema_design). Nichts wird gespeichert: Meilensteine
+  // kommen live aus action_log (questtree_bonus, seit dem Jahres-Reset mit
+  // meta.year), die Statistik-Zusammenfassung aus derselben aggregateStats()
+  // wie der Rest der Seite, nur auf ein beliebiges Jahr statt "aktuell"
+  // umgestellt. Gleiches Klick-auf/zu-Muster wie die Buch-Kachel oben, aber
+  // mit Emoji statt Pixel-Art-Icon -- kein neuer Asset-Aufwand für einen
+  // Bonus-Baustein.
+  const CLASS_TROPHY_ROOM = {
+    zauberer: { name:'Reliquienkammer', icon:'💎' },
+    krieger:  { name:'Ruhmeshalle', icon:'🏆' },
+    schuetze: { name:'Jagdkammer', icon:'🏹' },
+  };
+  function updateTrophyRoomTile(){
+    const def = CLASS_TROPHY_ROOM[profile.character_class] || CLASS_TROPHY_ROOM.zauberer;
+    document.getElementById('trophyRoomIcon').textContent = def.icon;
+    document.getElementById('trophyRoomName').textContent = def.name;
+  }
+
+  let trophyRoomOpen = false;
+  let trophyRoomYear = new Date().getFullYear();
+
+  function setTrophyRoomOpen(open){
+    trophyRoomOpen = open;
+    document.getElementById('trophyRoomWrap').style.display = open ? 'block' : 'none';
+    document.getElementById('trophyRoomChevron').textContent = open ? '▴ schließen' : '▾ öffnen';
+    document.getElementById('trophyRoomTile').classList.toggle('open', open);
+    if(open) renderTrophyRoom();
+  }
+
+  // Verkäufe eines beliebigen Jahres -- analog zu salesForPeriod(), aber
+  // ohne die Monats-Verzweigung, da der Schatzraum immer ganze Jahre zeigt.
+  function salesForYear(year){
+    const y = String(year);
+    return (mySalesCache||[]).filter(s=>{ const d = saleDate(s); return d && d.slice(0,4)===y; });
+  }
+
+  // Ordnet einen questtree_bonus-Log-Eintrag seiner Stufe/seinem Epic im
+  // AKTUELLEN Regelwerk zu -- liefert null, falls die Kette/Stufe
+  // inzwischen aus der Config entfernt wurde (die Errungenschaft bleibt
+  // dann trotzdem sichtbar, nur mit dem roh gespeicherten Label statt
+  // aufgelöstem Titel, siehe renderTrophyRoom()).
+  function questTreeMilestoneInfo(entry){
+    if(!entry.meta || !entry.meta.questTreeId) return null;
+    const chain = (config.questTree||[]).find(q=>q.id===entry.meta.questTreeId);
+    if(!chain) return null;
+    if(chain.type==='epic') return { label:chain.label, title:chain.title, category:chain.category };
+    const stage = (chain.stages||[]).find(s=>s.id===entry.meta.stageId);
+    if(!stage) return null;
+    return { label:stage.label, title:stage.title, category:chain.category };
+  }
+
+  // Jahre, zwischen denen navigiert werden kann: alle Jahre mit mindestens
+  // einem Meilenstein ODER einem Verkauf, plus immer das laufende Jahr
+  // (auch leer, damit "heute" der naheliegende Startpunkt bleibt). Zukunft
+  // ist nie erreichbar.
+  function trophyRoomYearBounds(){
+    const years = new Set([currentBusinessYear()]);
+    log.forEach(e=>{ if(e.action_key==='questtree_bonus' && e.meta && e.meta.year) years.add(parseInt(e.meta.year,10)); });
+    (mySalesCache||[]).forEach(s=>{ const d = saleDate(s); if(d) years.add(parseInt(d.slice(0,4),10)); });
+    const arr = [...years].filter(y=>!isNaN(y));
+    return { min: Math.min(...arr), max: Math.min(Math.max(...arr), currentBusinessYear()) };
+  }
+
+  function trophyRoomStatCard(label, value, fmt){
+    return `<div class="trophy-room-stat"><span class="trs-label">${label}</span><span class="trs-value">${fmt(value)}</span></div>`;
+  }
+
+  async function renderTrophyRoom(){
+    if(mySalesCache===null) await loadMySales();
+    const { min, max } = trophyRoomYearBounds();
+    if(trophyRoomYear>max) trophyRoomYear = max;
+    if(trophyRoomYear<min) trophyRoomYear = min;
+    document.getElementById('trophyRoomYearLabel').textContent = trophyRoomYear;
+    document.getElementById('trophyRoomPrevYear').disabled = trophyRoomYear<=min;
+    document.getElementById('trophyRoomNextYear').disabled = trophyRoomYear>=max;
+
+    const milestones = log
+      .filter(e=>e.action_key==='questtree_bonus' && e.meta && parseInt(e.meta.year,10)===trophyRoomYear)
+      .map(e=>({ entry:e, info:questTreeMilestoneInfo(e) }))
+      .sort((a,b)=> new Date(a.entry.created_at)-new Date(b.entry.created_at));
+    const milestonesEl = document.getElementById('trophyRoomMilestones');
+    milestonesEl.innerHTML = milestones.length===0
+      ? '<div class="empty-page-hint">Noch keine Questbaum-Meilensteine in diesem Jahr.</div>'
+      : milestones.map(({entry,info})=>{
+          const label = info ? (info.title ? `${info.label} — 🏅 ${info.title}` : info.label) : entry.label;
+          const cat = info ? `<span class="lctx">(${escHtml(info.category)})</span> ` : '';
+          return `<div class="log-entry"><span class="lname">${cat}${escHtml(label)}</span><span class="lright"><span class="ltime">${fmtTime(entry.created_at)}</span><span class="lxp">+${entry.xp} XP</span></span></div>`;
+        }).join('');
+
+    const agg = aggregateStats(salesForYear(trophyRoomYear));
+    const fmtNum = (n)=>n.toLocaleString('de-DE',{maximumFractionDigits:1});
+    document.getElementById('trophyRoomStats').innerHTML = [
+      trophyRoomStatCard('Bewertungssumme Leben', agg.bwsLeben, fmtEuro),
+      trophyRoomStatCard('Bewertungsbeitrag sonstige', agg.beitragSonstige, fmtEuro),
+      trophyRoomStatCard('Bewertungspunkte', agg.bwp, fmtNum),
+      trophyRoomStatCard('Provision', agg.provision, fmtEuro),
+      trophyRoomStatCard('Differenzprovision', agg.diffProvision, fmtEuro),
+    ].join('');
+  }
+
+  function initTrophyRoom(){
+    updateTrophyRoomTile();
+    document.getElementById('trophyRoomTile').addEventListener('click', ()=> setTrophyRoomOpen(!trophyRoomOpen));
+    document.getElementById('trophyRoomPrevYear').addEventListener('click', ()=>{ trophyRoomYear--; renderTrophyRoom(); });
+    document.getElementById('trophyRoomNextYear').addEventListener('click', ()=>{ trophyRoomYear++; renderTrophyRoom(); });
   }
 
   // Live aus dem eigenen action_log berechnet, nichts gespeichert — Pendant
