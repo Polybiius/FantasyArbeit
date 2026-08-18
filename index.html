@@ -6822,16 +6822,23 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       ? `<div class="cd-field"><span class="cdl">${icon} ${label}</span><span class="cdv">${escHtml(String(value))}</span></div>` : '';
     const myEntries = log.filter(e=>e.contact_id===contact.id);
     const lastTs = myEntries.length ? myEntries[myEntries.length-1].created_at : null;
-    const wiedervorlage = contact.naechster_kontakt
+    // Wiedervorlage ist während der aktiven Kanban-Bearbeitung (Ersttermin,
+    // Angebot, Zweittermin ...) redundant zum Termin selbst -- erst
+    // sinnvoll, sobald der Fall nicht mehr aktiv vorangetrieben wird
+    // (gewonnen/verloren = möglicher späterer Anlass, dauerbrenner = per
+    // Definition "jetzt nicht, aber vermutlich später"), Nutzer-Feedback
+    // 2026-08-18.
+    const WIEDERVORLAGE_RELEVANT_STAGES = ['gewonnen','verloren','dauerbrenner'];
+    const wiedervorlage = (contact.naechster_kontakt && WIEDERVORLAGE_RELEVANT_STAGES.includes(contact.kanban_stage))
       ? new Date(contact.naechster_kontakt+'T12:00:00').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'}) : null;
 
     document.getElementById('kanbanPreviewBody').innerHTML = `
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px;">
         <span class="cc-status ${contact.status}">${contact.status}</span>
-        <span class="empty-page-hint" style="margin:0;">${stageMeta.icon||''} ${escHtml(stageMeta.label||'')}</span>
+        <span style="color:var(--muted);font-size:12.5px;">${stageMeta.icon||''} ${escHtml(stageMeta.label||'')}</span>
       </div>
-      ${sublineParts.length ? `<div class="empty-page-hint" style="margin:0 0 10px;">${escHtml(sublineParts.join(' · '))}</div>` : ''}
-      <div id="kanbanPreviewTerminRow" class="empty-page-hint">Termin wird geladen …</div>
+      ${sublineParts.length ? `<div style="color:var(--muted);font-size:12.5px;margin-bottom:8px;">${escHtml(sublineParts.join(' · '))}</div>` : ''}
+      <div id="kanbanPreviewTerminRow" class="cd-field"><span class="cdl">📅 Nächster Termin</span><span class="cdv">Wird geladen …</span></div>
       ${field('📞','Telefon', contact.telefon)}
       ${field('✉','E-Mail', contact.email)}
       ${field('🔔','Wiedervorlage', wiedervorlage)}
@@ -6845,13 +6852,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       .order('start_at', {ascending:true}).limit(1).maybeSingle();
     const terminRow = document.getElementById('kanbanPreviewTerminRow');
     if(!terminRow) return; // Popup wurde inzwischen wieder geschlossen
-    if(error){ logSilentError('Termin für Kanban-Vorschau laden', error); terminRow.textContent = ''; return; }
-    if(!nextTermin){ terminRow.textContent = '📅 Kein Termin geplant.'; return; }
+    if(error){ logSilentError('Termin für Kanban-Vorschau laden', error); terminRow.remove(); return; }
+    if(!nextTermin){ terminRow.querySelector('.cdv').textContent = 'Kein Termin geplant'; return; }
     const s = new Date(nextTermin.start_at), e2 = new Date(nextTermin.end_at);
     const dateStr = s.toLocaleDateString('de-DE',{weekday:'short', day:'2-digit', month:'2-digit', year:'numeric'});
     const timeStr = `${s.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}–${e2.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}`;
-    terminRow.className = 'cd-field';
-    terminRow.innerHTML = `<span class="cdl">📅 Nächster Termin</span><span class="cdv">${dateStr}, ${timeStr}${nextTermin.kanal && KANAL_ICONS[nextTermin.kanal] ? ` ${KANAL_ICONS[nextTermin.kanal]}` : ''}</span>`;
+    terminRow.querySelector('.cdv').textContent = `${dateStr}, ${timeStr}${nextTermin.kanal && KANAL_ICONS[nextTermin.kanal] ? ` ${KANAL_ICONS[nextTermin.kanal]}` : ''}`;
   }
 
   function wireKanbanDragAndDrop(){
@@ -6862,19 +6868,17 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       });
       card.addEventListener('dragend', ()=>{ card.classList.remove('dragging'); delete card.dataset.dragging; });
       card.addEventListener('click', (e)=>{
-        // Klick auf den Namen selbst öffnet die Kurzvorschau (siehe unten)
-        // -- hier nur für Klicks auf den Rest der Karte (Kartenfläche
-        // bleibt bequem als großes Klickziel).
-        if(e.target.closest('.kc-name')) return;
-        location.hash = 'kontakt/' + card.dataset.contact;
-      });
-      const nameLink = card.querySelector('.kc-name');
-      nameLink.addEventListener('click', (e)=>{
-        // Strg/Cmd/Shift+Klick (neuer Tab/Fenster) unangetastet lassen --
-        // greift über den echten href wie gehabt. Rechtsklick/Mittelklick
-        // lösen ohnehin kein 'click'-Event aus (contextmenu/auxclick),
-        // funktionieren also schon ohne Sonderbehandlung.
-        if(e.ctrlKey || e.metaKey || e.shiftKey) return;
+        // Klick irgendwo auf der Karte öffnet die Kurzvorschau -- egal ob
+        // auf dem Namen oder der restlichen Kartenfläche (Nutzer-Feedback
+        // 2026-08-18: vorher öffnete nur ein Klick genau auf den Namen die
+        // Vorschau, der Rest der Karte sprang direkt zur Kontaktseite).
+        // Ausnahme bleibt ein modifizierter Klick genau auf den Namen
+        // (Strg/Cmd/Shift -> neuer Tab) -- das ist der einzige echte
+        // <a href>-Link auf der Karte, der greift dann unangetastet.
+        // Rechtsklick/Mittelklick lösen ohnehin kein 'click'-Event aus
+        // (contextmenu/auxclick), funktionieren also schon ohne
+        // Sonderbehandlung.
+        if(e.target.closest('.kc-name') && (e.ctrlKey || e.metaKey || e.shiftKey)) return;
         e.preventDefault();
         const c = kanbanBundleCache.contacts.find(x=>x.id===card.dataset.contact);
         if(c) openKanbanPreview(c, kanbanBundleCache);
