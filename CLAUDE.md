@@ -3287,6 +3287,42 @@ direkt aus, unabhängig vom Dateiinhalt — ein `begin`/`rollback` muss
 explizit TEIL der SQL-Datei selbst sein, kann nicht durch einen separaten
 Wrapper-Aufruf erzwungen werden.
 
+**Nachtrag, noch am selben Abend — Absage-Benachrichtigung + Statusanzeige
+für den Organisator (Nutzerkorrektur der ersten Fassung):** die erste
+Fassung ließ eine Absage still verschwinden und zeigte dem Organisator
+nirgends, ob/wie geantwortet wurde — beides vom Nutzer explizit
+nachgefordert.
+
+- **Absage-Benachrichtigung:** löscht der Organisator einen Termin mit
+  offener/angenommener Einladung, bekommt der Eingeladene jetzt eine
+  echte "❌ Von X abgesagt"-Meldung in der Termin-Einladungen-Karte
+  (neuer Status `storniert`) statt stillem Verschwinden, mit einem
+  "OK"-Button zum eigenständigen Ausblenden (löscht die eigene Zeile,
+  einzige direkte Client-Schreiboperation auf `termin_invitations` —
+  rein aufräumend, keine Kreuz-Nutzer-Wirkung, deshalb ausnahmsweise per
+  normaler RLS-Policy statt einer eigenen RPC-Funktion erlaubt).
+- **Statusanzeige für den Organisator:** an beiden Stellen, an denen er
+  seinen Termin sieht (Kanban-Vorschau UND der Kalender-Termin selbst,
+  `termineEntryModal`) — "👤 Eingeladen: X — Ausstehend/Angenommen/
+  Abgelehnt", über einen gemeinsamen Helfer `invitationStatusLinesHtml()`.
+- **Technischer Kernpunkt:** `termin_invitations` bekam eigene Titel/
+  Zeit/Kanal/Organisator-Schattenfelder (gepflegt bei
+  `invite_to_termin()`/`notify_termin_update()`), weil `termin_id` nach
+  einer Absage `NULL` wird (FK von `ON DELETE CASCADE` auf `ON DELETE SET
+  NULL` umgestellt) — ohne die Schattenfelder gäbe es nach dem Löschen
+  des Original-Termins nichts mehr anzuzeigen. Zwei kleine
+  Folgemigrationen am selben Abend (erst Titel/Zeit/Kanal, dann separat
+  noch `organizer_id` nachgetragen, weil sonst nicht mehr feststellbar
+  gewesen wäre, WER abgesagt hat).
+
+Beide Migrationen zuerst per `begin`/`rollback`-Wrapper **innerhalb** der
+SQL-Datei (Lehre aus dem Stolperstein oben) syntaktisch geprüft, dann
+reguär per `supabase db push` angewendet. End-to-end mit
+Wegwerf-Testaccounts verifiziert (Annehmen → Absage → Eingeladener sieht
+Absage mit korrektem Titel/Zeit trotz gelöschtem Original → Ausblenden;
+Organisator sieht Status nach Einladen und nach Ablehnung), Frontend
+zusätzlich per Playwright gegen den echten Account getestet.
+
 ## Bekannte, bewusst in Kauf genommene Lücken
 
 - ~~"Zuletzt kontaktiert"/Kontakt-Chronik zeigen nur eigene Einträge~~ —
