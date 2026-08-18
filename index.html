@@ -1835,6 +1835,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         </div>
       </div>
       <div class="empty-page-hint" id="termineEntrySeriesNote" style="display:none;">Teil einer Serie — beim Speichern/Löschen wirst du gefragt, ob nur dieser Termin oder die ganze Serie betroffen ist.</div>
+      <div id="termineEntryInvitationStatus"></div>
 
       <div class="empty-page-hint" id="termineEntryStatus"></div>
     </div>
@@ -6616,6 +6617,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       const name = opts.editing.organizer ? (opts.editing.organizer.real_name || opts.editing.organizer.display_name) : '?';
       document.getElementById('termineEntryStatus').textContent = `Eingeladener Termin von ${name} — Zeit wird von dort gepflegt.`;
     }
+    // Eigener (nicht delegierter) Termin: Status evtl. verschickter
+    // Einladungen direkt hier zeigen, nicht nur in der Kanban-Vorschau
+    // (Nutzerwunsch 2026-08-18).
+    const invStatusEl = document.getElementById('termineEntryInvitationStatus');
+    invStatusEl.innerHTML = '';
+    if(opts.editing && !isDelegatedCopy){
+      invitationStatusLinesHtml(opts.editing.id).then(html=>{ invStatusEl.innerHTML = html; });
+    }
 
     // Wiederholung lässt sich nur beim Neuanlegen festlegen (Outlook-Stil:
     // ein bestehender Termin wird nicht nachträglich zur Serie gemacht,
@@ -6945,7 +6954,27 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       inviteBtn.textContent = '+ Gildenmitglied einladen';
       inviteBtn.onclick = ()=> openTerminInviteModal(nextTermin.id);
       terminRow.after(inviteBtn);
+
+      const statusHtml = await invitationStatusLinesHtml(nextTermin.id);
+      if(statusHtml) inviteBtn.insertAdjacentHTML('afterend', statusHtml);
     }
+  }
+
+  const INVITATION_STATUS_LABELS = { offen:'⏳ Ausstehend', angenommen:'✓ Angenommen', abgelehnt:'✗ Abgelehnt', storniert:'Storniert' };
+
+  // Wird sowohl in der Kanban-Vorschau als auch im Kalender-Termin des
+  // Organisators selbst gebraucht (Nutzerwunsch: Status an beiden Stellen
+  // sichtbar) -- ein gemeinsamer Helfer statt doppelter Abfrage-/Render-Logik.
+  async function invitationStatusLinesHtml(terminId){
+    const { data, error } = await sb.from('termin_invitations')
+      .select('status, invited:invited_user_id(display_name,real_name)')
+      .eq('termin_id', terminId);
+    if(error){ logSilentError('Einladungsstatus laden', error); return ''; }
+    if(!data || data.length===0) return '';
+    return data.map(inv=>{
+      const name = inv.invited ? escHtml(inv.invited.real_name || inv.invited.display_name) : '?';
+      return `<div class="cd-field"><span class="cdl">👤 Eingeladen: ${name}</span><span class="cdv">${INVITATION_STATUS_LABELS[inv.status]||inv.status}</span></div>`;
+    }).join('');
   }
 
   // Nur die eigenen Gildenmitglieder (Gilde ist bewusst klein gehalten,
@@ -6991,26 +7020,33 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // sichtbar, wenn wirklich etwas offen ist, kein leerer Platzhalter.
   async function loadTerminInvitesCard(){
     const card = document.getElementById('terminInvitesCard');
+    // Nutzt die eigenen Schattenfelder (title/start_at/end_at/kanal/
+    // organizer_id) statt eines Joins über termin_id -- nach einer Absage
+    // ist termin_id NULL, der Join würde also nichts mehr liefern und die
+    // Absage-Meldung liefe ins Leere.
     const { data, error } = await sb.from('termin_invitations')
-      .select('id,status,termin:termin_id(title,start_at,end_at,kanal,organizer:owner_id(display_name,real_name))')
-      .eq('invited_user_id', profile.id).eq('status', 'offen')
+      .select('id,status,title,start_at,end_at,kanal,organizer:organizer_id(display_name,real_name)')
+      .eq('invited_user_id', profile.id).in('status', ['offen','storniert'])
       .order('created_at', {ascending:true});
     if(error){ logSilentError('Termin-Einladungen laden', error); card.style.display = 'none'; return; }
     if(!data || data.length===0){ card.style.display = 'none'; return; }
     card.style.display = 'block';
     document.getElementById('terminInvitesList').innerHTML = data.map(inv=>{
-      const t = inv.termin;
-      const s = new Date(t.start_at), e = new Date(t.end_at);
+      const s = new Date(inv.start_at), e = new Date(inv.end_at);
       const dateStr = s.toLocaleDateString('de-DE',{weekday:'short', day:'2-digit', month:'2-digit', year:'numeric'});
       const timeStr = `${s.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}–${e.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}`;
-      const organizerName = t.organizer ? escHtml(t.organizer.real_name || t.organizer.display_name) : '?';
+      const organizerName = inv.organizer ? escHtml(inv.organizer.real_name || inv.organizer.display_name) : '?';
+      const isCancelled = inv.status === 'storniert';
+      const actions = isCancelled
+        ? `<button class="cal-nav-btn" data-dismiss="1" style="width:100%;margin-top:6px;">OK</button>`
+        : `<div style="display:flex;gap:8px;margin-top:6px;">
+             <button class="cal-nav-btn" data-respond="accept" style="flex:1;">Annehmen</button>
+             <button class="cal-nav-btn" data-respond="decline" style="flex:1;">Ablehnen</button>
+           </div>`;
       return `<div class="cd-field" data-invitation="${inv.id}">
-        <span class="cdl">${escHtml(organizerName)} lädt dich ein</span>
-        <span class="cdv">${escHtml(t.title)} — ${dateStr}, ${timeStr}${t.kanal && KANAL_ICONS[t.kanal] ? ` ${KANAL_ICONS[t.kanal]}` : ''}</span>
-        <div style="display:flex;gap:8px;margin-top:6px;">
-          <button class="cal-nav-btn" data-respond="accept" style="flex:1;">Annehmen</button>
-          <button class="cal-nav-btn" data-respond="decline" style="flex:1;">Ablehnen</button>
-        </div>
+        <span class="cdl">${isCancelled ? `❌ Von ${escHtml(organizerName)} abgesagt` : `${escHtml(organizerName)} lädt dich ein`}</span>
+        <span class="cdv">${escHtml(inv.title)} — ${dateStr}, ${timeStr}${inv.kanal && KANAL_ICONS[inv.kanal] ? ` ${KANAL_ICONS[inv.kanal]}` : ''}</span>
+        ${actions}
       </div>`;
     }).join('');
     document.querySelectorAll('#terminInvitesList [data-respond]').forEach(btn=>{
@@ -7022,6 +7058,18 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         if(respErr){ logSilentError('Auf Termin-Einladung antworten', respErr); btn.parentElement.querySelectorAll('button').forEach(b=>b.disabled = false); return; }
         await loadTerminInvitesCard();
         if(calViewMode==='woche') renderWeekView(false); else renderCalendar();
+      });
+    });
+    document.querySelectorAll('#terminInvitesList [data-dismiss]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const row = btn.closest('[data-invitation]');
+        btn.disabled = true;
+        // Rein aufräumend, keine Kreuz-Nutzer-Wirkung -- läuft deshalb über
+        // ein normales Delete (eigene RLS-Policy erlaubt das nur für
+        // status='storniert' und die eigene invited_user_id).
+        const { error: delErr } = await sb.from('termin_invitations').delete().eq('id', row.dataset.invitation);
+        if(delErr){ logSilentError('Abgesagte Einladung ausblenden', delErr); btn.disabled = false; return; }
+        await loadTerminInvitesCard();
       });
     });
   }
