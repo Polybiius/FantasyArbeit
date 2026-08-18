@@ -1652,7 +1652,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       <input type="text" id="terminLeadVorname" placeholder="Vorname" maxlength="60">
       <input type="text" id="terminLeadNachname" placeholder="Nachname" maxlength="60">
       <label class="cdl" style="display:block;margin-top:4px;">Datum des Ersttermins</label>
-      <input type="date" id="terminLeadDatum">
+      <input type="date" id="terminLeadDatum" min="2020-01-01" max="2040-12-31">
       <div class="contact-add-row">
         <div>
           <label class="cdl" style="display:block;">Von</label>
@@ -1687,7 +1687,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     </div>
     <div class="kanban-newlead-form">
       <label class="cdl" style="display:block;">Datum</label>
-      <input type="date" id="kanbanTerminDatum">
+      <input type="date" id="kanbanTerminDatum" min="2020-01-01" max="2040-12-31">
       <div class="contact-add-row">
         <div>
           <label class="cdl" style="display:block;">Von</label>
@@ -1777,7 +1777,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
             <button type="button" class="cal-nav-btn view-switch-btn recurrence-end-btn active" data-end="nie" style="flex:1;">Kein Ende</button>
             <button type="button" class="cal-nav-btn view-switch-btn recurrence-end-btn" data-end="datum" style="flex:1;">Am Datum</button>
           </div>
-          <input type="date" id="termineEntryRecurrenceUntil" disabled style="margin-top:6px;">
+          <input type="date" id="termineEntryRecurrenceUntil" disabled min="2020-01-01" max="2040-12-31" style="margin-top:6px;">
         </div>
       </div>
       <div class="empty-page-hint" id="termineEntrySeriesNote" style="display:none;">Teil einer Serie — beim Speichern/Löschen wirst du gefragt, ob nur dieser Termin oder die ganze Serie betroffen ist.</div>
