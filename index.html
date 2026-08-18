@@ -19,6 +19,22 @@
     --shadow-rest:0 4px 14px rgba(0,0,0,0.28); --shadow-raised:0 10px 24px rgba(0,0,0,0.35);
   }
   *{box-sizing:border-box;}
+  /* Browser-Autofill (Chrome/Brave/Safari sind alle WebKit-basiert, siehe
+     Tech-Stack) erzwingt sonst eine eigene helle Hintergrundfarbe auf
+     ausgefüllten/vorgeschlagenen Feldern und bricht damit sichtbar aus dem
+     dunklen Theme aus -- unabhängig vom autocomplete-Attribut auf dem
+     einzelnen Feld. Globaler Trick (riesige Transition-Verzögerung statt
+     background-color direkt zu setzen, da der Browser das sonst mit
+     höherer Priorität überschreibt): erzwingt das App-eigene Dunkel weiter. */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active{
+    -webkit-text-fill-color:var(--text);
+    caret-color:var(--text);
+    box-shadow:0 0 0px 1000px #0e0c17 inset;
+    transition:background-color 999999s ease-in-out 0s;
+  }
   body{margin:0;background:radial-gradient(ellipse 900px 500px at 20% -10%, var(--bg-glow-1), transparent),radial-gradient(ellipse 700px 500px at 100% 10%, var(--bg-glow-2), transparent),var(--void);color:var(--text);font-family:'Inter',sans-serif;padding:28px 16px 60px;min-height:100vh;transition:background-color .4s ease;}
   .wrap{max-width:1040px;margin:0 auto;}
   .mono{font-family:'JetBrains Mono',monospace;}
@@ -1113,13 +1129,13 @@
             </div>
             <div class="empty-page-hint" id="betriebCreateStatus"></div>
             <div class="contact-add-row">
-              <input type="date" id="contactGeburtsdatumInput" title="Geburtsdatum">
-              <input type="text" id="contactTelefonInput" placeholder="Telefon" maxlength="30">
-              <input type="text" id="contactEmailInput" placeholder="E-Mail" maxlength="100">
+              <input type="date" id="contactGeburtsdatumInput" title="Geburtsdatum" autocomplete="off" min="1900-01-01">
+              <input type="text" id="contactTelefonInput" placeholder="Telefon" maxlength="30" autocomplete="off">
+              <input type="text" id="contactEmailInput" placeholder="E-Mail" maxlength="100" autocomplete="off">
             </div>
             <div class="contact-add-row">
-              <input type="text" id="contactWohnortStrasseInput" placeholder="Wohnort – Straße/Hausnummer" maxlength="100">
-              <input type="text" id="contactWohnortOrtInput" placeholder="Wohnort – Ort" maxlength="80">
+              <input type="text" id="contactWohnortStrasseInput" placeholder="Wohnort – Straße/Hausnummer" maxlength="100" autocomplete="off">
+              <input type="text" id="contactWohnortOrtInput" placeholder="Wohnort – Ort" maxlength="80" autocomplete="off">
             </div>
             <div class="contact-add-row">
               <textarea id="contactBedarfIstInput" placeholder="Bedarf – Ist-Zustand (was er bereits hat)" rows="2" maxlength="1000"></textarea>
@@ -4694,6 +4710,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       body.style.display = isOpen ? 'none' : 'block';
       btn.classList.toggle('open', !isOpen);
     });
+    // Geburtsdatum darf nie in der Zukunft liegen (echter Nutzer-Fund:
+    // 02.09.2026 ließ sich sonst klaglos eintragen) -- lokales Gerätedatum
+    // reicht hier, keine Zeitzonen-Präzision wie bei Energie-/Quest-Resets
+    // nötig.
+    const now = new Date();
+    document.getElementById('contactGeburtsdatumInput').max =
+      `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
   }
 
   let contactLocationSelectedId = null;
