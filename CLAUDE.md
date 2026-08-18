@@ -3177,6 +3177,116 @@ Migration, nur ein zu lax konfigurierter Wegwerf-Testnutzer). Nach dem
 `auth_rls_initplan`/`multiple_permissive_policies`-Funde (vorher
 52/60), `migration list --linked` zeigt local==remote.
 
+## Kanban-Kurzvorschau + Termin-Einladungen für Gildenmitglieder (2026-08-18)
+
+Zwei zusammenhängende Bausteine, in derselben Session entstanden, direkt
+nach dem Termin-Datumsgrenzen-Vorfall desselben Tages (siehe Abschnitt
+"Kanban" oben — dort ist auch der zugrundeliegende, bei dieser Gelegenheit
+gefundene und behobene Listener-Stacking-Bug beschrieben).
+
+**Kanban-Kurzvorschau** (`#kanbanPreviewModal`, `openKanbanPreview()`):
+Klick auf einen Kontakt im Kanban (egal wo auf der Karte, nicht nur exakt
+auf den Namen) öffnet jetzt zuerst ein kompaktes Vorschau-Popup statt
+direkt zur Kontakt-Seite zu springen — Status, aktuelle Kanban-Stufe,
+Berufsstatus/Betrieb, nächster Termin (inkl. Kanal, erst beim Öffnen
+nachgeladen, kein Batch-Query für alle Karten), Telefon/E-Mail,
+Wiedervorlage (nur bei gewonnen/verloren/dauerbrenner sichtbar — während
+aktiver Kanban-Bearbeitung redundant zum Termin selbst), zuletzt
+kontaktiert. "Zum Profil →"-Link führt zur vollen Seite. **Widerspricht
+nicht** der Grundregel "echte Seiten statt Modals für Datensätze" (siehe
+Erinnerung `feedback_real_pages_over_modals_for_records`) — die echte
+Seite bleibt ein Klick entfernt, und Strg/Cmd/Shift-Klick auf den
+Namen-Link selbst öffnet weiterhin einen neuen Tab über den echten
+`href`, unangetastet von der Vorschau.
+
+**Termin-Einladungen** (`termin_invitations`, Migration
+`20260818210000_termin_einladungen.sql`): aus der Kanban-Vorschau heraus
+lässt sich ein Gildenmitglied zu einem bestehenden Termin einladen —
+ausdrückliches Nutzer-Vorbild war Outlooks Einladungs-/Update-Mechanik.
+Bewusst zweistufig, nicht wie Outlook sofort "vorläufig" im Kalender:
+
+1. **Einladen** (`invite_to_termin()` RPC) — Einladung erscheint beim
+   Eingeladenen zunächst nur als offene Anfrage auf einer neuen Karte
+   "📨 Termin-Einladungen" (Abenteuerlog-Seite, ganz oben, nur sichtbar
+   wenn wirklich etwas offen ist). **Noch kein Kalendereintrag.**
+2. **Annehmen** (`respond_to_termin_invitation()` RPC) — erst jetzt
+   entsteht eine eigene `termine`-Zeile beim Eingeladenen (`owner_id` =
+   er selbst, `organizer_id` = ursprünglicher Organisator). In der
+   Wochenansicht deutlich als "👥 prim. Termin von X" markiert
+   (`.week-event-delegated`, gestrichelter Rahmen) und **schreibgeschützt**
+   (`openTermineEntryModal()` deaktiviert Titel/Zeit-Felder und den
+   Speichern-Button bei gesetztem `organizer_id`) — die Zeit wird
+   ausschließlich vom Original gepflegt, sonst würde die Kopie
+   abdriften. Der "Löschen"-Button wird für diesen Fall zu "Aus meinem
+   Kalender entfernen" umbenannt und läuft über denselben Antwort-RPC
+   (Ablehnen), nicht über ein direktes Löschen.
+3. **Verschieben mit Update-Weitergabe** — verschiebt der Organisator
+   danach den Termin über die normale Wochenansicht, fragt die App (bei
+   vorhandenen angenommenen Einladungen) "Update an Eingeladene senden?"
+   (natives `confirm()`, wie an mehreren Stellen im Projekt üblich). Bei
+   Ja (`notify_termin_update()` RPC): alle angenommenen Kopien werden auf
+   den neuen Stand gezogen, UND ihr Einladungs-Status springt zurück auf
+   "offen" — der Eingeladene sieht die Karte erneut und muss die neue
+   Zeit bestätigen oder ablehnen, exakt wie Outlooks "Update senden?".
+4. **Löscht** der Organisator den Original-Termin komplett, räumt ein
+   `BEFORE DELETE`-Trigger (`cleanup_termin_invitee_copies()`) eine
+   bestehende angenommene Kopie automatisch mit ab — sonst bliebe sie als
+   verwaiste, nie mehr aktualisierbare Karteileiche im fremden Kalender
+   stehen. Bewusst **still**, keine eigene "abgesagt"-Benachrichtigung
+   (siehe "Bewusste Vereinfachungen" unten).
+
+**Schreibrechte:** alles, was die Kalenderdaten einer ANDEREN Person
+berührt, läuft ausschließlich über die drei `SECURITY DEFINER`-Funktionen
+oben — `termin_invitations` hat bewusst KEINE insert/update/delete-Policy
+für normale Clients (gleiches Härtungsmuster wie die "Serverseitige
+Schreib-Härtung" vom 2026-08-15 für `action_log`/`user_inventory`), damit
+Einladung/Annahme/Update-Weitergabe nie in einem inkonsistenten
+Halbzustand enden können. Einladen ist nur innerhalb der eigenen
+Gilde/Freundschaft möglich (`socially_visible()`, seit Phase 1 der
+Gilden-Sichtbarkeit etabliert und geprüft — kein neuer Sichtbarkeits-
+Mechanismus).
+
+**Bewusste Vereinfachungen dieser ersten Fassung** (mit Nutzer
+abgestimmt, nicht vergessen falls das Thema weitergeht):
+- Serientermine + Einladung sind nicht kombiniert (nur einzelne Termine).
+- Die Kopie beim Eingeladenen trägt keinen `contact_id`/`location_id`-Bezug
+  (nur Titel/Zeit/Kanal) — vermeidet, zusätzlich in die
+  Kontakt-Sichtbarkeitsrechte reingehen zu müssen (der Eingeladene hat ja
+  nicht zwingend irgendeine Berechtigung auf den Kontakt des Organisators).
+- Löschen des Original-Termins räumt die Kopie still ab, ohne eigene
+  "abgesagt"-Benachrichtigung (kein separater "cancelled"-Status).
+- Kein Push-/Badge-Hinweis außerhalb der Kalender-Seite — die Karte ist
+  nur sichtbar, wenn man die Seite tatsächlich öffnet.
+
+**Fundament für die spätere Gildenquest** (siehe
+`project_questbaum_schema_design`/Erinnerung `project-roadmap-prioritaeten`,
+Punkt "Gildenleben" — vierter Quest-Typ, Team-Aggregation über eine Gilde
+in einem Zeitraum, Beispiel dort war explizit "gemeinsame Termine/Monat"):
+liefert erstmals ein echtes "geteilter Termin"-Signal, das ein künftiger
+Quest-Typ auswerten könnte (z.B. `termin_invitations.status='angenommen'`
+zählen). Noch keine Auswertungs-Logik dafür gebaut — das bleibt weiterhin
+der offene, nächste Schritt.
+
+Backend end-to-end mit Wegwerf-Testaccounts verifiziert (Einladung,
+Annahme, Update-Weitergabe inkl. Status-Reset, Ablehnung inkl.
+Kopien-Löschung, Sicherheitsgrenze bei Fremden ohne gemeinsame Gilde,
+Lösch-Kaskade bei Original-Löschung — alle Prüfungen bestanden), Frontend
+zusätzlich per Playwright gegen den echten Account getestet (Vorschau-
+Popup, Einladen-Picker, Einladungs-Karte, Annehmen, schreibgeschützte
+Wochenansicht-Darstellung, erneute Bestätigungs-Anfrage nach Verschieben).
+
+**Stolperstein beim Bauen, der Vollständigkeit halber festgehalten:** ein
+Versuch, die Migration vorab in einer `begin`/`rollback`-Transaktion zu
+testen, führte stattdessen (falscher CLI-Aufruf) zu einer echten,
+direkten Anwendung auf die Live-Datenbank, bevor das Nutzer-Go dafür
+eingeholt war — im Nachhinein per `supabase migration repair` sauber ins
+Migrations-Tracking eingetragen (die Migration selbst war inhaltlich
+korrekt und harmlos, da reine Schema-Ergänzung ohne Auswirkung auf
+bestehende Daten). Lehre: `supabase db query -f <datei>` führt IMMER
+direkt aus, unabhängig vom Dateiinhalt — ein `begin`/`rollback` muss
+explizit TEIL der SQL-Datei selbst sein, kann nicht durch einen separaten
+Wrapper-Aufruf erzwungen werden.
+
 ## Bekannte, bewusst in Kauf genommene Lücken
 
 - ~~"Zuletzt kontaktiert"/Kontakt-Chronik zeigen nur eigene Einträge~~ —
