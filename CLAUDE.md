@@ -3323,6 +3323,79 @@ Absage mit korrektem Titel/Zeit trotz gelöschtem Original → Ausblenden;
 Organisator sieht Status nach Einladen und nach Ablehnung), Frontend
 zusätzlich per Playwright gegen den echten Account getestet.
 
+## Gilden-Einladung mit Annahme/Ablehnung + zwei UI-Politur-Fixes (2026-08-18)
+
+Nutzer-Bugreport, noch am selben Tag: der Gildengründer konnte über den
+Mitglied-Picker (`searchGuildCandidates()`) bisher jedes Org-Mitglied
+**direkt und ohne dessen Zustimmung** in `guild_members` eintragen
+(Policy `guild_members_insert_allowed`, Founder-Branch). Gleiches Muster
+wie die Termin-Einladungen desselben Tages jetzt auch hier: eine echte
+Mitgliedschaft entsteht erst nach aktiver Annahme.
+
+**Bewusst eine GETRENNTE Tabelle** (`guild_invitations`, Migration
+`supabase/migrations/20260818230000_gilden_einladungen.sql`) statt eines
+Status-Felds direkt an `guild_members` — Letzteres wird an sehr vielen
+Stellen im Schema (Kontakt-/Dungeon-Sichtbarkeit, Chronik-Sichtbarkeit,
+Notfallzugriff, Nachfolgeregelung) als "ist wirklich Mitglied, hat
+Zugriff" gelesen. Eine separate Einladungs-Tabelle lässt all das
+unangetastet — eine Zeile in `guild_members` entsteht weiterhin
+ausschließlich bei echter Zusage, keine bestehende Stelle musste geprüft
+werden. Drei neue `SECURITY DEFINER`-Funktionen, kein direktes
+Insert/Update/Delete auf `guild_invitations` für Clients (gleiches
+Härtungsmuster wie `termin_invitations`/`action_log`/`user_inventory`):
+- `invite_to_guild(guild_id, invited_user_id)` — nur der Gildengründer,
+  nur an ein Org-Mitglied ohne bestehende Gilde (ein Nutzer kann
+  höchstens einer Gilde angehören, `guild_members.member_id` ist
+  Primärschlüssel). Erneutes Einladen nach einer Ablehnung setzt den
+  bestehenden Datensatz einfach wieder auf "offen".
+- `respond_to_guild_invitation(invitation_id, accept)` — nur der
+  Eingeladene selbst. Erst bei Annahme entsteht die echte
+  `guild_members`-Zeile, mit denselben Minimalrechten wie bisher beim
+  Selbstbeitritt (`read`/`read`/`false`) — der Gründer passt sie danach
+  wie gewohnt über den bestehenden "Rechte"-Button an, kein
+  Zwangs-Dialog beim Annehmen.
+- `cancel_guild_invitation(invitation_id)` — Zurückziehen einer noch
+  offenen Einladung durch den Einladenden (z.B. nach einem Fehlklick).
+
+Der bestehende **Selbst-Beitritt** über die "Gilde beitreten"-Liste
+(`joinGuild()`, Selbstbeitritts-Zweig derselben Policy) bleibt
+unverändert — dort ist die beitretende Person selbst die Handelnde, kein
+Fremdeinfügen. Betroffen war ausschließlich der Founder-Branch.
+
+**Frontend:** neue Karte "📨 Gilden-Einladung" oben auf der Gilde-Seite
+(`loadGuildInvitationsCard()`, gleiches Muster wie die Termin-
+Einladungen-Karte auf dem Kalender — nur sichtbar, wenn wirklich etwas
+offen ist), wiederverwendet die bestehende `.friend-req-row`/
+`freq-accept`/`freq-decline`-Optik statt neuer CSS-Klassen. Der Picker
+(`searchGuildCandidates()`) zeigt für bereits offen eingeladene
+Kandidaten "Einladung zurückziehen" statt "Einladen". **Nebenbei
+mitbehoben:** die Kandidatenfilterung prüfte bisher nur Mitgliedschaft
+in der *aktuellen* Gilde, nicht org-weit — obwohl ein Nutzer nie in zwei
+Gilden gleichzeitig sein kann (latenter Bug, jetzt korrekt org-weit
+gefiltert).
+
+**Zwei kleinere, gleichzeitig gemeldete Design-Bugs mitbehoben:**
+- Das Namens-Suchfeld im Gilden-Picker (`#guildPickerSearch`) hatte gar
+  keine CSS-Regel — erschien als weißes Browser-Standardfeld statt im
+  dunklen App-Theme. Neue `.guild-picker input`-Regel behebt das.
+- Der "+ Gildenmitglied einladen"-Button in der Kanban-Kurzvorschau
+  (siehe "Kanban-Kurzvorschau" oben) wurde bisher roh per
+  `terminRow.after(inviteBtn)` mitten in die Feldliste eingehängt
+  (zwischen "Nächster Termin" und "Telefon"/"E-Mail") — Nutzerkritik
+  "klobig mitten drin". Jetzt ein eigener `#kanbanPreviewInviteZone`-
+  Platzhalter am Ende der Feldliste, mit Trennlinie abgesetzt
+  (`.kp-invite-zone`/`.kp-invite-btn`, kleinerer Pill-Button statt
+  vollbreitem `cal-nav-btn`).
+
+Migration vorab per `begin`/`rollback`-Wrapper mit 8 Assertions gegen
+Wegwerf-Testaccounts verifiziert (Nicht-Gründer darf nicht einladen,
+Annehmen erzeugt korrekte Minimalrechte, direktes Fremdeinfügen jetzt
+RLS-blockiert, Ablehnen/Zurückziehen/Doppel-Mitgliedschaft-Schutz —
+alle 8 bestanden), danach per Nutzer-Go gepusht. Frontend zusätzlich
+per Playwright gegen den echten Account verifiziert (Input-Styling,
+Feld-Reihenfolge in der Kanban-Vorschau, Einladungskarte bleibt
+korrekt verborgen ohne offene Einladung).
+
 ## Bekannte, bewusst in Kauf genommene Lücken
 
 - ~~"Zuletzt kontaktiert"/Kontakt-Chronik zeigen nur eigene Einträge~~ —
