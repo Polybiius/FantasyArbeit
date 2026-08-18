@@ -492,6 +492,7 @@
   .kc-move-btn:hover, .kc-move-btn:active{border-color:var(--arcane);color:var(--text);}
   .kanban-newlead-form{display:flex;flex-direction:column;gap:6px;margin-bottom:10px;}
   .kanban-newlead-form input, .kanban-newlead-form select, .kanban-newlead-form textarea{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-sm);padding:7px 9px;color:var(--text);font-size:12.5px;font-family:inherit;resize:vertical;}
+  .kanban-newlead-form input:disabled{opacity:0.55;cursor:not-allowed;}
 
   @media (max-width: 760px){
     .kanban-board{flex-direction:column;align-items:stretch;overflow-x:visible;padding:20px 8px;}
@@ -622,6 +623,8 @@
   .week-event:hover{box-shadow:var(--shadow-raised);z-index:3;}
   .week-event .we-title{font-weight:600;font-size:10.5px;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .week-event .we-time{display:block;font-family:'JetBrains Mono',monospace;font-size:9px;opacity:0.85;white-space:nowrap;overflow:hidden;}
+  .week-event .we-organizer{display:block;font-size:8.5px;opacity:0.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .week-event-delegated{background:var(--panel-2);border:1px dashed var(--muted);}
   .cal-preview{margin-top:16px;border-top:1px solid var(--border);padding-top:14px;font-size:12.5px;color:var(--text);display:none;}
   .cal-preview.show{display:block;}
   .cal-preview h3{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted-2);text-transform:uppercase;letter-spacing:.05em;margin:0 0 10px;}
@@ -1259,6 +1262,11 @@
 
       <!-- SEITE 3: ABENTEUERLOG (Tagebuch) -->
       <div class="page" id="page-tagebuch" style="display:none;">
+        <div class="card" id="terminInvitesCard" style="display:none;">
+          <h2>📨 Termin-Einladungen</h2>
+          <div id="terminInvitesList"></div>
+        </div>
+
         <div class="card">
           <h2>Kalender <span class="tag" id="calMonthLabel"></span></h2>
           <div class="view-switch">
@@ -1580,6 +1588,20 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     </div>
     <div id="kanbanPreviewBody"></div>
     <a class="cal-nav-btn" id="kanbanPreviewProfileLink" style="width:100%;margin-top:10px;display:block;text-align:center;text-decoration:none;">Zum Profil →</a>
+  </div>
+</div>
+
+<!-- Gildenmitglied zu einem Termin einladen -- Fundament für die spätere
+     Gildenquest (siehe CLAUDE.md/Roadmap "Gildenleben"), Outlook-Vorbild:
+     Einladung erst als offene Anfrage, kein sofortiger Kalendereintrag. -->
+<div class="loc-modal" id="terminInviteModal" style="display:none;">
+  <div class="loc-modal-inner">
+    <div class="loc-modal-header">
+      <span>Zum Termin einladen</span>
+      <button id="terminInviteClose">✕</button>
+    </div>
+    <div id="terminInviteList"></div>
+    <div class="empty-page-hint" id="terminInviteStatus"></div>
   </div>
 </div>
 
@@ -6409,8 +6431,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       el.style.left = `calc(${col*widthPct}% + 2px)`;
       el.style.width = `calc(${widthPct}% - 4px)`;
       const kanalIcon = ev.row.kanal && KANAL_ICONS[ev.row.kanal] ? KANAL_ICONS[ev.row.kanal]+' ' : '';
-      el.innerHTML = `<span class="we-title">${kanalIcon}${escHtml(ev.row.title)}</span><span class="we-time">${timeHHMM(ev.start)}–${timeHHMM(ev.end)}</span>`;
+      // Per Einladung angenommene Kopie eines fremden Termins -- deutlich
+      // als "eigentlich dessen Termin" markieren (Nutzerwunsch), nicht wie
+      // ein normaler eigener Termin aussehen lassen.
+      const organizerNote = ev.row.organizer_id
+        ? `<span class="we-organizer">👥 prim. Termin von ${escHtml(ev.row.organizer ? (ev.row.organizer.real_name || ev.row.organizer.display_name) : '?')}</span>` : '';
+      el.innerHTML = `<span class="we-title">${kanalIcon}${escHtml(ev.row.title)}</span>${organizerNote}<span class="we-time">${timeHHMM(ev.start)}–${timeHHMM(ev.end)}</span>`;
       el.dataset.eventId = ev.id;
+      if(ev.row.organizer_id) el.classList.add('week-event-delegated');
       dayCol.appendChild(el);
     });
   }
@@ -6503,7 +6531,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     const weekEnd = new Date(calWeekStart.getFullYear(), calWeekStart.getMonth(), calWeekStart.getDate()+7);
     const { data, error } = await sb.from('termine')
-      .select('*, contact:contacts(id,name), location:locations(id,name)')
+      .select('*, contact:contacts(id,name), location:locations(id,name), organizer:organizer_id(display_name,real_name)')
       .eq('owner_id', profile.id)
       .gte('start_at', calWeekStart.toISOString()).lt('start_at', weekEnd.toISOString());
     if(error) logSilentError('Termine laden', error);
@@ -6572,6 +6600,22 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('termineEntryLocationSearch').value = (opts.editing && opts.editing.location) ? opts.editing.location.name : '';
     document.getElementById('termineEntryStatus').textContent = '';
     document.getElementById('termineEntryDeleteBtn').style.display = opts.editing ? 'block' : 'none';
+
+    // Eine per Einladung angenommene Kopie darf nicht eigenständig
+    // verschoben werden (würde vom Original abdriften, dessen Zeit über
+    // notify_termin_update() gepflegt wird) -- nur lesbar, mit Verweis auf
+    // die Termin-Einladungen-Karte für ein Ablehnen.
+    const isDelegatedCopy = !!(opts.editing && opts.editing.organizer_id);
+    ['termineEntryTitle','termineEntryStart','termineEntryEnde'].forEach(id=>{
+      document.getElementById(id).disabled = isDelegatedCopy;
+    });
+    document.getElementById('termineEntrySaveBtn').style.display = isDelegatedCopy ? 'none' : 'block';
+    document.getElementById('termineEntryDeleteBtn').style.display = (isDelegatedCopy || opts.editing) ? 'block' : 'none';
+    document.getElementById('termineEntryDeleteBtn').textContent = isDelegatedCopy ? 'Aus meinem Kalender entfernen' : 'Löschen';
+    if(isDelegatedCopy){
+      const name = opts.editing.organizer ? (opts.editing.organizer.real_name || opts.editing.organizer.display_name) : '?';
+      document.getElementById('termineEntryStatus').textContent = `Eingeladener Termin von ${name} — Zeit wird von dort gepflegt.`;
+    }
 
     // Wiederholung lässt sich nur beim Neuanlegen festlegen (Outlook-Stil:
     // ein bestehender Termin wird nicht nachträglich zur Serie gemacht,
@@ -6696,6 +6740,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     const payload = { title, start_at:startAt.toISOString(), end_at:endAt.toISOString(), contact_id:termineContactSelectedId, location_id:termineLocationSelectedId, kanal:termineEntryKanal||null };
     let error;
+    let singleTerminUpdated = false;
     if(termineEditingId){
       const editingRow = weekTermine.find(t=>t.id===termineEditingId);
       if(editingRow && editingRow.series_id){
@@ -6719,6 +6764,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         }
       } else {
         ({ error } = await sb.from('termine').update(payload).eq('id', termineEditingId));
+        singleTerminUpdated = !error;
       }
     } else {
       const { data: inserted, error: insErr } = await sb.from('termine').insert({ ...payload, org_id:profile.org_id, owner_id:profile.id }).select().single();
@@ -6731,10 +6777,39 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('termineEntryModal').style.display='none';
     renderWeekView(false);
     if(calViewMode==='monat') renderCalendar();
+
+    // Outlook-Vorbild (Nutzerwunsch 2026-08-18): wurde ein einzelner,
+    // bereits bestehender Termin verschoben/geändert, der angenommene
+    // Einladungen hat, fragen wir, ob die Kopien der Eingeladenen
+    // mitgezogen werden sollen -- deren Status springt dabei zurück auf
+    // "offen", sie müssen die neue Zeit erneut bestätigen.
+    if(singleTerminUpdated){
+      const { count } = await sb.from('termin_invitations')
+        .select('id', {count:'exact', head:true}).eq('termin_id', termineEditingId).eq('status', 'angenommen');
+      if(count && count>0 && confirm(`${count} Eingeladene(r) hat/haben diesen Termin bereits angenommen. Update senden?`)){
+        const { error: notifyErr } = await sb.rpc('notify_termin_update', { p_termin_id: termineEditingId });
+        if(notifyErr) logSilentError('Termin-Update an Eingeladene senden', notifyErr);
+      }
+    }
   });
   document.getElementById('termineEntryDeleteBtn').addEventListener('click', async ()=>{
     if(!termineEditingId) return;
     const editingRow = weekTermine.find(t=>t.id===termineEditingId);
+    if(editingRow && editingRow.organizer_id){
+      // Delegierte Kopie: "Löschen" heißt hier eigentlich "Einladung
+      // ablehnen" -- läuft über den Antwort-RPC statt eines direkten
+      // Deletes, damit termin_invitations.status konsistent bleibt.
+      if(!confirm('Diesen eingeladenen Termin aus deinem Kalender entfernen?')) return;
+      const { data: inv, error: invErr } = await sb.from('termin_invitations')
+        .select('id').eq('invitee_termin_id', termineEditingId).eq('invited_user_id', profile.id).maybeSingle();
+      if(invErr || !inv){ logSilentError('Einladung zum Ablehnen finden', invErr || new Error('nicht gefunden')); return; }
+      const { error } = await sb.rpc('respond_to_termin_invitation', { p_invitation_id: inv.id, p_accept: false });
+      if(error){ reportError('Einladung ablehnen', error); return; }
+      document.getElementById('termineEntryModal').style.display='none';
+      renderWeekView(false);
+      if(calViewMode==='monat') renderCalendar();
+      return;
+    }
     if(editingRow && editingRow.series_id){
       const scope = await askSeriesScope('Nur diesen Termin oder die ganze Serie löschen?');
       if(!scope) return;
@@ -6847,7 +6922,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('kanbanPreviewClose').onclick = ()=>{ modal.style.display = 'none'; };
     modal.style.display = 'flex';
 
-    const { data: nextTermin, error } = await sb.from('termine').select('start_at,end_at,kanal')
+    const { data: nextTermin, error } = await sb.from('termine').select('id,start_at,end_at,kanal,organizer_id')
       .eq('contact_id', contact.id).gte('start_at', new Date().toISOString())
       .order('start_at', {ascending:true}).limit(1).maybeSingle();
     const terminRow = document.getElementById('kanbanPreviewTerminRow');
@@ -6858,6 +6933,97 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const dateStr = s.toLocaleDateString('de-DE',{weekday:'short', day:'2-digit', month:'2-digit', year:'numeric'});
     const timeStr = `${s.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}–${e2.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}`;
     terminRow.querySelector('.cdv').textContent = `${dateStr}, ${timeStr}${nextTermin.kanal && KANAL_ICONS[nextTermin.kanal] ? ` ${KANAL_ICONS[nextTermin.kanal]}` : ''}`;
+
+    // Einladen nur sinnvoll für einen eigenen, echten Termin -- nicht für
+    // eine bereits selbst als Einladung angenommene Kopie (organizer_id
+    // gesetzt), sonst könnte man beliebig weiterreichen.
+    if(!nextTermin.organizer_id){
+      const inviteBtn = document.createElement('button');
+      inviteBtn.type = 'button';
+      inviteBtn.className = 'cal-nav-btn';
+      inviteBtn.style.cssText = 'width:100%;margin-top:6px;';
+      inviteBtn.textContent = '+ Gildenmitglied einladen';
+      inviteBtn.onclick = ()=> openTerminInviteModal(nextTermin.id);
+      terminRow.after(inviteBtn);
+    }
+  }
+
+  // Nur die eigenen Gildenmitglieder (Gilde ist bewusst klein gehalten,
+  // siehe CLAUDE.md -- kein Bedarf für eine Such-als-du-tippst-Eingabe wie
+  // beim Notfallzugriff-Picker, eine einfache Liste reicht).
+  async function openTerminInviteModal(terminId){
+    const modal = document.getElementById('terminInviteModal');
+    const listEl = document.getElementById('terminInviteList');
+    const statusEl = document.getElementById('terminInviteStatus');
+    statusEl.textContent = '';
+    listEl.innerHTML = '<div class="empty-page-hint">Lädt …</div>';
+    modal.style.display = 'flex';
+    document.getElementById('terminInviteClose').onclick = ()=>{ modal.style.display = 'none'; };
+
+    const { data: membership, error: memErr } = await sb.from('guild_members').select('guild_id').eq('member_id', profile.id).maybeSingle();
+    if(memErr){ logSilentError('Eigene Gilde laden', memErr); listEl.innerHTML = '<div class="empty-page-hint">Fehler beim Laden.</div>'; return; }
+    if(!membership){ listEl.innerHTML = '<div class="empty-page-hint">Du bist in keiner Gilde.</div>'; return; }
+
+    const { data: mates, error: matesErr } = await sb.from('guild_members')
+      .select('member:member_id(id,display_name,real_name,character_class)')
+      .eq('guild_id', membership.guild_id).neq('member_id', profile.id);
+    if(matesErr){ logSilentError('Gildenmitglieder laden', matesErr); listEl.innerHTML = '<div class="empty-page-hint">Fehler beim Laden.</div>'; return; }
+    if(!mates || mates.length===0){ listEl.innerHTML = '<div class="empty-page-hint">Keine weiteren Gildenmitglieder.</div>'; return; }
+
+    listEl.innerHTML = mates.map(m=>`
+      <div class="guild-picker-row">
+        <span>${CLASS_ICONS[m.member.character_class]||'❔'} ${escHtml(m.member.real_name || m.member.display_name)}</span>
+        <button class="cal-nav-btn" data-invite="${m.member.id}">Einladen</button>
+      </div>`).join('');
+    listEl.querySelectorAll('[data-invite]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        btn.disabled = true;
+        const { error } = await sb.rpc('invite_to_termin', { p_termin_id: terminId, p_invited_user_id: btn.dataset.invite });
+        if(error){ reportError('Einladen', error, statusEl); btn.disabled = false; return; }
+        statusEl.textContent = 'Einladung verschickt.';
+        setTimeout(()=>{ modal.style.display = 'none'; }, 900);
+      });
+    });
+  }
+
+  // Karte auf der Kalender-Seite für offene Termin-Einladungen (neue oder
+  // durch eine Terminverschiebung erneut zu bestätigende) -- bewusst nur
+  // sichtbar, wenn wirklich etwas offen ist, kein leerer Platzhalter.
+  async function loadTerminInvitesCard(){
+    const card = document.getElementById('terminInvitesCard');
+    const { data, error } = await sb.from('termin_invitations')
+      .select('id,status,termin:termin_id(title,start_at,end_at,kanal,organizer:owner_id(display_name,real_name))')
+      .eq('invited_user_id', profile.id).eq('status', 'offen')
+      .order('created_at', {ascending:true});
+    if(error){ logSilentError('Termin-Einladungen laden', error); card.style.display = 'none'; return; }
+    if(!data || data.length===0){ card.style.display = 'none'; return; }
+    card.style.display = 'block';
+    document.getElementById('terminInvitesList').innerHTML = data.map(inv=>{
+      const t = inv.termin;
+      const s = new Date(t.start_at), e = new Date(t.end_at);
+      const dateStr = s.toLocaleDateString('de-DE',{weekday:'short', day:'2-digit', month:'2-digit', year:'numeric'});
+      const timeStr = `${s.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}–${e.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}`;
+      const organizerName = t.organizer ? escHtml(t.organizer.real_name || t.organizer.display_name) : '?';
+      return `<div class="cd-field" data-invitation="${inv.id}">
+        <span class="cdl">${escHtml(organizerName)} lädt dich ein</span>
+        <span class="cdv">${escHtml(t.title)} — ${dateStr}, ${timeStr}${t.kanal && KANAL_ICONS[t.kanal] ? ` ${KANAL_ICONS[t.kanal]}` : ''}</span>
+        <div style="display:flex;gap:8px;margin-top:6px;">
+          <button class="cal-nav-btn" data-respond="accept" style="flex:1;">Annehmen</button>
+          <button class="cal-nav-btn" data-respond="decline" style="flex:1;">Ablehnen</button>
+        </div>
+      </div>`;
+    }).join('');
+    document.querySelectorAll('#terminInvitesList [data-respond]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        const row = btn.closest('[data-invitation]');
+        const accept = btn.dataset.respond === 'accept';
+        btn.parentElement.querySelectorAll('button').forEach(b=>b.disabled = true);
+        const { error: respErr } = await sb.rpc('respond_to_termin_invitation', { p_invitation_id: row.dataset.invitation, p_accept: accept });
+        if(respErr){ logSilentError('Auf Termin-Einladung antworten', respErr); btn.parentElement.querySelectorAll('button').forEach(b=>b.disabled = false); return; }
+        await loadTerminInvitesCard();
+        if(calViewMode==='woche') renderWeekView(false); else renderCalendar();
+      });
+    });
   }
 
   function wireKanbanDragAndDrop(){
@@ -7992,6 +8158,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(pageName==='einstellungen') renderEinstellungenPage();
     if(pageName==='statistik'){ renderStatTabs(); renderStatistikPage(); }
     if(pageName==='kanban') renderKanbanBoard();
+    if(pageName==='tagebuch') loadTerminInvitesCard();
     if(pageName==='handlungen'){
       // Chronik nutzt column-reverse (siehe .log-CSS) — solange die Seite
       // per display:none verborgen war, hatte scrollHeight dort 0 und der
