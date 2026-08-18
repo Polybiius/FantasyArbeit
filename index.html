@@ -6977,7 +6977,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   async function openKanbanPreview(contact, bundle){
     const modal = document.getElementById('kanbanPreviewModal');
     document.getElementById('kanbanPreviewName').textContent = contact.name;
-    document.getElementById('kanbanPreviewProfileLink').href = '#kontakt/' + contact.id;
+    const profileLink = document.getElementById('kanbanPreviewProfileLink');
+    profileLink.href = '#kontakt/' + contact.id;
+    // "Zum Profil" navigiert nur per Hash-Änderung -- ohne diesen Handler
+    // blieb das Popup beim Wechsel zur Kontakt-Seite sichtbar stehen
+    // (Bugreport 2026-08-18: "die Karte sollte dann schließen").
+    profileLink.onclick = ()=>{ modal.style.display = 'none'; };
 
     const stageMeta = KANBAN_STAGE_META[contact.kanban_stage] || {};
     const sublineParts = [];
