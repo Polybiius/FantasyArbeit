@@ -6786,6 +6786,23 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         if(c) openKanbanMoveMenu(c, card.dataset.stage);
       });
     });
+    wireKanbanColumnsOnce();
+  }
+
+  // Spalten-Elemente sind anders als die Karten NICHT Teil des per-Render
+  // neu erzeugten innerHTML (nur .kanbanCards_<stage> wird ersetzt) -- ein
+  // erneutes addEventListener bei jedem renderKanbanBoard() würde sich
+  // sonst auf denselben dauerhaften Knoten stapeln. Bug gefunden am
+  // 2026-08-18: ein einzelnes Ziehen-und-Ablegen löste moveKanbanCard()
+  // mehrfach aus (so oft, wie das Board seit dem Laden schon gerendert
+  // worden war), sichtbar an mehreren fast zeitgleichen kundenausbau-
+  // Log-Einträgen (Duplikat-XP) und einem durch die parallelen
+  // promptKanbanTermin()-Aufrufe verfälschten Termin-Datum. Deshalb hier
+  // per Flag nur einmalig verdrahtet.
+  let kanbanColsWired = false;
+  function wireKanbanColumnsOnce(){
+    if(kanbanColsWired) return;
+    kanbanColsWired = true;
     document.querySelectorAll('#kanbanBoard .kanban-col').forEach(col=>{
       col.addEventListener('dragover', (e)=>{ e.preventDefault(); col.classList.add('drag-over'); });
       col.addEventListener('dragleave', ()=> col.classList.remove('drag-over'));
