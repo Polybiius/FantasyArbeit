@@ -1567,6 +1567,22 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   </div>
 </div>
 
+<!-- Kurzvorschau beim Klick auf einen Kontaktnamen im Kanban -- ersetzt NICHT
+     die echte Kontakt-Seite (Rechtsklick/neuer Tab auf den Namen funktioniert
+     weiterhin über den echten href, siehe wireKanbanDragAndDrop), sondern ist
+     ein optionaler, schneller Zwischenstopp davor. "Zum Profil"-Link führt
+     zur vollen Seite. -->
+<div class="loc-modal" id="kanbanPreviewModal" style="display:none;">
+  <div class="loc-modal-inner">
+    <div class="loc-modal-header">
+      <span id="kanbanPreviewName"></span>
+      <button id="kanbanPreviewClose">✕</button>
+    </div>
+    <div id="kanbanPreviewBody"></div>
+    <a class="cal-nav-btn" id="kanbanPreviewProfileLink" style="width:100%;margin-top:10px;display:block;text-align:center;text-decoration:none;">Zum Profil →</a>
+  </div>
+</div>
+
 <div class="loc-modal" id="saleEntryModal" style="display:none;">
   <div class="loc-modal-inner">
     <div class="loc-modal-header">
@@ -6788,6 +6804,56 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     initScrollFade(document.getElementById('kanbanBoard'));
   }
 
+  // Kurzvorschau: Termin-Zeitraum kommt aus termine (nicht Teil des
+  // ohnehin geladenen Kontakt-Bundles), deshalb ein schlanker Nachlade-Schritt
+  // nur beim tatsächlichen Öffnen -- kein Vorab-Batch-Query für alle
+  // Kanban-Karten, die vermutlich nie angeklickt werden.
+  async function openKanbanPreview(contact, bundle){
+    const modal = document.getElementById('kanbanPreviewModal');
+    document.getElementById('kanbanPreviewName').textContent = contact.name;
+    document.getElementById('kanbanPreviewProfileLink').href = '#kontakt/' + contact.id;
+
+    const stageMeta = KANBAN_STAGE_META[contact.kanban_stage] || {};
+    const sublineParts = [];
+    if(bundle.roles[contact.role]||contact.role) sublineParts.push(bundle.roles[contact.role]||contact.role);
+    if(contact.location_id) sublineParts.push(locName(bundle, contact.location_id));
+
+    const field = (icon, label, value) => value
+      ? `<div class="cd-field"><span class="cdl">${icon} ${label}</span><span class="cdv">${escHtml(String(value))}</span></div>` : '';
+    const myEntries = log.filter(e=>e.contact_id===contact.id);
+    const lastTs = myEntries.length ? myEntries[myEntries.length-1].created_at : null;
+    const wiedervorlage = contact.naechster_kontakt
+      ? new Date(contact.naechster_kontakt+'T12:00:00').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'}) : null;
+
+    document.getElementById('kanbanPreviewBody').innerHTML = `
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+        <span class="cc-status ${contact.status}">${contact.status}</span>
+        <span class="empty-page-hint" style="margin:0;">${stageMeta.icon||''} ${escHtml(stageMeta.label||'')}</span>
+      </div>
+      ${sublineParts.length ? `<div class="empty-page-hint" style="margin:0 0 10px;">${escHtml(sublineParts.join(' · '))}</div>` : ''}
+      <div id="kanbanPreviewTerminRow" class="empty-page-hint">Termin wird geladen …</div>
+      ${field('📞','Telefon', contact.telefon)}
+      ${field('✉','E-Mail', contact.email)}
+      ${field('🔔','Wiedervorlage', wiedervorlage)}
+      ${field('🕐','Zuletzt kontaktiert (von dir)', lastTs ? fmtTime(lastTs) : null)}
+    `;
+    document.getElementById('kanbanPreviewClose').onclick = ()=>{ modal.style.display = 'none'; };
+    modal.style.display = 'flex';
+
+    const { data: nextTermin, error } = await sb.from('termine').select('start_at,end_at,kanal')
+      .eq('contact_id', contact.id).gte('start_at', new Date().toISOString())
+      .order('start_at', {ascending:true}).limit(1).maybeSingle();
+    const terminRow = document.getElementById('kanbanPreviewTerminRow');
+    if(!terminRow) return; // Popup wurde inzwischen wieder geschlossen
+    if(error){ logSilentError('Termin für Kanban-Vorschau laden', error); terminRow.textContent = ''; return; }
+    if(!nextTermin){ terminRow.textContent = '📅 Kein Termin geplant.'; return; }
+    const s = new Date(nextTermin.start_at), e2 = new Date(nextTermin.end_at);
+    const dateStr = s.toLocaleDateString('de-DE',{weekday:'short', day:'2-digit', month:'2-digit', year:'numeric'});
+    const timeStr = `${s.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}–${e2.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}`;
+    terminRow.className = 'cd-field';
+    terminRow.innerHTML = `<span class="cdl">📅 Nächster Termin</span><span class="cdv">${dateStr}, ${timeStr}${nextTermin.kanal && KANAL_ICONS[nextTermin.kanal] ? ` ${KANAL_ICONS[nextTermin.kanal]}` : ''}</span>`;
+  }
+
   function wireKanbanDragAndDrop(){
     document.querySelectorAll('#kanbanBoard .kanban-card').forEach(card=>{
       card.addEventListener('dragstart', ()=>{
@@ -6796,11 +6862,22 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       });
       card.addEventListener('dragend', ()=>{ card.classList.remove('dragging'); delete card.dataset.dragging; });
       card.addEventListener('click', (e)=>{
-        // Klick auf den Namen selbst navigiert schon über den echten <a
-        // href="#kontakt/..."> -- hier nur für Klicks auf den Rest der
-        // Karte (Kartenfläche bleibt bequem als großes Klickziel).
+        // Klick auf den Namen selbst öffnet die Kurzvorschau (siehe unten)
+        // -- hier nur für Klicks auf den Rest der Karte (Kartenfläche
+        // bleibt bequem als großes Klickziel).
         if(e.target.closest('.kc-name')) return;
         location.hash = 'kontakt/' + card.dataset.contact;
+      });
+      const nameLink = card.querySelector('.kc-name');
+      nameLink.addEventListener('click', (e)=>{
+        // Strg/Cmd/Shift+Klick (neuer Tab/Fenster) unangetastet lassen --
+        // greift über den echten href wie gehabt. Rechtsklick/Mittelklick
+        // lösen ohnehin kein 'click'-Event aus (contextmenu/auxclick),
+        // funktionieren also schon ohne Sonderbehandlung.
+        if(e.ctrlKey || e.metaKey || e.shiftKey) return;
+        e.preventDefault();
+        const c = kanbanBundleCache.contacts.find(x=>x.id===card.dataset.contact);
+        if(c) openKanbanPreview(c, kanbanBundleCache);
       });
       const moveBtn = card.querySelector('.kc-move-btn');
       moveBtn.addEventListener('click', (e)=>{
