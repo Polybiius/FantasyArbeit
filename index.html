@@ -191,6 +191,8 @@
     background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius-sm);
     padding:10px 14px;margin-bottom:8px;font-size:13px;
   }
+  .guild-picker input{width:100%;background:#0e0c17;border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 12px;color:var(--text);font-family:'Inter',sans-serif;font-size:13px;}
+  .guild-picker input:focus{outline:none;border-color:var(--arcane);}
   .account-row select{background:#0e0c17;border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;color:var(--text);font-size:12.5px;}
   .account-row input[type="number"]{background:#0e0c17;border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;color:var(--text);font-size:12.5px;width:110px;}
   .account-row .ar-owner{font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;}
@@ -532,6 +534,13 @@
   .cd-field{margin-bottom:10px;font-size:13px;}
   .cd-field .cdl{color:var(--muted-2);font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:2px;}
   .cd-field .cdv{color:var(--text);white-space:pre-wrap;}
+  /* Kanban-Kurzvorschau: Einladen-Zone bewusst als eigener, abgesetzter
+     Block am Ende der Kennzahlen -- vorher als roher Button mitten in der
+     Feldliste eingehängt (zwischen Termin und Telefon/E-Mail), Nutzerkritik
+     2026-08-18 "klobig mitten drin". */
+  .kp-invite-zone{border-top:1px solid var(--border);margin-top:4px;padding-top:10px;display:flex;flex-direction:column;gap:8px;}
+  .kp-invite-btn{align-self:flex-start;background:transparent;border:1px solid var(--arcane);color:var(--arcane-glow);border-radius:var(--radius-pill);padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;}
+  .kp-invite-btn:hover{background:var(--arcane);color:#fff;}
   .cd-mentions{display:flex;flex-wrap:wrap;gap:8px;}
   .cd-mentions a{display:inline-block;}
   .empty-page-hint{color:var(--muted-2);font-size:12.5px;font-family:'JetBrains Mono',monospace;text-align:center;padding:30px 0;}
@@ -1002,6 +1011,11 @@
 
       <!-- SEITE: GILDE -->
       <div class="page" id="page-gilde" style="display:none;">
+        <div class="card" id="guildInvitationsCard" style="display:none;margin-bottom:18px;">
+          <h2>📨 Gilden-Einladung</h2>
+          <div id="guildInvitationsList"></div>
+        </div>
+
         <div class="card">
           <h2>Freunde <span class="tag">unabhängig von Gilden</span></h2>
           <div class="friend-search-row">
@@ -5657,7 +5671,49 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   async function initGuild(){
     updateGuildLabels();
+    await loadGuildInvitationsCard();
     await loadGuildState();
+  }
+
+  // Echte Einladung statt direktem Einfügen (Nutzer-Bugreport 2026-08-18):
+  // der Gildengründer konnte bisher jedes Org-Mitglied ohne dessen Zutun
+  // in guild_members eintragen. Läuft jetzt wie die Termin-Einladungen --
+  // erst eine offene Anfrage hier, echte Mitgliedschaft erst nach Annahme
+  // (respond_to_guild_invitation()-RPC, siehe Migration).
+  async function loadGuildInvitationsCard(){
+    const card = document.getElementById('guildInvitationsCard');
+    const listEl = document.getElementById('guildInvitationsList');
+    const { data, error } = await sb.from('guild_invitations')
+      .select('id,guild:guild_id(name),inviter:invited_by(display_name,real_name)')
+      .eq('invited_user_id', profile.id).eq('status','offen');
+    if(error){ logSilentError('Gilden-Einladungen laden', error); return; }
+    if(!data || data.length===0){ card.style.display='none'; return; }
+    card.style.display='block';
+    listEl.innerHTML = data.map(inv=>`
+      <div class="friend-req-row" data-invitation="${inv.id}">
+        <span>${escHtml(inv.guild ? inv.guild.name : 'Gilde')} — eingeladen von ${escHtml(inv.inviter ? (inv.inviter.real_name || inv.inviter.display_name) : '?')}</span>
+        <div class="freq-actions">
+          <button class="freq-accept" data-accept="${inv.id}">Annehmen</button>
+          <button class="freq-decline" data-decline="${inv.id}">Ablehnen</button>
+        </div>
+      </div>`).join('');
+    listEl.querySelectorAll('[data-accept]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        btn.disabled = true;
+        const { error: rpcErr } = await sb.rpc('respond_to_guild_invitation', { p_invitation_id: btn.dataset.accept, p_accept: true });
+        if(rpcErr){ reportError('Gilden-Einladung annehmen', rpcErr); btn.disabled = false; return; }
+        await loadGuildInvitationsCard();
+        await loadGuildState();
+      });
+    });
+    listEl.querySelectorAll('[data-decline]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        btn.disabled = true;
+        const { error: rpcErr } = await sb.rpc('respond_to_guild_invitation', { p_invitation_id: btn.dataset.decline, p_accept: false });
+        if(rpcErr){ reportError('Gilden-Einladung ablehnen', rpcErr); btn.disabled = false; return; }
+        await loadGuildInvitationsCard();
+      });
+    });
   }
 
   async function loadGuildState(){
@@ -5891,26 +5947,52 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       .or(`real_name.ilike.%${q}%,display_name.ilike.%${q}%`)
       .limit(15);
     if(error){ logSilentError('Kollegen suchen', error); return; }
-    const { data: existing, error: existErr } = await sb.from('guild_members').select('member_id').eq('guild_id', currentGuild.id);
+    // Org-weit, nicht nur diese Gilde -- ein Nutzer kann höchstens einer
+    // Gilde angehören (guild_members.member_id ist Primärschlüssel), wer
+    // irgendwo schon Mitglied ist, ist kein gültiges Einladungsziel mehr.
+    const { data: existing, error: existErr } = await sb.from('guild_members').select('member_id').eq('org_id', profile.org_id);
     if(existErr) logSilentError('Bestehende Gildenmitglieder laden', existErr);
     const existingIds = new Set((existing||[]).map(e=>e.member_id));
+    // Bereits offen eingeladene Kandidaten bekommen "Zurückziehen" statt
+    // "Einladen" -- verhindert doppelte Einladungen und macht sichtbar,
+    // wer schon eine Anfrage offen hat.
+    const { data: openInvites, error: invErr } = await sb.from('guild_invitations')
+      .select('id,invited_user_id').eq('guild_id', currentGuild.id).eq('status','offen');
+    if(invErr) logSilentError('Offene Gilden-Einladungen laden', invErr);
+    const pendingMap = {};
+    (openInvites||[]).forEach(i=> pendingMap[i.invited_user_id] = i.id);
     const candidates = (orgMembers||[]).filter(m=>!existingIds.has(m.id));
     if(candidates.length===0){ listEl.innerHTML = '<div class="empty-page-hint">Keine Treffer.</div>'; return; }
-    listEl.innerHTML = candidates.map(m=>`
+    listEl.innerHTML = candidates.map(m=>{
+      const pendingId = pendingMap[m.id];
+      return `
       <div class="guild-picker-row">
         <span>${CLASS_ICONS[m.character_class]||'❔'} ${escHtml(m.real_name || m.display_name)}${m.real_name ? ` <span style="opacity:.6">(${escHtml(m.display_name)})</span>` : ''}</span>
-        <button class="cal-nav-btn" data-add="${m.id}">Hinzufügen</button>
-      </div>`).join('');
-    listEl.querySelectorAll('[data-add]').forEach(btn=>{
+        ${pendingId
+          ? `<button class="cal-nav-btn" data-cancel="${pendingId}">Einladung zurückziehen</button>`
+          : `<button class="cal-nav-btn" data-invite="${m.id}">Einladen</button>`}
+      </div>`;
+    }).join('');
+    // Einladen: löst keine sofortige Mitgliedschaft mehr aus (Nutzer-
+    // Bugreport 2026-08-18) -- die Person muss erst zustimmen
+    // (guildInvitationsCard, respond_to_guild_invitation()-RPC). Deshalb
+    // hier auch kein automatisches Öffnen des Rechte-Modals mehr; der
+    // Gründer stellt Rechte nach Annahme jederzeit über den bestehenden
+    // "Rechte"-Button am Mitglied ein.
+    listEl.querySelectorAll('[data-invite]').forEach(btn=>{
       btn.addEventListener('click', async ()=>{
-        const { error } = await sb.from('guild_members').insert({ member_id:btn.dataset.add, guild_id:currentGuild.id, org_id:profile.org_id });
-        if(error){ reportError('Mitglied zur Gilde hinzufügen', error); return; }
-        document.getElementById('guildPickerCard').style.display='none';
-        await renderGuildMembers(currentGuild.id);
-        // Direkt das Rechte-Modal öffnen -- das ist der Beitritts-Moment,
-        // in dem auch mitgebrachte private Dungeons einmalig geprüft werden.
-        const added = candidates.find(c=>c.id===btn.dataset.add);
-        openGuildRightsModal(btn.dataset.add, added ? added.display_name : '', { contacts_access:'read', dungeons_access:'read', team_rights:false });
+        btn.disabled = true;
+        const { error: rpcErr } = await sb.rpc('invite_to_guild', { p_guild_id: currentGuild.id, p_invited_user_id: btn.dataset.invite });
+        if(rpcErr){ reportError('Einladen', rpcErr); btn.disabled = false; return; }
+        await searchGuildCandidates(q);
+      });
+    });
+    listEl.querySelectorAll('[data-cancel]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        btn.disabled = true;
+        const { error: rpcErr } = await sb.rpc('cancel_guild_invitation', { p_invitation_id: btn.dataset.cancel });
+        if(rpcErr){ reportError('Einladung zurückziehen', rpcErr); btn.disabled = false; return; }
+        await searchGuildCandidates(q);
       });
     });
   }
@@ -6927,6 +7009,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       ${field('✉','E-Mail', contact.email)}
       ${field('🔔','Wiedervorlage', wiedervorlage)}
       ${field('🕐','Zuletzt kontaktiert (von dir)', lastTs ? fmtTime(lastTs) : null)}
+      <div id="kanbanPreviewInviteZone"></div>
     `;
     document.getElementById('kanbanPreviewClose').onclick = ()=>{ modal.style.display = 'none'; };
     modal.style.display = 'flex';
@@ -6946,17 +7029,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     // Einladen nur sinnvoll für einen eigenen, echten Termin -- nicht für
     // eine bereits selbst als Einladung angenommene Kopie (organizer_id
     // gesetzt), sonst könnte man beliebig weiterreichen.
+    const inviteZone = document.getElementById('kanbanPreviewInviteZone');
+    if(!inviteZone) return; // Popup wurde inzwischen wieder geschlossen
     if(!nextTermin.organizer_id){
-      const inviteBtn = document.createElement('button');
-      inviteBtn.type = 'button';
-      inviteBtn.className = 'cal-nav-btn';
-      inviteBtn.style.cssText = 'width:100%;margin-top:6px;';
-      inviteBtn.textContent = '+ Gildenmitglied einladen';
-      inviteBtn.onclick = ()=> openTerminInviteModal(nextTermin.id);
-      terminRow.after(inviteBtn);
-
       const statusHtml = await invitationStatusLinesHtml(nextTermin.id);
-      if(statusHtml) inviteBtn.insertAdjacentHTML('afterend', statusHtml);
+      inviteZone.className = 'kp-invite-zone';
+      inviteZone.innerHTML = `<button type="button" class="kp-invite-btn" id="kanbanPreviewInviteBtn">+ Gildenmitglied einladen</button>${statusHtml}`;
+      document.getElementById('kanbanPreviewInviteBtn').onclick = ()=> openTerminInviteModal(nextTermin.id);
     }
   }
 
