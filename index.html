@@ -1020,7 +1020,15 @@
           <div id="guildInvitationsList"></div>
         </div>
 
-        <div class="card">
+        <!-- Freunde: startet hier (kein-Gilde-Ansicht, "unabhängig von
+        Gilden") -- loadGuildState() verschiebt diese Karte per appendChild
+        in den Freunde-Reiter unten, sobald man Mitglied einer Gilde ist,
+        und wieder zurück hierher, sobald man keine mehr ist (z.B. nach
+        Verlassen). Ein Anker-Element statt der Karte selbst, damit die
+        Rückkehr-Position unabhängig von sonstigen DOM-Änderungen stabil
+        bleibt. -->
+        <div id="friendCardHome"></div>
+        <div class="card" id="friendCard">
           <h2>Freunde <span class="tag">unabhängig von Gilden</span></h2>
           <div class="friend-search-row">
             <input type="text" id="friendSearchInput" placeholder="Exakter Name des Kollegen">
@@ -1031,9 +1039,8 @@
           <div class="guild-grid" id="friendGrid" style="margin-top:16px;"></div>
         </div>
 
-        <div class="card" style="margin-top:18px;">
+        <div class="card" style="margin-top:18px;" id="guildNoGuildCard">
           <h2 id="guildHeaderTitle">Gilde</h2>
-
           <div id="guildNoGuildView" style="display:none;">
             <div class="guild-create-row">
               <input type="text" id="guildNameInput" placeholder="Name deiner neuen Gilde" maxlength="60">
@@ -1042,13 +1049,37 @@
             <div class="empty-page-hint" style="margin-top:6px;">oder einer bestehenden Gilde beitreten:</div>
             <div id="guildJoinList"></div>
           </div>
+        </div>
 
-          <div id="guildMemberView" style="display:none;">
-            <div class="guild-actions-row">
+        <!-- Gilden-Ansicht (nur Mitglieder): Gebäude oben wie die
+        Charakter-Grafik auf der Startseite, darunter Reiter Mitglieder/
+        Freunde (gleiches Muster wie die Jägerchronik-Reiter), ganz unten
+        die Team-Ziele -- alles fest sichtbar, kein zusätzlicher Reiter
+        für Gebäude/Team-Ziele. -->
+        <div id="guildMemberView" style="display:none;">
+          <div class="card" id="guildBuildingCard">
+            <h2 id="guildBuildingTitle">Gebäude</h2>
+            <div id="guildBuildingDisplay"></div>
+          </div>
+
+          <div class="card" style="margin-top:18px;">
+            <div class="guild-actions-row" style="margin-bottom:14px;">
               <button class="cal-nav-btn" id="guildAddBtn" style="display:none;">+ hinzufügen</button>
               <button class="cal-nav-btn" id="guildLeaveBtn">Gilde verlassen</button>
             </div>
-            <div class="guild-grid" id="guildGrid"></div>
+            <div class="view-switch" id="guildAreaTabs">
+              <button type="button" class="cal-nav-btn view-switch-btn" data-tab="mitglieder">Mitglieder</button>
+              <button type="button" class="cal-nav-btn view-switch-btn" data-tab="freunde">Freunde</button>
+            </div>
+            <div id="guildTabMitglieder" style="margin-top:14px;">
+              <div class="guild-grid" id="guildGrid"></div>
+            </div>
+            <div id="guildTabFreunde" style="display:none;margin-top:14px;"></div>
+          </div>
+
+          <div class="card" style="margin-top:18px;">
+            <h2>Team-Ziele</h2>
+            <div id="guildTeamQuestsList"></div>
           </div>
         </div>
 
@@ -3526,6 +3557,52 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       }
     }
   }
+
+  // Gildenleben-Team-Ziele (Schritt 3 des Konzepts): kein persönliches XP,
+  // sondern gemeinsame Verkaufs-Summen über die ganze Gilde. Anders als
+  // die obigen Check-Funktionen NICHT auf den eigenen `log`-Array
+  // angewiesen (der ist ja pro Person) -- die Summe kommt live über
+  // guild_sales_metric_total() (SECURITY DEFINER, aggregiert serverseitig
+  // über alle Gildenmitglieder). Prüft UND vergibt in einem Rutsch, gibt
+  // Anzeige-fertige Daten zurück (aktueller Stand + erreicht ja/nein) --
+  // wird von der Gilde-Seite (Team-Ziele-Bereich) aufgerufen.
+  async function loadAndEvaluateGuildTeamQuests(guildId){
+    const year = currentBusinessYear();
+    const quests = (config.guildTeamQuests || []);
+    const results = [];
+    for(const q of quests){
+      const { data: total, error } = await sb.rpc('guild_sales_metric_total', {
+        p_guild_id: guildId, p_field: q.metric.field, p_category: q.metric.category, p_year: year
+      });
+      if(error){ logSilentError('Team-Ziel-Fortschritt laden', error); continue; }
+      const met = total >= q.threshold;
+      if(met){
+        const { error: grantErr } = await sb.rpc('grant_guild_quest_completion', {
+          p_guild_id: guildId, p_quest_id: q.id, p_stage_id: q.id, p_period_key: String(year)
+        });
+        if(grantErr) logSilentError('Team-Ziel-Erfüllung verbuchen', grantErr);
+      }
+      results.push({ id:q.id, label:q.label, current: total, threshold: q.threshold, met });
+    }
+    return results;
+  }
+
+  // Bau-Fortschritt des Gilden-Gebäudes: reine Ableitung aus der Anzahl
+  // Zeilen in guild_quest_log für diese Gilde (nie gespeicherte Zahl,
+  // gleiches "derive statt speichern"-Prinzip wie XP/Level) -- akkumuliert
+  // bewusst über alle Jahre hinweg, resettet nie (Nutzer-Klarstellung
+  // 2026-08-19: "was sich nie resettet ist ... im Falle der Gilde die
+  // Entwicklung und der Bau des Gebäudes").
+  async function loadGuildBuildingProgress(guildId){
+    const { count, error } = await sb.from('guild_quest_log').select('id', {count:'exact', head:true}).eq('guild_id', guildId);
+    if(error){ logSilentError('Gebäude-Fortschritt laden', error); return null; }
+    const tiers = (config.guildBuilding && config.guildBuilding.tiers) || [];
+    let currentTier = null;
+    for(const t of tiers){ if(count >= t.partsRequired) currentTier = t; }
+    const nextTier = tiers.find(t => t.partsRequired > count) || null;
+    return { partsCollected: count, currentTier, nextTier, buildingName: config.guildBuilding ? config.guildBuilding.name : null };
+  }
+
   async function logAction(key){
     const a = config.actions[key];
     if(!a) return;
@@ -5720,24 +5797,91 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     });
   }
 
+  // Reiter Mitglieder/Freunde innerhalb der Gilden-Ansicht -- gleiches
+  // .view-switch-Muster wie überall sonst im Projekt. Nur einmalig
+  // verdrahtet (die Buttons selbst werden nie neu gerendert).
+  let guildAreaTabsWired = false;
+  function wireGuildAreaTabsOnce(){
+    if(guildAreaTabsWired) return;
+    guildAreaTabsWired = true;
+    document.querySelectorAll('#guildAreaTabs [data-tab]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        document.querySelectorAll('#guildAreaTabs [data-tab]').forEach(b=>b.classList.toggle('active', b===btn));
+        document.getElementById('guildTabMitglieder').style.display = btn.dataset.tab==='mitglieder' ? 'block' : 'none';
+        document.getElementById('guildTabFreunde').style.display = btn.dataset.tab==='freunde' ? 'block' : 'none';
+      });
+    });
+    document.querySelector('#guildAreaTabs [data-tab="mitglieder"]').classList.add('active');
+  }
+
   async function loadGuildState(){
     const { data: membership, error } = await sb.from('guild_members').select('*').eq('member_id', profile.id).maybeSingle();
     if(error) logSilentError('Gildenmitgliedschaft laden', error);
+    const friendCard = document.getElementById('friendCard');
     if(!membership){
       currentGuild = null;
+      document.getElementById('friendCardHome').appendChild(friendCard);
+      document.getElementById('guildNoGuildCard').style.display='block';
       document.getElementById('guildNoGuildView').style.display='block';
       document.getElementById('guildMemberView').style.display='none';
       document.getElementById('guildPickerCard').style.display='none';
       await renderJoinableGuilds();
       return;
     }
-    document.getElementById('guildNoGuildView').style.display='none';
+    wireGuildAreaTabsOnce();
+    document.getElementById('guildTabFreunde').appendChild(friendCard);
+    document.getElementById('guildNoGuildCard').style.display='none';
     document.getElementById('guildMemberView').style.display='block';
     const { data: guild, error: guildErr } = await sb.from('guilds').select('*').eq('id', membership.guild_id).maybeSingle();
     if(guildErr) logSilentError('Gilde laden', guildErr);
     currentGuild = guild;
     document.getElementById('guildAddBtn').style.display = (guild && guild.founder_id===profile.id) ? 'inline-block' : 'none';
-    if(guild) await renderGuildMembers(guild.id);
+    if(guild){
+      await renderGuildMembers(guild.id);
+      // Reihenfolge wichtig: Team-Ziele werden HIER geprüft/ggf. vergeben
+      // (loadAndEvaluateGuildTeamQuests ruft grant_guild_quest_completion
+      // auf) -- das Gebäude muss danach gerendert werden, sonst zeigt es
+      // bei genau der Erfüllungs-Runde noch den alten, veralteten Stand.
+      await renderGuildTeamQuests(guild.id);
+      await renderGuildBuilding(guild.id);
+    }
+  }
+
+  // Gebäude-Anzeige: bewusst nur ein einfacher Text-/Icon-Platzhalter
+  // (fertige Grafik ist ein eigener, viel späterer Schritt, siehe
+  // CLAUDE.md) -- zeigt aktuelle Baustufe + wie viele Teile bis zur
+  // nächsten Stufe fehlen.
+  async function renderGuildBuilding(guildId){
+    const wrap = document.getElementById('guildBuildingDisplay');
+    const progress = await loadGuildBuildingProgress(guildId);
+    if(!progress){ wrap.innerHTML = '<div class="empty-page-hint">Fehler beim Laden.</div>'; return; }
+    document.getElementById('guildBuildingTitle').textContent = progress.buildingName || 'Gebäude';
+    const tierHtml = progress.currentTier
+      ? `<div class="gb-current"><span style="font-size:38px;">${progress.currentTier.icon}</span> <strong>${escHtml(progress.currentTier.label)}</strong></div>`
+      : `<div class="empty-page-hint">Noch keine Baustufe erreicht.</div>`;
+    const nextHtml = progress.nextTier
+      ? `<div class="empty-page-hint" style="margin-top:8px;">${progress.nextTier.partsRequired - progress.partsCollected} Teil(e) bis ${escHtml(progress.nextTier.label)} ${progress.nextTier.icon}</div>`
+      : `<div class="empty-page-hint" style="margin-top:8px;">Höchste Baustufe erreicht.</div>`;
+    wrap.innerHTML = `${tierHtml}${nextHtml}<div class="empty-page-hint" style="margin-top:4px;">${progress.partsCollected} Bauteil(e) insgesamt gesammelt</div>`;
+  }
+
+  // Team-Ziele-Anzeige: prüft/vergibt bei jedem Aufruf (loadAndEvaluateGuildTeamQuests
+  // enthält die Vergabe-Logik) und zeigt den Fortschritt je Ziel als
+  // einfachen Balken -- gleiche Optik-Sprache wie die bestehenden
+  // KPI-Kacheln, nur schlanker.
+  async function renderGuildTeamQuests(guildId){
+    const wrap = document.getElementById('guildTeamQuestsList');
+    const results = await loadAndEvaluateGuildTeamQuests(guildId);
+    if(results.length===0){ wrap.innerHTML = '<div class="empty-page-hint">Keine Team-Ziele im Regelwerk hinterlegt.</div>'; return; }
+    wrap.innerHTML = results.map(r=>{
+      const pct = Math.min(100, Math.round((r.current / r.threshold) * 100));
+      return `<div class="gtq-row" style="margin-bottom:14px;">
+        <div class="cd-field"><span class="cdl">${r.met?'✅ ':''}${escHtml(r.label)}</span><span class="cdv">${fmtEuro(r.current)} / ${fmtEuro(r.threshold)}</span></div>
+        <div style="background:var(--panel-2);border-radius:var(--radius-pill);height:8px;overflow:hidden;margin-top:4px;">
+          <div style="width:${pct}%;height:100%;background:var(--arcane);"></div>
+        </div>
+      </div>`;
+    }).join('');
   }
 
   async function renderJoinableGuilds(){
