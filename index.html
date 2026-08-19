@@ -492,6 +492,10 @@
   .kanban-card .kc-meta{display:block;color:var(--muted-2);font-size:10.5px;font-family:'JetBrains Mono',monospace;margin-top:2px;}
   .kc-move-btn{display:none;position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--panel-2);color:var(--muted-2);font-size:12px;line-height:1;align-items:center;justify-content:center;cursor:pointer;}
   .kc-move-btn:hover, .kc-move-btn:active{border-color:var(--arcane);color:var(--text);}
+  .kanban-card.kanban-card-shared{cursor:default;border-style:dashed;padding-right:28px;}
+  .kanban-card-shared .kc-meta{color:var(--arcane-glow);}
+  .kc-decline-btn{display:flex;position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:var(--radius-sm);border:1px solid var(--border);background:var(--panel-2);color:var(--muted-2);font-size:12px;line-height:1;align-items:center;justify-content:center;cursor:pointer;}
+  .kc-decline-btn:hover, .kc-decline-btn:active{border-color:var(--danger);color:var(--danger);}
   .kanban-newlead-form{display:flex;flex-direction:column;gap:6px;margin-bottom:10px;}
   .kanban-newlead-form input, .kanban-newlead-form select, .kanban-newlead-form textarea{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-sm);padding:7px 9px;color:var(--text);font-size:12.5px;font-family:inherit;resize:vertical;}
   .kanban-newlead-form input:disabled{opacity:0.55;cursor:not-allowed;}
@@ -6964,18 +6968,67 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     // (Nutzerbestätigung 2026-08-19: real beobachtet) auch im eigenen Board
     // sichtbar UND ziehbar gewesen.
     bundle.contacts.forEach(c=>{ if(c.kanban_stage && c.owner_id===profile.id && grouped[c.kanban_stage]) grouped[c.kanban_stage].push(c); });
+
+    // Geteilte Karten: bewusste, gezielte Ausnahme vom "Kanban ist strikt
+    // persönlich"-Grundsatz -- Kontakte, für die eine angenommene
+    // Termin-Einladung existiert, tauchen zusätzlich schreibgeschützt in
+    // der Spalte auf, in der der Kontakt beim Organisator tatsächlich
+    // gerade steht (live über den Join gelesen, keine eigene Kopie des
+    // Status). Ohne Leserecht auf den Kontakt (z.B. Einladung nur über
+    // eine Freundschaft ohne gemeinsame Gilde) liefert der Join schlicht
+    // nichts -- kein Sonderfall im Code nötig, RLS regelt das von allein.
+    const { data: sharedInvites, error: sharedErr } = await sb.from('termin_invitations')
+      .select('id, contact:contact_id(id,name,kanban_stage,location_id), organizer:organizer_id(display_name,real_name)')
+      .eq('invited_user_id', profile.id).eq('status','angenommen').not('contact_id','is',null);
+    if(sharedErr) logSilentError('Geteilte Kanban-Karten laden', sharedErr);
+    const groupedShared = {};
+    KANBAN_STAGES.forEach(s=>groupedShared[s]=[]);
+    (sharedInvites||[]).forEach(inv=>{
+      if(inv.contact && inv.contact.kanban_stage && groupedShared[inv.contact.kanban_stage]) groupedShared[inv.contact.kanban_stage].push(inv);
+    });
+
     KANBAN_STAGES.forEach(stage=>{
       const list = grouped[stage];
-      document.getElementById('kanbanCount_'+stage).textContent = list.length;
-      document.getElementById('kanbanCards_'+stage).innerHTML = list.map(c=>`
+      const sharedList = groupedShared[stage];
+      document.getElementById('kanbanCount_'+stage).textContent = list.length + sharedList.length;
+      const ownHtml = list.map(c=>`
         <div class="kanban-card" draggable="true" data-contact="${c.id}" data-stage="${stage}">
           <button type="button" class="kc-move-btn" title="Verschieben">↕</button>
           <a class="kc-name" draggable="false" href="#kontakt/${c.id}">${escHtml(c.name)}</a>
           ${c.location_id ? `<span class="kc-meta">${escHtml(locName(bundle,c.location_id))}</span>` : ''}
         </div>`).join('');
+      const sharedHtml = sharedList.map(inv=>{
+        const organizerName = inv.organizer ? escHtml(inv.organizer.real_name || inv.organizer.display_name) : '?';
+        return `
+        <div class="kanban-card kanban-card-shared" data-invitation="${inv.id}">
+          <button type="button" class="kc-decline-btn" title="Termin absagen">✕</button>
+          <a class="kc-name" href="#kontakt/${inv.contact.id}">${escHtml(inv.contact.name)}</a>
+          <span class="kc-meta">👥 geteilt von ${organizerName}</span>
+        </div>`;
+      }).join('');
+      document.getElementById('kanbanCards_'+stage).innerHTML = ownHtml + sharedHtml;
     });
     wireKanbanDragAndDrop();
+    wireKanbanSharedCards();
     initScrollFade(document.getElementById('kanbanBoard'));
+  }
+
+  // Absagen-Knopf auf einer geteilten Kanban-Karte -- ruft dieselbe
+  // Ablehnen-Funktion wie im Kalender auf (respond_to_termin_invitation),
+  // damit Kalendereintrag und Kanban-Spiegelkarte immer im selben Zug
+  // verschwinden, egal von wo aus abgesagt wird.
+  function wireKanbanSharedCards(){
+    document.querySelectorAll('#kanbanBoard .kc-decline-btn').forEach(btn=>{
+      btn.addEventListener('click', async (e)=>{
+        e.preventDefault();
+        e.stopPropagation();
+        const card = btn.closest('[data-invitation]');
+        btn.disabled = true;
+        const { error } = await sb.rpc('respond_to_termin_invitation', { p_invitation_id: card.dataset.invitation, p_accept: false });
+        if(error){ logSilentError('Termin über Kanban absagen', error); btn.disabled = false; return; }
+        await renderKanbanBoard();
+      });
+    });
   }
 
   // Kurzvorschau: Termin-Zeitraum kommt aus termine (nicht Teil des
@@ -7167,7 +7220,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   function wireKanbanDragAndDrop(){
-    document.querySelectorAll('#kanbanBoard .kanban-card').forEach(card=>{
+    // .kanban-card-shared bewusst ausgeschlossen -- geteilte Karten haben
+    // weder .kc-move-btn noch sind sie ziehbar/per Klick zur Kurzvorschau
+    // zu öffnen (siehe wireKanbanSharedCards()).
+    document.querySelectorAll('#kanbanBoard .kanban-card:not(.kanban-card-shared)').forEach(card=>{
       card.addEventListener('dragstart', ()=>{
         card.classList.add('dragging');
         card.dataset.dragging = '1';
