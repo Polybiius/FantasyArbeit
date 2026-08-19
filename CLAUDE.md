@@ -207,6 +207,16 @@ sondern auf genau diese Auslöser warten:
   Logik automatisch statt von Hand pro Kunde befüllen) ist **explizit
   eine spätere, eigene Aufgabe**, kein Teil dieser Schwelle — Details/
   Kontext in `project_business_fahrplan`, Einträge 2026-08-17.
+  **Konzept-Skizze vom Nutzer, 2026-08-18, noch nicht gebaut:** wer sich
+  registriert, landet zunächst in einem organisationslosen Gesamt-Pool
+  aller angemeldeten Nutzer (nicht automatisch `DEFAULT_ORG_ID`, wie es
+  der Code heute noch macht). Der Nutzer (als Organisationsinhaber)
+  durchsucht diesen Pool und lädt einen erkannten Kollegen gezielt in
+  seine Organisation ein. Alternative für später: ein QR-Code, den ein
+  Mitarbeiter abfotografiert und dadurch direkt der richtigen
+  Organisation zugeordnet wird, ohne Pool-Suche. Beides nur Konzept,
+  keine Migration/kein Code dafür — relevant für den Tag, an dem diese
+  Schwelle tatsächlich erreicht wird.
 - **Rate Limiting:** sobald eine Organisation außerhalb der eigenen
   echten Zugriff bekommt (fremde Nutzer, potenziell missbräuchlich oder
   durch schieres Volumen andere Organisationen beeinträchtigend).
@@ -3396,6 +3406,58 @@ per Playwright gegen den echten Account verifiziert (Input-Styling,
 Feld-Reihenfolge in der Kanban-Vorschau, Einladungskarte bleibt
 korrekt verborgen ohne offene Einladung).
 
+## Kanban ist strikt die eigene Vertriebspipe, kein Gilden-Blick (2026-08-19)
+
+Echter, live beobachteter Bug, gefunden beim Durchsprechen der geplanten
+Termin-Einladung↔Kanban-Verknüpfung (siehe nächster Abschnitt): `renderKanbanBoard()`
+nutzte dieselbe ungefilterte `loadContactsBundle()`-Abfrage wie die
+Kontakte-Seite — für die Kontakte-Seite richtig (gemeinsame, gilden-geteilte
+Kundendatenbank ist dort ausdrücklich gewollt), fürs Kanban-Board fehlte
+aber seit jeher die Eigentümer-Einschränkung. Per direkter SQL-Abfrage
+gegen die echte DB bestätigt: ein eigener Kontakt mit gesetzter
+`kanban_stage` UND `write`-Gildenfreigabe tauchte dadurch bereits echt auf
+dem Kanban-Board eines Gilden-Kollegen mit auf, inklusive Zieh-/
+Verschieben-Möglichkeit im UI (serverseitig hätte `contacts_update_visible`
+zwar sowieso nur bei `write`-Freigabe erlaubt geschrieben zu werden — bei
+`read`-Freigabe wäre der Versuch RLS-blockiert, aber als wortloser
+Fehlschlag sichtbar gewesen).
+
+**Nutzerklärung des zugrunde liegenden Modells, "bottom up":** das Kanban
+ist immer die **persönliche** Vertriebspipe jedes einzelnen Mitarbeiters —
+auch innerhalb einer gemeinsamen Gilde, auch für Admins, keine Ausnahme.
+Die **Kontakte-Seite** (Kundendatenbank) bleibt dagegen bewusst
+gilden-geteilt wie bisher — Zweck dieser Trennung: beim Akquirieren
+abgleichen können, ob ein Interessent schon bei einem Kollegen im System
+steht (Dubletten-Vermeidung), ohne dass die eigene Pipeline-Ansicht mit
+fremden Karten zugemüllt wird. Jeder Kontakt bleibt dabei erkennbar seinem
+Eigentümer zugeordnet (unverändert, war schon vorher so).
+
+**Fix**, rein im Frontend (`index.html`, `renderKanbanBoard()`): die
+Gruppierung in die 8 Kanban-Spalten filtert jetzt zusätzlich auf
+`c.owner_id === profile.id`, ohne Ausnahme für Admins. Keine Datenbank-/
+RLS-Änderung nötig — die zugrunde liegende Sichtbarkeit der Kontaktdaten
+selbst soll ja weiterhin geteilt bleiben, nur die Kanban-**Ansicht** grenzt
+jetzt zusätzlich ein. Per Playwright gegen den echten Admin-Account
+verifiziert: Board zeigt weiterhin exakt die eigene Karte, keine
+Konsolenfehler (kein Testaccount für die Gegenprobe "Kollege sieht die
+fremde Karte jetzt nicht mehr" verfügbar — dafür reicht aber schon die
+direkte SQL-Bestätigung des vorherigen Lecks plus die triviale
+Filterbedingung).
+
+**Direkter Folgeauftrag, noch nicht gebaut:** die ursprünglich angedachte
+Termin-Einladung↔Kanban-Spiegelung (Eingeladener sieht/bearbeitet eine
+schreibgeschützte Kanban-Karte für den verknüpften Kontakt, kann von dort
+absagen, Organisator bekommt dieselbe Benachrichtigung wie bei einer
+Kalender-Absage — Punkte/Vertriebsstatistik bleiben ausschließlich beim
+Organisator, der Eingeladene ist zum Mitlernen/gemeinsamen Gildenziel
+dabei) muss durch diese Klarstellung neu gedacht werden: da das Kanban
+jetzt (richtigerweise) strikt persönlich ist, kann sich eine Einladung
+NICHT mehr einfach "for free" über die bestehende Gilden-Kontaktfreigabe
+zeigen — es bräuchte eine echte, gezielte Ausnahme (genau eine Karte,
+schreibgeschützt, erkennbar als "über Einladung geteilt") statt der
+vorher (fälschlich) angenommenen automatischen Sichtbarkeit. Noch nicht
+begonnen, erst beim nächsten Anstoß weiterdenken.
+
 ## Bekannte, bewusst in Kauf genommene Lücken
 
 - ~~"Zuletzt kontaktiert"/Kontakt-Chronik zeigen nur eigene Einträge~~ —
@@ -3403,6 +3465,20 @@ korrekt verborgen ohne offene Einladung).
   Sichtbarkeit folgt der Kontakt-Freigabe". "Zuletzt kontaktiert (von
   dir)" bleibt bewusst weiterhin eigentümerbezogen (so gekennzeichnet).
 - Level-Kurve basiert auf geschätzten, nicht gemessenen Aktivitätswerten.
+- ~~Zwei kleine Unschärfen bei den Termin-Einladungen~~ — **behoben,
+  2026-08-19, Migration `20260819120000_termin_einladungen_robustheit.sql`.**
+  Vor dem Push mit echten Nicht-Admin-Testprofilen (nicht dem eigenen
+  Admin-Account — der erste Testlauf hatte fälschlich den Admin-Bypass
+  mitgetestet und dadurch nichts bewiesen) in einer `begin`/`rollback`-
+  Transaktion verifiziert: Organisator sieht seine stornierte Einladung
+  jetzt über `organizer_id`, direktes Löschen der Einladungs-Kopie durch
+  den Eingeladenen ist jetzt RLS-blockiert (nur noch über
+  `respond_to_termin_invitation()` möglich), eigene normale Termine bleiben
+  normal löschbar (keine Regression). Die vom Nutzer zusätzlich vermutete
+  dritte Unschärfe (offene, noch nicht angenommene Einladung "verschwindet"
+  beim Empfänger, wenn der Organisator den Termin löscht) war beim
+  Nachtesten **kein Bug** — funktionierte bereits korrekt (Status wechselt
+  sichtbar auf "storniert").
 - Kein automatisiertes Testen — der Nutzer testet manuell selbst
   (Safari/iPhone + Brave/Desktop). **Team ist inzwischen auf 7 echte
   Profile gewachsen** (Stand 2026-08-15, per SQL bestätigt — ursprünglich
