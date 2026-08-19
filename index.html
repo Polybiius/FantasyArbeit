@@ -6955,7 +6955,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     // Nur Kontakte mit einer echten Kanban-Stufe zeigen — in der Datenbank zu
     // stehen bedeutet nicht automatisch, Teil der Pipeline zu sein. Ein Kontakt
     // landet hier nur über einen der bewusst dafür gebauten Wege.
-    bundle.contacts.forEach(c=>{ if(c.kanban_stage && grouped[c.kanban_stage]) grouped[c.kanban_stage].push(c); });
+    // Zusätzlich strikt auf die eigenen Kontakte beschränkt (auch für Admins,
+    // keine Ausnahme) -- das Kanban ist die persönliche Vertriebspipe jedes
+    // Mitarbeiters, anders als die Kontakte-Seite selbst, die bewusst die
+    // ganze (gilden-)geteilte Kundendatenbank zeigt. loadContactsBundle()
+    // liefert wegen dieser Gilden-Freigabe auch fremde Kontakte zurück --
+    // ohne diesen Filter wäre eine geteilte, im Kanban stehende Kollegen-Karte
+    // (Nutzerbestätigung 2026-08-19: real beobachtet) auch im eigenen Board
+    // sichtbar UND ziehbar gewesen.
+    bundle.contacts.forEach(c=>{ if(c.kanban_stage && c.owner_id===profile.id && grouped[c.kanban_stage]) grouped[c.kanban_stage].push(c); });
     KANBAN_STAGES.forEach(stage=>{
       const list = grouped[stage];
       document.getElementById('kanbanCount_'+stage).textContent = list.length;
