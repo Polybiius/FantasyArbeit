@@ -3501,6 +3501,73 @@ korrekt mit Organisator-Namen, nicht ziehbar, "Termin absagen" entfernt
 Kalendereintrag UND Karte im selben Zug, keine Konsolenfehler, 0
 Testdaten-Reste danach bestätigt.
 
+## Gildenleben: Team-Ziele + Gilden-Gebäude, Fundament (2026-08-19)
+
+Löst den seit dem 2026-08-17 als nächsten Einstieg bestätigten
+"Gildenleben"-Quest-Typ (siehe `project-roadmap-prioritaeten`) — nach
+ausführlicher Konzept-Diskussion mit dem Nutzer (siehe
+[[project_gildenleben_konzept]] in Claudes Erinnerung für die Langfassung),
+bewusst nur der **erste** von mehreren Bauschritten: die Datenbank-Seite.
+Regelwerk-Beispieldaten, die Frontend-Auswertungslogik und der Gilde-
+Seiten-Umbau (Gebäude-Grafik oben, Reiter Mitglieder/Freunde, Team-Ziele-
+Bereich darunter — siehe eigener Diskussions-Abschnitt in der Erinnerung)
+folgen als eigene, noch nicht begonnene nächste Schritte.
+
+**Kernidee, mit dem Nutzer abgestimmt:** die Gilde bekommt eigene,
+verkaufsbasierte **Jahres-Team-Ziele** (mehrere gleichzeitig, je Sparte —
+"nicht das eine tun ohne das andere zu lassen", z.B. Kranken UND Leben UND
+Sach parallel). Erfüllung schaltet **kein XP, keinen Titel** frei, sondern
+ein Bauteil eines gemeinsamen, gilden-eigenen "Gebäudes" (Schloss/Tempel/
+o.ä. — Optik kommt als eigener, viel späterer Schritt, vergleichbar mit
+dem Charakter-Sprite-System, aktuell komplett ungebaut). **Wichtige
+Klarstellung des Nutzers, die die Architektur bestimmt:** der jährliche
+Reset betrifft nur, welche Verkäufe für die *nächste offene* Stufe zählen
+— der Bau-Fortschritt selbst wird **nie** zurückgesetzt, akkumuliert über
+die ganzen 10 Jahre hinweg, exakt wie das individuelle Charakter-Level nie
+zurückgesetzt wird. Zielwerte leben vorerst von Hand im Regelwerk
+(gleiches Muster wie der restliche Questbaum) — eine echte
+Self-Service-Oberfläche für Gildenführer kommt laut Nutzer bewusst erst
+mit der großen, noch nicht angegangenen Automatisierung ("erst das
+Programm so groß wie möglich schreiben, bevor wir abstrahieren").
+
+**Migration `20260819180000_gildenleben_teamziele_fundament.sql`, live:**
+- **`guild_quest_log`** — reines Anhänge-Protokoll, gleiches Prinzip wie
+  `action_log`: nichts wird als Zahl gespeichert, jede erfüllte
+  Team-Ziel-Stufe trägt sich als eine Zeile ein (`guild_id`, `quest_id`,
+  `stage_id`, `period_key` für das Jahr). Der Bau-Fortschritt eines
+  Gebäudes ist beim Anzeigen immer nur "wie viele Zeilen stehen für diese
+  Gilde im Protokoll" — nie eine gespeicherte Zahl. Unique-Key umfasst
+  bewusst `period_key` mit: dieselbe Stufe ist über mehrere Jahre hinweg
+  mehrfach erreichbar (Jahresziel-Prinzip wie beim individuellen
+  Questbaum seit Patch 50), nur nicht zweimal im selben Jahr. Sichtbar für
+  alle Mitglieder der jeweiligen Gilde + Admins, kein direktes
+  Insert/Update/Delete für Clients.
+- **`guild_sales_metric_total(guild_id, field, category, year)`** —
+  `SECURITY DEFINER`-Aggregat-Funktion (gleiches Schutzprinzip wie
+  `friend_skill_totals()`), liefert nur eine Summe zurück, nie
+  Einzelverkäufe. Nötig, weil normale `sales`-RLS nicht automatisch alle
+  Verkäufe aller Gildenmitglieder zeigt (nur über zufällig geteilte
+  Kontakte) — ein Team-Ziel braucht aber die echte Summe über alle
+  Mitglieder. `field` ist auf eine feste Erlaubnisliste
+  (`bewertungssumme`/`laufender_beitrag`) geprüft, kein freier Spaltenname
+  vom Client. `category` filtert optional auf eine Produktkategorie
+  (NULL = alle zusammen). Zeitraum wie auf der persönlichen
+  Statistik-Seite: `vertragsbeginn`, Fallback `datum`.
+- **`grant_guild_quest_completion(guild_id, quest_id, stage_id, period_key)`**
+  — trägt eine erfüllte Stufe ins Protokoll ein, Duplikat-geschützt über
+  den Unique-Key (`on conflict do nothing`, Rückgabewert zeigt an, ob
+  wirklich neu vergeben wurde). Aufrufbar von jedem Mitglied der
+  betroffenen Gilde — die eigentliche Schwellenwert-Prüfung passiert
+  weiterhin im Frontend (gleiches Muster wie bei den bestehenden
+  persönlichen Quest-Prüfungen), diese Funktion verhindert nur doppeltes
+  Eintragen.
+
+Vorab per `begin`/`rollback`-Wrapper mit echten Profilen gegen die echte
+DB getestet (Summenbildung über einen echten Testverkauf bestätigt,
+Duplikat-Schutz bestätigt, ein gildenfremdes Profil sowohl von der
+Summenabfrage als auch von der Vergabe zuverlässig ausgeschlossen), danach
+per Nutzer-Go gepusht.
+
 ## Bekannte, bewusst in Kauf genommene Lücken
 
 - ~~"Zuletzt kontaktiert"/Kontakt-Chronik zeigen nur eigene Einträge~~ —
