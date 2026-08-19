@@ -3568,6 +3568,71 @@ Duplikat-Schutz bestätigt, ein gildenfremdes Profil sowohl von der
 Summenabfrage als auch von der Vergabe zuverlässig ausgeschlossen), danach
 per Nutzer-Go gepusht.
 
+**Schritte 2-4, noch am selben Abend, alle vier Schritte des Konzepts
+damit fertig:**
+
+- **Schritt 2** (Migration `20260819200000_gildenleben_teamziele_beispiele.sql`):
+  zwei neue Top-Level-Schlüssel additiv ins bestehende `rule_configs.config`
+  gemerged (bestehender Inhalt unangetastet). `guildTeamQuests` — die
+  Team-Ziele selbst, bewusst flach (kein `stages`-Array wie beim
+  individuellen Ladder-Typ, `stage_id` = `quest_id`, gleiche Konvention
+  wie bei Epics). Zwei Beispiel-Ziele, **explizit als Testwerte markiert,
+  kein echtes Geschäftsziel** — es gab beim Schreiben noch keine einzige
+  eingetragene individuelle Planung (`profiles.planung_*` komplett leer,
+  vorher geprüft), daher keine "×10"-Ableitung aus echten Werten möglich,
+  nur runde Platzhalter. `guildBuilding` — das Bau-Rezept (4 Stufen von
+  "Kleine Hütte" bis "Festung", reine Text-/Emoji-Platzhalter, keine
+  echte Grafik).
+- **Schritt 3**: zwei neue Frontend-Funktionen neben den bestehenden
+  Quest-Check-Funktionen (`checkAndAwardEpics()` & Co.).
+  `loadAndEvaluateGuildTeamQuests(guildId)` prüft UND vergibt in einem
+  Rutsch (ruft `guild_sales_metric_total()`, bei Erfüllung
+  `grant_guild_quest_completion()`), gibt anzeigefertige Daten zurück.
+  `loadGuildBuildingProgress(guildId)` leitet den Bau-Stand rein aus der
+  Zeilenzahl von `guild_quest_log` für diese Gilde ab (nie eine
+  gespeicherte Zahl, gleiches Prinzip wie XP/Level).
+- **Schritt 4**: Gilde-Seite (Orden/Legion/Bund) umgebaut wie mit dem
+  Nutzer abgestimmt — Gebäude-Karte oben (Platzhalter-Optik: Icon +
+  Titel + "X Teile bis zur nächsten Stufe"), darunter Reiter
+  Mitglieder/Freunde (`.view-switch`-Muster), darunter Team-Ziele mit
+  Fortschrittsbalken. **Wichtige Randbedingung, vom Nutzer bestätigt:**
+  "die Seite kann so bleiben wie heute" für alle, die noch in keiner
+  Gilde sind (5 von 7 echten Profilen aktuell) — Freunde bleibt für sie
+  eine eigene, immer sichtbare Karte, exakt wie bisher. Technisch gelöst,
+  ohne die Freunde-Logik zu duplizieren: die Freunde-Karte
+  (`#friendCard`) ist ein einziges DOM-Element, das `loadGuildState()`
+  per `appendChild()` zwischen zwei Ankerpunkten hin- und herschiebt —
+  `#friendCardHome` (Standardposition, kein-Gilde-Fall) und
+  `#guildTabFreunde` (Reiter-Inhalt, in-Gilde-Fall). `appendChild()`
+  verschiebt ein bereits vorhandenes Element inklusive aller
+  Event-Listener, keine Neuerzeugung nötig. Verlässt man die Gilde,
+  landet die Karte automatisch wieder an ihrem Stammplatz.
+  **Reihenfolge-Bug beim ersten Testlauf gefunden und behoben:** die
+  Gebäude-Anzeige wurde vor der Team-Ziele-Auswertung gerendert — bei
+  genau der Erfüllungs-Runde eines Ziels zeigte das Gebäude deshalb noch
+  den alten Stand (der neue Protokoll-Eintrag existierte zu dem
+  Zeitpunkt noch nicht). Reihenfolge in `loadGuildState()` korrigiert:
+  erst `renderGuildTeamQuests()` (prüft/vergibt), dann erst
+  `renderGuildBuilding()` (liest den ggf. gerade neuen Stand).
+
+End-to-end per Playwright gegen den echten Account verifiziert: Gebäude-/
+Reiter-/Team-Ziele-Anzeige korrekt, Reiter-Umschaltung funktioniert,
+Freunde-Karte landet korrekt im Reiter. Danach ein echter, großer
+Test-Verkauf eingefügt (Lebensversicherung, 600.000 € BWS) — Team-Ziel
+schaltete korrekt auf ✅, Gebäude sprang korrekt auf "Kleine Hütte",
+wiederholtes Neuladen erzeugte keinen zweiten Protokoll-Eintrag
+(Duplikat-Schutz bestätigt). Test-Verkauf, -Kontakt, -Produkt und der
+dadurch entstandene Protokoll-Eintrag danach vollständig entfernt, Seite
+zeigt wieder exakt den Ausgangszustand.
+
+**Damit ist die komplette, ausführlich mit dem Nutzer besprochene
+Konzeptreihe zum Gildenleben-Team-Ziele-Fundament (alle 4 Schritte)
+fertig.** Details/Diskussionsverlauf in Claudes Erinnerung
+(`project_gildenleben_konzept`). Bewusst noch nicht angegangen: die
+echte Gebäude-Grafik (Platzhalter bleibt bis auf Weiteres), eine
+Self-Service-Oberfläche für Gildenführer (kommt laut Nutzer erst mit der
+großen Automatisierung).
+
 ## Bekannte, bewusst in Kauf genommene Lücken
 
 - ~~"Zuletzt kontaktiert"/Kontakt-Chronik zeigen nur eigene Einträge~~ —
