@@ -3455,8 +3455,51 @@ jetzt (richtigerweise) strikt persönlich ist, kann sich eine Einladung
 NICHT mehr einfach "for free" über die bestehende Gilden-Kontaktfreigabe
 zeigen — es bräuchte eine echte, gezielte Ausnahme (genau eine Karte,
 schreibgeschützt, erkennbar als "über Einladung geteilt") statt der
-vorher (fälschlich) angenommenen automatischen Sichtbarkeit. Noch nicht
-begonnen, erst beim nächsten Anstoß weiterdenken.
+vorher (fälschlich) angenommenen automatischen Sichtbarkeit.
+
+**Fertig gebaut, noch am selben Tag (2026-08-19):** genau diese gezielte
+Ausnahme. `contact_id` wird jetzt bei Termin-Einladungen als weiteres
+Schattenfeld auf `termin_invitations` mitgeführt (gleiche Technik wie
+`title`/`start_at`/`kanal`/`organizer_id`, Migration
+`20260819150000_termin_einladung_kanban_spiegel.sql`) und bei Annahme auf
+die Kalenderkopie des Eingeladenen übertragen. Hat der eingeladene Termin
+einen Kontaktbezug, zeigt `renderKanbanBoard()` zusätzlich zu den eigenen
+Karten einen zweiten, schreibgeschützten Kartensatz (`.kanban-card-shared`,
+gestrichelter Rand, kein Zieh-Griff, kein Verschieben-Knopf) für jeden
+Kontakt aus einer angenommenen Einladung — live in der Spalte, in der der
+Kontakt beim Organisator tatsächlich gerade steht (derselbe
+`kanban_stage`-Wert, keine eigene Kopie des Status). Statt des
+Verschieben-Knopfs ein `.kc-decline-btn` ("Termin absagen"), der dieselbe
+`respond_to_termin_invitation()`-Funktion aufruft wie im Kalender —
+Kalendereintrag UND Kanban-Spiegelkarte verschwinden dabei im selben Zug.
+Hat der Eingeladene keinen Lesezugriff auf den Kontakt (z.B. Einladung nur
+über eine Freundschaft ohne gemeinsame Gilde), liefert der Datenbank-Join
+schlicht nichts zurück — kein Sonderfall im Code, RLS regelt das von
+allein (per Testlauf mit einer reinen Freundschaft ohne Gildenfreigabe
+bestätigt: kein Zugriff, keine Karte). XP/Vertriebsstatistik bleiben
+unverändert ausschließlich beim Organisator, die Spiegelkarte selbst löst
+nie eine Aktion aus.
+
+**Dabei ein echter, vorbestehender Bug gefunden und behoben** (Migration
+`20260819160000_termin_einladung_absage_nach_annahme_fix.sql`):
+`respond_to_termin_invitation()` erlaubte eine Antwort nur noch, solange
+`status='offen'` war — das blockierte nicht nur den neuen
+"Termin absagen"-Knopf, sondern denselben, schon länger bestehenden
+"Aus meinem Kalender entfernen"-Weg im Kalender selbst (beide rufen die
+Funktion mit `p_accept=false` auf einer bereits `status='angenommen'`-
+Einladung auf) — vermutlich nie mit einer wirklich schon angenommenen
+Einladung durchgetestet. Fix: Annehmen bleibt nur aus `'offen'` möglich,
+Ablehnen jetzt sowohl aus `'offen'` als auch nachträglich aus
+`'angenommen'`.
+
+Beide Migrationen vorab per `begin`/`rollback`-Wrapper mit echten
+Nicht-Admin-Testprofilen verifiziert, danach per Nutzer-Go gepusht.
+Zusätzlich ein echter Ende-zu-Ende-Test mit Playwright gegen den echten
+Account (testweise reale Einladung zwischen zwei echten Profilen
+aufgebaut, danach vollständig wieder entfernt): Spiegelkarte erscheint
+korrekt mit Organisator-Namen, nicht ziehbar, "Termin absagen" entfernt
+Kalendereintrag UND Karte im selben Zug, keine Konsolenfehler, 0
+Testdaten-Reste danach bestätigt.
 
 ## Bekannte, bewusst in Kauf genommene Lücken
 
