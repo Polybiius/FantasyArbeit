@@ -3633,6 +3633,23 @@ echte Gebäude-Grafik (Platzhalter bleibt bis auf Weiteres), eine
 Self-Service-Oberfläche für Gildenführer (kommt laut Nutzer erst mit der
 großen Automatisierung).
 
+**Direkt im Anschluss noch am selben Abend gefunden, NICHT mehr gebaut
+(nächste Session zuerst hiermit weitermachen):** die "+ hinzufügen"/
+"Gilde verlassen"-Aktionsleiste sitzt aktuell noch OBERHALB des
+Mitglieder/Freunde-Reiters, wirkt für beide Reiter gleichermaßen gültig —
+verwirrend, weil "hinzufügen" im Mitglieder-Kontext (nur Gildenführer)
+etwas anderes meint als "hinzufügen" im Freunde-Kontext (das dort schon
+existierende Freunde-Suchfeld, für jeden sichtbar). Nutzerwunsch: Reiter
+zuerst ganz oben, "+ hinzufügen"/"Gilde verlassen" **innerhalb** des
+Mitglieder-Reiters (unter dem Reiter-Umschalter, nicht mehr geteilt über
+beide Reiter) — das Freunde-Suchfeld steckt dank der `#friendCard`-
+appendChild-Verschiebung ohnehin schon automatisch im Freunde-Reiter,
+dort ist nichts zu ändern. Rein strukturelle HTML-Verschiebung
+(`#guildAddBtn`/`#guildLeaveBtn` von vor `#guildAreaTabs` nach innerhalb
+von `#guildTabMitglieder`), keine neue Logik nötig — Ansatzstelle in
+`index.html` ist der `<div class="guild-actions-row">`-Block direkt vor
+`<div class="view-switch" id="guildAreaTabs">`.
+
 ## Bekannte, bewusst in Kauf genommene Lücken
 
 - ~~"Zuletzt kontaktiert"/Kontakt-Chronik zeigen nur eigene Einträge~~ —
