@@ -116,6 +116,15 @@ begründen (Business/Motivation-Engine-Trennung, PvE, Gilden-Größe, SDT).
   RLS-Testmuster mit `supabase db query --linked`. Aufruf: vorher
   `python3 -m http.server <port>` im Repo-Ordner starten, dann
   `node regression_suite.mjs <port>`.
+  **Geplante Erweiterung, angestoßen 2026-08-20, noch NICHT umgesetzt:**
+  Nutzerfrage "hast du alle Funktionen getestet, oder nur die von heute"
+  machte den aktuellen Umfang (nur die drei o.g. Kernpfade) sichtbar zu
+  schmal, besonders wenn eine Änderung an zentralen, überall
+  mitgenutzten Stellen ansetzt (z.B. `showPage()`/`routeToHash()`/
+  `initJournal()`, wie beim Aufgaben-System-Umbau am selben Tag). Nutzer
+  möchte die Suite künftig auf die ganze App ausweiten, nicht nur die
+  drei bisherigen Pfade — noch kein konkreter Umsetzungsplan, nur als
+  Vorhaben vermerkt.
 - **Lokales Öffnen von HTML-Dateien beim Nutzer** (seit 2026-08-02): Brave
   läuft bei ihm sandboxed (vermutlich Flatpak) — ein direkter `file://`-Zugriff
   auf den Projektordner schlägt fehl (`ERR_FILE_NOT_FOUND`), und Dateien über
