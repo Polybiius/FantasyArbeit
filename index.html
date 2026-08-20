@@ -8360,14 +8360,27 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const { error } = await sb.from('profiles').update({ [entry.field]: newVal }).eq('id', profile.id);
     if(error){ el.checked = oldVal; reportError('Einstellung speichern', error); return; }
     profile[entry.field] = newVal;
-    if(entry.field==='calendar_hide_weekends' || entry.field==='calendar_show_birthdays') renderCalTasksNow();
+    if(entry.field==='calendar_hide_weekends' || entry.field==='calendar_show_birthdays'){
+      // calendar_show_birthdays wirkt sich auch auf die echten
+      // Geburtstags-Aufgaben aus (nicht nur die alten Kalender-Punkte) --
+      // syncBirthdayTasksIfNeeded() läuft sonst nur einmal pro Kalendertag
+      // (tasks_synced_date-Wächter), das würde ein sofortiges Umschalten
+      // erst am nächsten Tag sichtbar machen. tasks_synced_date lokal
+      // zurücksetzen erzwingt einen sofortigen Re-Sync passend zum neuen
+      // Wert.
+      if(entry.field==='calendar_show_birthdays'){ profile.tasks_synced_date = null; await syncBirthdayTasksIfNeeded(); }
+      renderCalTasksNow();
+    }
     settingsBumpModifiedBadge(entry.group);
     settingsShowToast(`${entry.label} ${newVal?'aktiviert':'deaktiviert'}`, async ()=>{
       el.checked = oldVal;
       const { error: undoErr } = await sb.from('profiles').update({ [entry.field]: oldVal }).eq('id', profile.id);
       if(undoErr){ reportError('Rückgängig machen', undoErr); return; }
       profile[entry.field] = oldVal;
-      if(entry.field==='calendar_hide_weekends' || entry.field==='calendar_show_birthdays') renderCalTasksNow();
+      if(entry.field==='calendar_hide_weekends' || entry.field==='calendar_show_birthdays'){
+        if(entry.field==='calendar_show_birthdays'){ profile.tasks_synced_date = null; await syncBirthdayTasksIfNeeded(); }
+        renderCalTasksNow();
+      }
     });
   }
 
