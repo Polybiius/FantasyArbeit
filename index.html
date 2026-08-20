@@ -638,6 +638,34 @@
   .week-event .we-time{display:block;font-family:'JetBrains Mono',monospace;font-size:9px;opacity:0.85;white-space:nowrap;overflow:hidden;}
   .week-event .we-organizer{display:block;font-size:8.5px;opacity:0.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .week-event-delegated{background:var(--panel-2);border:1px dashed var(--muted);}
+
+  /* Tag-Reiter: Kalender links etwas breiter, Aufgaben rechts schmaler --
+     unter 760px (gleiche Schwelle wie beim Kanban-Umbau) stapeln sich beide
+     Spalten stattdessen übereinander. */
+  .day-view-grid{display:grid;grid-template-columns:65% 1fr;gap:16px;align-items:start;}
+  /* min-width:0 ist hier Pflicht, nicht Kosmetik: .week-body (wiederverwendet
+     aus der Wochenansicht) hat eine feste min-width:550px, die als
+     Grid-Item sonst die 65%-Spalte sprengt statt sich unterzuordnen --
+     Grid-Items sind ohne diese Zeile per Default "min-width:auto" und
+     respektieren ihre eigene Inhaltsbreite vor der Spaltenbreite. */
+  .day-view-cal-col{min-width:0;}
+  .day-view-tasks-col{border:1px solid var(--border);border-radius:var(--radius-md);padding:12px;max-height:600px;overflow-y:auto;min-width:0;}
+  @media (max-width:760px){
+    .day-view-grid{grid-template-columns:1fr;}
+  }
+  .task-add-row{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;}
+  .task-add-row input[type="text"]{flex:1;min-width:120px;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);padding:7px 9px;font-size:12.5px;}
+  .task-add-row input[type="date"]{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);padding:6px 8px;font-size:12px;}
+  .task-section-label{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--muted-2);text-transform:uppercase;letter-spacing:.05em;margin:12px 0 6px;}
+  .task-section-label:first-child{margin-top:0;}
+  .task-row{display:flex;align-items:center;gap:8px;padding:7px 2px;border-bottom:1px solid var(--border);}
+  .task-row:last-child{border-bottom:none;}
+  .task-row input[type="checkbox"]{width:16px;height:16px;accent-color:var(--arcane);flex:0 0 auto;cursor:pointer;}
+  .task-row .task-title{flex:1;font-size:12.5px;overflow-wrap:anywhere;}
+  .task-row .task-due{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--muted);white-space:nowrap;}
+  .task-row.overdue .task-title,.task-row.overdue .task-due{color:var(--danger);}
+  .task-row .task-contact-icon{opacity:.8;}
+  .task-empty-hint{color:var(--muted-2);font-style:italic;font-size:12px;}
   .cal-preview{margin-top:16px;border-top:1px solid var(--border);padding-top:14px;font-size:12.5px;color:var(--text);display:none;}
   .cal-preview.show{display:block;}
   .cal-preview h3{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted-2);text-transform:uppercase;letter-spacing:.05em;margin:0 0 10px;}
@@ -1321,6 +1349,7 @@
           <div class="view-switch">
             <button class="cal-nav-btn view-switch-btn active" id="calViewMonthBtn">Monat</button>
             <button class="cal-nav-btn view-switch-btn" id="calViewWeekBtn">Woche</button>
+            <button class="cal-nav-btn view-switch-btn" id="calViewDayBtn">Tag</button>
           </div>
           <div class="cal-nav">
             <button class="cal-nav-btn" id="calPrevBtn">‹ zurück</button>
@@ -1345,6 +1374,31 @@
               <div class="week-body" id="weekBody">
                 <div class="week-time-col" id="weekTimeCol"></div>
                 <div class="week-days" id="weekDays"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tag-Reiter: Outlook-Tagesansicht, links Kalender (dieselbe
+          Zeitraster-Technik wie die Wochenansicht, nur ein Tag), rechts die
+          echten, abhakbaren Aufgaben. Erreichbar über den Reiter oben,
+          zusätzlich per Doppelklick auf einen Tag in Monats-/Wochenansicht. -->
+          <div id="calDayView" style="display:none;">
+            <div class="day-view-grid">
+              <div class="day-view-cal-col">
+                <div class="week-view-wrap" id="dayViewWrap">
+                  <div class="week-body" id="dayBody">
+                    <div class="week-time-col" id="dayTimeCol"></div>
+                    <div class="week-days" id="dayDays" style="grid-template-columns:1fr;"></div>
+                  </div>
+                </div>
+              </div>
+              <div class="day-view-tasks-col">
+                <div class="task-add-row">
+                  <input type="text" id="taskTitleInput" placeholder="Neue Aufgabe …" maxlength="150">
+                  <input type="date" id="taskDueInput" title="Fälligkeitsdatum (optional)">
+                  <button class="cal-nav-btn" id="taskAddBtn">+</button>
+                </div>
+                <div id="taskListEl"></div>
               </div>
             </div>
           </div>
@@ -2708,6 +2762,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     await loadMySales();
     await checkAndAwardEpics(); // legt nur den Ausgangszustand fest, feiert beim Login nichts nach
     await checkAndAwardQuestTreeBonuses(); // zahlt bereits erfüllte Stufen sofort aus, nicht erst bei der nächsten Aktion
+    await syncBirthdayTasksIfNeeded(); // Geburtstags-Aufgaben für heute nachziehen, falls noch nicht geschehen
     phoneTally = Number(localStorage.getItem('phoneTally_'+profile.id) || 0);
     lastKnownLevel = levelInfo(computeTotals().totalXp).level;
     document.getElementById('loading').style.display='none';
@@ -2739,6 +2794,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     restoreLastPage();
     loadUnseenPatches();
     loadUnseenSecurityAlerts();
+    startTaskDayRolloverWatcher();
   }
 
   document.getElementById('nameInput').addEventListener('change', async (e)=>{
@@ -3756,14 +3812,22 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const p = localPartsInTZ(now, tz());
     calViewYear = p.year; calViewMonth = p.month-1;
     calWeekStart = mondayOfWeek(now);
+    calDayDate = new Date();
     document.getElementById('calPrevBtn').addEventListener('click', ()=>{
-      if(calViewMode==='woche') changeCalWeek(-1); else changeCalMonth(-1);
+      if(calViewMode==='tag') changeCalDay(-1);
+      else if(calViewMode==='woche') changeCalWeek(-1);
+      else changeCalMonth(-1);
     });
     document.getElementById('calNextBtn').addEventListener('click', ()=>{
-      if(calViewMode==='woche') changeCalWeek(1); else changeCalMonth(1);
+      if(calViewMode==='tag') changeCalDay(1);
+      else if(calViewMode==='woche') changeCalWeek(1);
+      else changeCalMonth(1);
     });
     document.getElementById('calTodayBtn').addEventListener('click', ()=>{
-      if(calViewMode==='woche'){
+      if(calViewMode==='tag'){
+        calDayDate = new Date();
+        renderDayView(true);
+      } else if(calViewMode==='woche'){
         calWeekStart = mondayOfWeek(new Date());
         renderWeekView(true);
       } else {
@@ -4014,7 +4078,92 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     return tasks;
   }
   function renderCalTasksNow(){
-    if(calViewMode==='woche') renderWeekView(false); else renderCalendar();
+    if(calViewMode==='tag') renderDayView(false);
+    else if(calViewMode==='woche') renderWeekView(false);
+    else renderCalendar();
+  }
+
+  // ---- Echte, abhakbare Aufgaben (Tag-Reiter) ----
+  // Bewusst getrennt von tasksForDate() oben (das bleibt die reine
+  // Vorschau-Ableitung für die Punkte/Chips in Monats-/Wochenansicht,
+  // unverändert). Diese Funktionen bedienen die neue tasks-Tabelle: eine
+  // Aufgabe existiert nur, solange sie offen ist -- Abhaken löscht die
+  // Zeile direkt, kein separater "erledigt"-Zustand (Nutzerentscheidung
+  // 2026-08-20).
+  let openTasksCache = [];
+  async function loadOpenTasks(){
+    const { data, error } = await sb.from('tasks').select('*').eq('owner_id', profile.id)
+      .order('due_date', { ascending:true, nullsFirst:false });
+    if(error){ logSilentError('Aufgaben laden', error); return; }
+    openTasksCache = data || [];
+  }
+
+  // Wiedervorlage: synchron bei jedem Speichern von contacts.naechster_kontakt
+  // aufgerufen (Kontaktformular, Kanban-Lead-Erstellung am Dungeon,
+  // Wiedervorlage-Feld im "Gewonnen"-Verkaufspopup -- alle drei Stellen, an
+  // denen naechster_kontakt geschrieben wird). Ersetzt eine ggf. vorher
+  // offene Wiedervorlage-Aufgabe desselben Kontakts sofort durch die neue,
+  // statt auf den nächsten Tageswechsel zu warten -- genau das reale
+  // Ablauf-Beispiel des Nutzers (Anruf → neues Wiedervorlage-Datum
+  // eintragen → alte Aufgabe soll nicht als Karteileiche stehen bleiben).
+  async function syncWiedervorlageTask(contactId, contactName, newDate){
+    await sb.from('tasks').delete().eq('owner_id', profile.id).eq('contact_id', contactId).eq('source_type', 'wiedervorlage');
+    if(newDate){
+      const { error } = await sb.from('tasks').insert({
+        org_id: profile.org_id, owner_id: profile.id, contact_id: contactId,
+        title: `Wiedervorlage: ${contactName}`, due_date: newDate, source_type: 'wiedervorlage'
+      });
+      if(error) logSilentError('Wiedervorlage-Aufgabe anlegen', error);
+    }
+    if(calViewMode==='tag') renderDayView(false);
+  }
+
+  // Geburtstage hängen nicht an einem Speichervorgang, sondern rein am
+  // Kalendertag -- deshalb ein Sync-Lauf pro Tag statt pro Aktion, beim
+  // Login UND beim Tageswechsel-Wächter unten (erkennt den Tageswechsel
+  // auch ohne Neuladen, falls der Laptop über Nacht durchläuft -- B2B-
+  // Alltag laut Nutzer). profile.tasks_synced_date verhindert, dass eine
+  // am selben Tag bereits abgehakte (gelöschte) Geburtstags-Aufgabe durch
+  // einen zweiten Lauf desselben Tages wiederaufersteht. Nur eigene
+  // Kontakte (owner_id = eigene ID), keine gilden-geteilten.
+  async function syncBirthdayTasksIfNeeded(){
+    const today = todayKey(new Date());
+    if(profile.tasks_synced_date === today) return;
+    await loadContactTaskData();
+    await sb.from('tasks').delete().eq('owner_id', profile.id).eq('source_type', 'geburtstag');
+    if(profile.calendar_show_birthdays !== false){
+      const mmdd = today.slice(5);
+      const due = ownContactsForTasks.filter(c=> c.geburtsdatum && c.geburtsdatum.slice(5)===mmdd);
+      if(due.length){
+        const rows = due.map(c=>({
+          org_id: profile.org_id, owner_id: profile.id, contact_id: c.id,
+          title: `Geburtstag: ${c.name}`, due_date: today, source_type: 'geburtstag'
+        }));
+        const { error } = await sb.from('tasks').insert(rows);
+        if(error) logSilentError('Geburtstags-Aufgaben anlegen', error);
+      }
+    }
+    const { error: profErr } = await sb.from('profiles').update({ tasks_synced_date: today }).eq('id', profile.id);
+    if(profErr) logSilentError('Aufgaben-Sync-Datum speichern', profErr);
+    else profile.tasks_synced_date = today;
+  }
+
+  // Tageswechsel-Wächter: prüft regelmäßig UND sofort, wenn das Browser-Tab
+  // wieder aktiv wird (nicht nur beim Login), ob sich das Kalenderdatum
+  // geändert hat -- fängt genau den Fall "Laptop bleibt über Nacht an" ab.
+  let lastKnownDayForTasks = null;
+  function startTaskDayRolloverWatcher(){
+    lastKnownDayForTasks = todayKey(new Date());
+    async function checkForRollover(){
+      const today = todayKey(new Date());
+      if(today === lastKnownDayForTasks) return;
+      lastKnownDayForTasks = today;
+      await syncBirthdayTasksIfNeeded();
+      renderCalTasksNow();
+    }
+    setInterval(checkForRollover, 5*60*1000);
+    document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState==='visible') checkForRollover(); });
+    window.addEventListener('focus', checkForRollover);
   }
 
   async function renderCalendar(){
@@ -4050,6 +4199,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     grid.innerHTML = html;
     grid.querySelectorAll('.cal-day:not(.empty)').forEach(el=>{
       el.addEventListener('click', ()=> showDayPreview(el.dataset.date));
+      el.addEventListener('dblclick', ()=> openDayView(el.dataset.date));
     });
   }
 
@@ -5550,13 +5700,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const payload = { vorname, nachname, role, location_id, status, kanban_stage, geburtsdatum, telefon, email, wohnort_strasse, wohnort_ort, bedarf_ist, bedarf_wunsch, naechster_kontakt, notes };
 
     if(editingContactId){
-      const { error } = await sb.from('contacts').update({ ...payload, updated_at:new Date().toISOString() }).eq('id', editingContactId);
+      const { data: savedContact, error } = await sb.from('contacts').update({ ...payload, updated_at:new Date().toISOString() }).eq('id', editingContactId).select().single();
       if(error){ reportError('Kontakt speichern', error, statusEl); return; }
+      await syncWiedervorlageTask(savedContact.id, savedContact.name, savedContact.naechster_kontakt);
       editingContactId = null;
       document.getElementById('contactAddBtn').textContent = '+ Kontakt anlegen';
     } else {
-      const { error } = await sb.from('contacts').insert({ org_id:profile.org_id, owner_id:profile.id, ...payload });
+      const { data: savedContact, error } = await sb.from('contacts').insert({ org_id:profile.org_id, owner_id:profile.id, ...payload }).select().single();
       if(error){ reportError('Kontakt anlegen', error, statusEl); return; }
+      await syncWiedervorlageTask(savedContact.id, savedContact.name, savedContact.naechster_kontakt);
     }
     document.getElementById('contactVornameInput').value = '';
     document.getElementById('contactNachnameInput').value = '';
@@ -6338,6 +6490,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
           location_id: loc.id, kanban_stage:'ersttermin_vereinbart', naechster_kontakt: datum
         }).select().single();
         if(cErr){ reportError('Kontakt anlegen', cErr, statusEl); return; }
+        await syncWiedervorlageTask(contact.id, contact.name, contact.naechster_kontakt);
         await logKanbanAction(contact, 'termin_vereinbart', terminLeadKanal ? {kanal:terminLeadKanal} : null);
         await insertTermineIfTimeGiven(contact, 'Ersttermin', datum, startEl.value, endeEl.value, terminLeadKanal);
         await renderContactsPage();
@@ -6417,8 +6570,9 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   const WEEKDAY_KEYS = ['mon','tue','wed','thu','fri','sat','sun'];
   const WEEKDAY_LABELS = ['Mo','Di','Mi','Do','Fr','Sa','So'];
 
-  let calViewMode = 'monat'; // 'monat' | 'woche'
+  let calViewMode = 'monat'; // 'monat' | 'woche' | 'tag'
   let calWeekStart = null; // Date, Montag 00:00 der aktuell angezeigten Woche
+  let calDayDate = null; // Date, aktuell angezeigter Tag im Tag-Reiter
   let calTermineDates = new Set(); // Tage im aktuell angezeigten Monat mit Termin (Punkt in der Monatsansicht)
   let weekTermine = []; // Termine der aktuell angezeigten Woche, inkl. Kontakt-/Betriebsname
   let termineContactSelectedId = null;
@@ -6581,21 +6735,38 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   function minToHHMM(min){ return `${pad2(Math.floor(min/60))}:${pad2(min%60)}`; }
   function minutesSinceMidnight(d){ return d.getHours()*60 + d.getMinutes(); }
 
-  function setCalViewMode(mode){
+  function setCalViewMode(mode, jumpDate){
     calViewMode = mode;
+    if(mode==='tag') calDayDate = jumpDate || calDayDate || new Date();
     document.getElementById('calViewMonthBtn').classList.toggle('active', mode==='monat');
     document.getElementById('calViewWeekBtn').classList.toggle('active', mode==='woche');
+    document.getElementById('calViewDayBtn').classList.toggle('active', mode==='tag');
     document.getElementById('calMonthView').style.display = mode==='monat' ? 'block' : 'none';
     document.getElementById('calWeekView').style.display = mode==='woche' ? 'block' : 'none';
+    document.getElementById('calDayView').style.display = mode==='tag' ? 'block' : 'none';
     if(mode==='woche') renderWeekView(true);
+    else if(mode==='tag') renderDayView(true);
     else renderCalendar();
   }
   document.getElementById('calViewMonthBtn').addEventListener('click', ()=> setCalViewMode('monat'));
   document.getElementById('calViewWeekBtn').addEventListener('click', ()=> setCalViewMode('woche'));
+  document.getElementById('calViewDayBtn').addEventListener('click', ()=> setCalViewMode('tag'));
+
+  // Springt aus Monats-/Wochenansicht direkt in den Tag-Reiter mit genau
+  // diesem Tag -- zusätzlich zum Reiter-Klick selbst.
+  function openDayView(dateOrStr){
+    const d = dateOrStr instanceof Date ? dateOrStr : new Date(dateOrStr+'T12:00:00');
+    setCalViewMode('tag', d);
+  }
 
   function changeCalWeek(delta){
     calWeekStart = new Date(calWeekStart.getFullYear(), calWeekStart.getMonth(), calWeekStart.getDate()+7*delta);
     renderWeekView(true);
+  }
+
+  function changeCalDay(delta){
+    calDayDate = new Date(calDayDate.getFullYear(), calDayDate.getMonth(), calDayDate.getDate()+delta);
+    renderDayView(false);
   }
 
   // Beim ersten Öffnen der Wochenansicht (oder Wochenwechsel) zum frühesten
@@ -6746,12 +6917,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     let tasksHtml = '<div></div>';
     days.forEach(d=>{
       const isToday = dateKeyLocal(d)===todayStr;
-      headerHtml += `<div class="week-day-header ${isToday?'today':''}"><span class="wdh-wd">${WEEKDAY_LABELS[(d.getDay()+6)%7]}</span><span class="wdh-date">${pad2(d.getDate())}.${pad2(d.getMonth()+1)}.</span></div>`;
+      headerHtml += `<div class="week-day-header ${isToday?'today':''}" data-date="${dateKeyLocal(d)}" title="Doppelklick: Tagesansicht"><span class="wdh-wd">${WEEKDAY_LABELS[(d.getDay()+6)%7]}</span><span class="wdh-date">${pad2(d.getDate())}.${pad2(d.getMonth()+1)}.</span></div>`;
       const dayTasks = tasksForDate(dateKeyLocal(d));
       tasksHtml += `<div class="wtr-day">${dayTasks.map(t=>`<span class="week-task-chip ${t.type}" title="${escHtml(t.label)}: ${escHtml(t.name)}">${t.icon} ${escHtml(t.name)}</span>`).join('')}</div>`;
     });
     headerRowEl.innerHTML = headerHtml;
     tasksRowEl.innerHTML = tasksHtml;
+    headerRowEl.querySelectorAll('.week-day-header[data-date]').forEach(el=>{
+      el.addEventListener('dblclick', ()=> openDayView(el.dataset.date));
+    });
 
     const totalHeight = 48*HALF_HOUR_PX;
     let timeHtml = '';
@@ -6813,6 +6987,138 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       wrap.scrollTop = Math.max(0, weekViewScrollTarget()*(HALF_HOUR_PX/30) - 40);
     }
   }
+
+  // ---- Tag-Reiter: Outlook-Tagesansicht (Kalender links, Aufgaben rechts) ----
+  // Kalenderseite hier ist bewusst dieselbe Zeitraster-Technik wie die
+  // Wochenansicht (renderDayEvents/attachDragHandlers/computeOverlapLayout,
+  // Arbeitszeiten-Abdunklung), nur auf einen einzigen Tag beschränkt --
+  // dieselbe globale weekTermine-Variable wird wiederverwendet (sie
+  // enthält ohnehin nur "die gerade relevanten Termine", egal ob Woche
+  // oder Tag), damit Klick-zum-Bearbeiten in openTermineEntryModal ohne
+  // Änderung weiterfunktioniert.
+  async function renderDayView(scrollToDefault){
+    await loadContactTaskData();
+    const d = calDayDate;
+    const dateStr = dateKeyLocal(d);
+    document.getElementById('calMonthLabel').textContent =
+      d.toLocaleDateString('de-DE', {weekday:'long', day:'2-digit', month:'2-digit', year:'numeric'});
+
+    const totalHeight = 48*HALF_HOUR_PX;
+    let timeHtml = '';
+    for(let h=0; h<24; h++) timeHtml += `<span class="wtc-label" style="top:${h*2*HALF_HOUR_PX}px;">${pad2(h)}:00</span>`;
+    const timeColEl = document.getElementById('dayTimeCol');
+    timeColEl.innerHTML = timeHtml;
+    timeColEl.style.height = totalHeight+'px';
+
+    const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+    const dayEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate()+1);
+    const { data, error } = await sb.from('termine')
+      .select('*, contact:contacts(id,name), location:locations(id,name), organizer:organizer_id(display_name,real_name)')
+      .eq('owner_id', profile.id)
+      .gte('start_at', dayStart.toISOString()).lt('start_at', dayEnd.toISOString());
+    if(error) logSilentError('Termine laden', error);
+    weekTermine = data || [];
+
+    const daysEl = document.getElementById('dayDays');
+    daysEl.innerHTML = '';
+    const dayCol = document.createElement('div');
+    dayCol.className = 'week-day-col' + (dateStr===dateKeyLocal(new Date()) ? ' today' : '');
+    dayCol.style.height = totalHeight+'px';
+
+    const wz = profile.arbeitszeiten ? profile.arbeitszeiten[WEEKDAY_KEYS[(d.getDay()+6)%7]] : null;
+    if(wz && wz.start && wz.end){
+      const [sh,sm] = wz.start.split(':').map(Number);
+      const [eh,em] = wz.end.split(':').map(Number);
+      const pxPerMin = HALF_HOUR_PX/30;
+      const startPx = (sh*60+sm)*pxPerMin, endPx = (eh*60+em)*pxPerMin;
+      if(startPx>0){
+        const before = document.createElement('div');
+        before.className = 'week-nonwork-overlay';
+        before.style.top='0px'; before.style.height=startPx+'px';
+        dayCol.appendChild(before);
+      }
+      if(endPx<totalHeight){
+        const after = document.createElement('div');
+        after.className = 'week-nonwork-overlay';
+        after.style.top=endPx+'px'; after.style.height=(totalHeight-endPx)+'px';
+        dayCol.appendChild(after);
+      }
+    } else {
+      const full = document.createElement('div');
+      full.className = 'week-nonwork-overlay';
+      full.style.top='0px'; full.style.height=totalHeight+'px';
+      dayCol.appendChild(full);
+    }
+
+    renderDayEvents(dayCol, d, weekTermine);
+    attachDragHandlers(dayCol, d);
+    daysEl.appendChild(dayCol);
+
+    if(scrollToDefault){
+      const wrap = document.getElementById('dayViewWrap');
+      wrap.scrollTop = Math.max(0, weekViewScrollTarget()*(HALF_HOUR_PX/30) - 40);
+    }
+
+    await renderTaskColumn(dateStr);
+  }
+
+  // Am heutigen Tag: alle offenen Aufgaben inkl. Überfälligem (Rückstand
+  // rollt automatisch mit, klar rot markiert). An jedem anderen Tag: nur
+  // die Aufgaben, die genau für diesen Tag fällig sind -- ein überfälliger
+  // Rückstand von einem ganz anderen Tag würde dort nur verwirren.
+  // Aufgaben ohne Fälligkeitsdatum stehen immer in einem eigenen Block
+  // unten, unabhängig vom angezeigten Tag, nie rot.
+  async function renderTaskColumn(viewedDateStr){
+    await loadOpenTasks();
+    const listEl = document.getElementById('taskListEl');
+    const todayStr = todayKey(new Date());
+    const isToday = viewedDateStr === todayStr;
+
+    const dated = openTasksCache.filter(t=> t.due_date);
+    const undated = openTasksCache.filter(t=> !t.due_date);
+    const relevant = isToday ? dated.filter(t=> t.due_date <= viewedDateStr) : dated.filter(t=> t.due_date === viewedDateStr);
+
+    function rowHtml(t){
+      const overdue = t.due_date && t.due_date < todayStr;
+      const dueLabel = t.due_date ? new Date(t.due_date+'T12:00:00').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'}) : '';
+      return `<div class="task-row${overdue?' overdue':''}">
+        <input type="checkbox" data-task-id="${t.id}">
+        <span class="task-title">${escHtml(t.title)}</span>
+        ${dueLabel ? `<span class="task-due">${dueLabel}</span>` : ''}
+      </div>`;
+    }
+
+    let html = relevant.map(rowHtml).join('');
+    if(!relevant.length && !undated.length) html += `<div class="task-empty-hint">Keine offenen Aufgaben.</div>`;
+    if(undated.length) html += `<div class="task-section-label">Ohne Termin</div>` + undated.map(rowHtml).join('');
+    listEl.innerHTML = html;
+
+    listEl.querySelectorAll('input[type="checkbox"]').forEach(cb=>{
+      cb.addEventListener('change', async ()=>{
+        const id = cb.dataset.taskId;
+        const { error } = await sb.from('tasks').delete().eq('id', id);
+        if(error){ logSilentError('Aufgabe abhaken', error); cb.checked=false; return; }
+        openTasksCache = openTasksCache.filter(t=>t.id!==id);
+        renderTaskColumn(viewedDateStr);
+      });
+    });
+  }
+
+  document.getElementById('taskAddBtn').addEventListener('click', async ()=>{
+    const titleEl = document.getElementById('taskTitleInput');
+    const dueEl = document.getElementById('taskDueInput');
+    const title = titleEl.value.trim();
+    if(!title) return;
+    const { error } = await sb.from('tasks').insert({
+      org_id: profile.org_id, owner_id: profile.id, title, due_date: dueEl.value || null, source_type: 'manual'
+    });
+    if(error){ logSilentError('Aufgabe anlegen', error); return; }
+    titleEl.value = ''; dueEl.value = '';
+    renderTaskColumn(dateKeyLocal(calDayDate));
+  });
+  document.getElementById('taskTitleInput').addEventListener('keydown', (e)=>{
+    if(e.key==='Enter') document.getElementById('taskAddBtn').click();
+  });
 
   function openTermineEntryModal(opts){
     termineEditingId = opts.editing ? opts.editing.id : null;
@@ -7632,7 +7938,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         if(wiedervorlageEl.value){
           const { error } = await sb.from('contacts').update({ naechster_kontakt: wiedervorlageEl.value }).eq('id', contact.id);
           if(error) logSilentError('Wiedervorlage speichern', error);
-          else contact.naechster_kontakt = wiedervorlageEl.value;
+          else {
+            contact.naechster_kontakt = wiedervorlageEl.value;
+            await syncWiedervorlageTask(contact.id, contact.name, contact.naechster_kontakt);
+          }
         }
         modal.style.display = 'none';
         addBtn.onclick = null; doneBtn.onclick = null; closeBtn.onclick = null;
