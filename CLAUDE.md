@@ -3857,6 +3857,62 @@ erhalten; normale Seiten-Navigation (z.B. Klick auf Kontakte) bleibt
 unberührt (eigener, einfacher Hash wie gehabt); "Heute"-Knopf springt
 weiterhin zuverlässig zurück und aktualisiert den Hash entsprechend.
 
+## Code-Review-Durchgang übers gesamte `index.html`, Patch-Nachtrag (2026-08-20)
+
+Auf Nutzeranstoß ("wo gehobelt wird fallen Späne", nach einer Session mit
+sehr viel neuem Code auf einmal) `/code-review high` gegen die komplette
+`index.html` laufen lassen (5 parallele Hintergrund-Agenten, verschiedene
+Blickwinkel: Altitude/Konventionen, Wiederverwendung/Effizienz,
+Cross-File-Tracing, Zeile-für-Zeile-Diff-Scan, entferntes-Verhalten-Audit).
+Alle 9 gemeldeten Funde vor dem Weiterreichen selbst im Code
+gegengeprüft (nicht blind übernommen), 3 davon als echte, spürbare Bugs
+eingestuft und sofort behoben, jeweils per Playwright end-to-end
+verifiziert:
+
+1. **Reiter-Wechsel verwarf den gerade erst gebauten Kalender-Hash** —
+   ein normaler Klick auf "Abenteuerlog" rief `showPage('tagebuch')`
+   ohne den `updateHash`-Schutz auf, wodurch `location.hash` stumm auf
+   das generische `#tagebuch` zurückfiel. Die frisch gebaute
+   Reload-Persistenz (siehe Abschnitt oben) hätte dadurch nur bis zum
+   nächsten Reiter-Wechsel gehalten. Fix: der Nav-Klick-Handler
+   behandelt `tagebuch` als Sonderfall (`showPage('tagebuch', false)`
+   + `updateCalendarHash()`), alle anderen Reiter unverändert.
+2. **Termin speichern/löschen aus der Tagesansicht aktualisierte die
+   sichtbare Tagesansicht nie** — vier Stellen (Speichern,
+   normales/serien Löschen, "Termin ablehnen" bei Einladungen) riefen
+   immer `renderWeekView(false)`/`renderCalendar()`, nie
+   `renderDayView()`. Alle vier nutzen jetzt einheitlich
+   `renderCalTasksNow()` (bereits vorhandener 3-Wege-Dispatcher) statt
+   den 2-Wege-Fall von Hand zu wiederholen.
+3. **Kontakt mit offener Wiedervorlage löschen hinterließ eine
+   Aufgaben-Karteileiche für immer.** Erster Fix-Versuch (Aufräumen
+   NACH dem Löschen) griff im Playwright-Test nachweislich NICHT —
+   Ursache: die `ON DELETE SET NULL`-Fremdschlüsselregel auf
+   `tasks.contact_id` (siehe Migration `20260820120000_aufgaben_system.sql`)
+   setzt die Spalte schon im selben Löschvorgang auf `NULL`, `
+   syncWiedervorlageTask()` findet die Zeile über `contact_id` danach
+   nicht mehr. Reihenfolge umgedreht: erst
+   `syncWiedervorlageTask(..., null)`, dann erst
+   `sb.from('contacts').delete()`. **Lehre fürs nächste Mal:** bei
+   `ON DELETE SET NULL`/`CASCADE`-Fremdschlüsseln immer erst
+   aufräumen, dann löschen — nie umgekehrt, die Referenz ist nach dem
+   Löschen bereits weg, egal wie schnell der eigene Code hinterherkommt.
+
+**Bewusst zurückgestellt** (kleinere, im selben Durchgang gefundene
+Punkte, kein akuter Nutzer-Schmerz): veraltete Kopfzeile beim Wechsel
+Tag→Woche, eine Zeitzonen-Inkonsistenz zwischen `dateKeyLocal()`
+(Browser-lokal) und `todayKey()` (feste Org-Zeitzone) in der neuen
+Aufgaben-Spalte — bei einem rein in Europe/Berlin ansässigen Team
+aktuell ohne praktische Auswirkung, aber ein echter Konventionsbruch,
+lohnt sich bei nächster Gelegenheit zu vereinheitlichen —, doppeltes
+Laden beim Login mit gespeichertem Kalender-Hash, spürbare
+Code-Duplikation zwischen `renderDayView()` und `renderWeekView()`
+(Zeitraster/Termine-Abfrage/Arbeitszeiten-Abdunklung fast wortgleich
+zweimal), eine tote `.task-contact-icon`-CSS-Regel, sowie ein
+vorbestehender (nicht neu eingeführter, nur durch den heutigen Umbau
+vergrößerter) Listener-Stapel-Bug bei mehrfachem `enterApp()`-Aufruf
+über die Admin-Debug-Funktion "🎭 Neu erschaffen".
+
 ## Bekannte, bewusst in Kauf genommene Lücken
 
 - ~~"Zuletzt kontaktiert"/Kontakt-Chronik zeigen nur eigene Einträge~~ —
