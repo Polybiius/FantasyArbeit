@@ -5363,6 +5363,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const delBtn = document.getElementById('cdDeleteBtn');
     if(delBtn) delBtn.addEventListener('click', async ()=>{
       if(!confirm('Kontakt wirklich löschen?')) return;
+      // Offene Wiedervorlage-Aufgabe VOR dem Kontakt löschen, nicht danach:
+      // die Fremdschlüssel-Regel (ON DELETE SET NULL) setzt tasks.contact_id
+      // schon im selben Löschvorgang auf NULL -- danach würde
+      // syncWiedervorlageTask() die Zeile über contact_id gar nicht mehr
+      // finden (per Playwright-Test entdeckt: Aufräumen NACH dem Löschen
+      // griff nicht, die Aufgabe blieb als Karteileiche stehen).
+      await syncWiedervorlageTask(c.id, c.name, null);
       const { error } = await sb.from('contacts').delete().eq('id', c.id);
       if(error){ reportError('Kontakt löschen', error); return; }
       showPage('kontakte');
@@ -7393,8 +7400,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     }
     if(error){ reportError('Termin speichern', error, statusEl); return; }
     document.getElementById('termineEntryModal').style.display='none';
-    renderWeekView(false);
-    if(calViewMode==='monat') renderCalendar();
+    renderCalTasksNow();
 
     // Outlook-Vorbild (Nutzerwunsch 2026-08-18): wurde ein einzelner,
     // bereits bestehender Termin verschoben/geändert, der angenommene
@@ -7424,8 +7430,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       const { error } = await sb.rpc('respond_to_termin_invitation', { p_invitation_id: inv.id, p_accept: false });
       if(error){ reportError('Einladung ablehnen', error); return; }
       document.getElementById('termineEntryModal').style.display='none';
-      renderWeekView(false);
-      if(calViewMode==='monat') renderCalendar();
+      renderCalTasksNow();
       return;
     }
     if(editingRow && editingRow.series_id){
@@ -7445,8 +7450,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       if(error){ reportError('Termin löschen', error); return; }
     }
     document.getElementById('termineEntryModal').style.display='none';
-    renderWeekView(false);
-    if(calViewMode==='monat') renderCalendar();
+    renderCalTasksNow();
   });
 
   // ---- Kanban (Questpfad / Gildenbrett / Feldzug) ----
@@ -7725,7 +7729,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         const { error: respErr } = await sb.rpc('respond_to_termin_invitation', { p_invitation_id: row.dataset.invitation, p_accept: accept });
         if(respErr){ logSilentError('Auf Termin-Einladung antworten', respErr); btn.parentElement.querySelectorAll('button').forEach(b=>b.disabled = false); return; }
         await loadTerminInvitesCard();
-        if(calViewMode==='woche') renderWeekView(false); else renderCalendar();
+        renderCalTasksNow();
       });
     });
     document.querySelectorAll('#terminInvitesList [data-dismiss]').forEach(btn=>{
@@ -8904,8 +8908,18 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     }
   }
 
+  // Abenteuerlog-Klick bewusst als Sonderfall: showPage('tagebuch') würde
+  // sonst blind location.hash='tagebuch' setzen und damit den per
+  // updateCalendarHash() gespeicherten Ansicht+Tag-Hash verwerfen (Bug,
+  // gefunden 2026-08-20 -- eine Reload-Persistenz, die nur bis zum
+  // nächsten Reiter-Wechsel hielt). calViewMode/calFocusDate selbst
+  // bleiben unangetastet (reine JS-Variablen, showPage blendet nur
+  // Seiten ein/aus), deshalb reicht es, den Hash danach neu zu schreiben.
   document.querySelectorAll('.nav-btn').forEach(btn=>{
-    btn.addEventListener('click', ()=> showPage(btn.dataset.page));
+    btn.addEventListener('click', ()=>{
+      if(btn.dataset.page==='tagebuch'){ showPage('tagebuch', false); updateCalendarHash(); }
+      else showPage(btn.dataset.page);
+    });
   });
 
   // Kontakt-Unterseiten (#kontakt/<id>) sind ein zweites Hash-Format neben
