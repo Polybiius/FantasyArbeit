@@ -3797,18 +3797,16 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   async function initJournal(){
-    updateJournalBookTile();
-    document.getElementById('journalBookTile').addEventListener('click', ()=> setJournalEntryOpen(!journalEntryOpen));
-    const today = todayKey(new Date());
-    const { data, error } = await sb.from('journal_entries').select('*').eq('user_id', profile.id).eq('entry_date', today).maybeSingle();
-    if(error) logSilentError('Tagebuch laden', error);
-    JOURNAL_FIELDS.forEach((f,i)=>{
-      document.getElementById(f).value = data ? (data['q'+(i+1)] || '') : '';
-    });
-    JOURNAL_FIELDS.forEach((f,i)=>{
-      document.getElementById(f).addEventListener('input', ()=> scheduleJournalSave(i+1));
-    });
-
+    // Kalender-Grundzustand + Knopf-Verdrahtung laufen bewusst VOR dem
+    // ersten await dieser Funktion (synchron, kein Yield an den
+    // Event-Loop) -- initJournal() wird in enterApp() unawaited
+    // aufgerufen, direkt gefolgt von restoreLastPage(). Stünde dieser
+    // Block hinter einem await, könnte restoreLastPage() (das per Hash
+    // z.B. calFocusDate auf einen vergangenen/künftigen Tag setzt)
+    // fertig sein, bevor dieser Block überhaupt lief -- der würde die
+    // per Hash wiederhergestellte Ansicht dann beim späteren Fortsetzen
+    // still wieder auf "heute" zurückwerfen. Race-Bedingung, kein
+    // theoretisches Risiko.
     const now = new Date();
     const p = localPartsInTZ(now, tz());
     calViewYear = p.year; calViewMonth = p.month-1;
@@ -3838,8 +3836,31 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         calViewYear=p2.year; calViewMonth=p2.month-1;
         renderCalendar();
       }
+      updateCalendarHash();
     });
-    await renderCalendar();
+
+    updateJournalBookTile();
+    document.getElementById('journalBookTile').addEventListener('click', ()=> setJournalEntryOpen(!journalEntryOpen));
+    const today = todayKey(new Date());
+    const { data, error } = await sb.from('journal_entries').select('*').eq('user_id', profile.id).eq('entry_date', today).maybeSingle();
+    if(error) logSilentError('Tagebuch laden', error);
+    JOURNAL_FIELDS.forEach((f,i)=>{
+      document.getElementById(f).value = data ? (data['q'+(i+1)] || '') : '';
+    });
+    JOURNAL_FIELDS.forEach((f,i)=>{
+      document.getElementById(f).addEventListener('input', ()=> scheduleJournalSave(i+1));
+    });
+    // Mode-bewusst statt blind renderCalendar() -- restoreLastPage() in
+    // enterApp() kann parallel schon per Hash auf 'woche'/'tag'
+    // umgeschaltet haben, bevor dieser (unawaited aufgerufene) Ausläufer
+    // von initJournal() hier ankommt. Ein blindes renderCalendar() hätte
+    // die dabei schon korrekt gesetzte calMonthLabel-Kopfzeile (gemeinsam
+    // über alle drei Ansichten) wieder mit dem Monat von "heute"
+    // überschrieben, unabhängig davon, welche Ansicht gerade sichtbar
+    // ist -- echter, per Playwright gefundener Race-Bug.
+    if(calViewMode==='tag') await renderDayView(false);
+    else if(calViewMode==='woche') await renderWeekView(false);
+    else await renderCalendar();
     initPhotoCapture();
     initJournalMentions();
     loadJournalStreak();
@@ -4054,6 +4075,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(calViewMonth>11){ calViewMonth=0; calViewYear++; }
     calFocusDate = new Date(calViewYear, calViewMonth, Math.min(calFocusDate.getDate(), daysInMonth(calViewYear,calViewMonth)));
     await renderCalendar();
+    updateCalendarHash();
   }
 
   // ---- Kalender-Aufgaben (Geburtstage/Wiedervorlage) ----
@@ -6746,6 +6768,19 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   function minToHHMM(min){ return `${pad2(Math.floor(min/60))}:${pad2(min%60)}`; }
   function minutesSinceMidnight(d){ return d.getHours()*60 + d.getMinutes(); }
 
+  // Schreibt Ansicht+Fokus-Tag in den URL-Hash, OHNE ein 'hashchange'
+  // auszulösen (replaceState statt location.hash=...) -- sonst würde der
+  // eigene window.addEventListener('hashchange', ...) sofort wieder
+  // routeToHash() aufrufen und doppelt rendern. Kein neuer
+  // History-Eintrag pro Klick (sonst würde "zurück" im Browser durch
+  // jeden einzelnen Vor/Zurück-Klick im Kalender zurückspulen müssen,
+  // statt direkt zur vorherigen Seite) -- Nutzerwunsch: ein Neuladen soll
+  // beim zuletzt betrachteten Tag bleiben, "heute" bleibt dafür der
+  // Knopf, kein Browser-Zurück nötig.
+  function updateCalendarHash(){
+    history.replaceState(null, '', '#tagebuch/'+calViewMode+'/'+dateKeyLocal(calFocusDate));
+  }
+
   // Jeder Reiter-Wechsel liest calFocusDate aus (statt jeder Ansicht ihr
   // eigenes Datum unabhängig laufen zu lassen) -- ein expliziter jumpDate
   // (Doppelklick) setzt den Fokus zusätzlich neu, bevor er übernommen wird.
@@ -6764,6 +6799,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(mode==='woche') renderWeekView(true);
     else if(mode==='tag') renderDayView(true);
     else renderCalendar();
+    updateCalendarHash();
   }
   document.getElementById('calViewMonthBtn').addEventListener('click', ()=> setCalViewMode('monat'));
   document.getElementById('calViewWeekBtn').addEventListener('click', ()=> setCalViewMode('woche'));
@@ -6780,12 +6816,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     calWeekStart = new Date(calWeekStart.getFullYear(), calWeekStart.getMonth(), calWeekStart.getDate()+7*delta);
     calFocusDate = new Date(calWeekStart);
     renderWeekView(true);
+    updateCalendarHash();
   }
 
   function changeCalDay(delta){
     calDayDate = new Date(calDayDate.getFullYear(), calDayDate.getMonth(), calDayDate.getDate()+delta);
     calFocusDate = new Date(calDayDate);
     renderDayView(false);
+    updateCalendarHash();
   }
 
   // Beim ersten Öffnen der Wochenansicht (oder Wochenwechsel) zum frühesten
@@ -8873,9 +8911,23 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // Kontakt-Unterseiten (#kontakt/<id>) sind ein zweites Hash-Format neben
   // den einfachen Seitennamen -- eigene Weiche statt sie in VALID_PAGES zu
   // zwingen, da der zweite Teil dynamisch ist (echte UUID, keine feste Liste).
+  // #tagebuch/<monat|woche|tag>/<YYYY-MM-DD> ist ein drittes Format:
+  // hält den gerade betrachteten Kalender-Tag über ein Neuladen hinweg
+  // fest (Nutzerwunsch: "ich bin bei einem Datum, lade neu, soll dort
+  // bleiben, für 'heute' hab ich ja den Knopf"). Wird von
+  // updateCalendarHash() bei jeder Kalender-Navigation geschrieben.
   function routeToHash(hash, updateHash){
     const clean = hash.replace('#','');
     if(clean.startsWith('kontakt/')) openContactPage(clean.slice('kontakt/'.length));
+    else if(clean.startsWith('tagebuch/')){
+      const [, mode, dateStr] = clean.split('/');
+      showPage('tagebuch', false);
+      if(['monat','woche','tag'].includes(mode) && /^\d{4}-\d{2}-\d{2}$/.test(dateStr||'')){
+        const [y,m,d] = dateStr.split('-').map(Number);
+        calFocusDate = new Date(y, m-1, d);
+        setCalViewMode(mode);
+      }
+    }
     else showPage(clean, updateHash);
   }
 
