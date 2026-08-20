@@ -666,6 +666,7 @@
   .task-row.overdue .task-title,.task-row.overdue .task-due{color:var(--danger);}
   .task-row .task-contact-icon{opacity:.8;}
   .task-empty-hint{color:var(--muted-2);font-style:italic;font-size:12px;}
+  .task-row.task-preview{opacity:.65;font-style:italic;}
   .cal-preview{margin-top:16px;border-top:1px solid var(--border);padding-top:14px;font-size:12.5px;color:var(--text);display:none;}
   .cal-preview.show{display:block;}
   .cal-preview h3{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted-2);text-transform:uppercase;letter-spacing:.05em;margin:0 0 10px;}
@@ -3813,6 +3814,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     calViewYear = p.year; calViewMonth = p.month-1;
     calWeekStart = mondayOfWeek(now);
     calDayDate = new Date();
+    calFocusDate = new Date();
     document.getElementById('calPrevBtn').addEventListener('click', ()=>{
       if(calViewMode==='tag') changeCalDay(-1);
       else if(calViewMode==='woche') changeCalWeek(-1);
@@ -3824,6 +3826,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       else changeCalMonth(1);
     });
     document.getElementById('calTodayBtn').addEventListener('click', ()=>{
+      calFocusDate = new Date();
       if(calViewMode==='tag'){
         calDayDate = new Date();
         renderDayView(true);
@@ -4049,6 +4052,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     calViewMonth += delta;
     if(calViewMonth<0){ calViewMonth=11; calViewYear--; }
     if(calViewMonth>11){ calViewMonth=0; calViewYear++; }
+    calFocusDate = new Date(calViewYear, calViewMonth, Math.min(calFocusDate.getDate(), daysInMonth(calViewYear,calViewMonth)));
     await renderCalendar();
   }
 
@@ -6573,6 +6577,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   let calViewMode = 'monat'; // 'monat' | 'woche' | 'tag'
   let calWeekStart = null; // Date, Montag 00:00 der aktuell angezeigten Woche
   let calDayDate = null; // Date, aktuell angezeigter Tag im Tag-Reiter
+  // Gemeinsamer "welcher Tag ist gerade im Fokus"-Anker über alle drei
+  // Ansichten hinweg -- jede Navigation (Vor/Zurück/Heute/Doppelklick) hält
+  // ihn aktuell, jeder Reiter-Wechsel liest ihn beim Umschalten aus. Ohne
+  // das lief jede Ansicht ihr eigenes, unabhängiges Datum -- Wechsel von
+  // Tag(10.06.2027) zu Woche zeigte fälschlich wieder die heutige Woche,
+  // vom Nutzer zu Recht als "inkonsistent" gemeldet.
+  let calFocusDate = new Date();
   let calTermineDates = new Set(); // Tage im aktuell angezeigten Monat mit Termin (Punkt in der Monatsansicht)
   let weekTermine = []; // Termine der aktuell angezeigten Woche, inkl. Kontakt-/Betriebsname
   let termineContactSelectedId = null;
@@ -6735,9 +6746,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   function minToHHMM(min){ return `${pad2(Math.floor(min/60))}:${pad2(min%60)}`; }
   function minutesSinceMidnight(d){ return d.getHours()*60 + d.getMinutes(); }
 
+  // Jeder Reiter-Wechsel liest calFocusDate aus (statt jeder Ansicht ihr
+  // eigenes Datum unabhängig laufen zu lassen) -- ein expliziter jumpDate
+  // (Doppelklick) setzt den Fokus zusätzlich neu, bevor er übernommen wird.
   function setCalViewMode(mode, jumpDate){
     calViewMode = mode;
-    if(mode==='tag') calDayDate = jumpDate || calDayDate || new Date();
+    if(jumpDate) calFocusDate = jumpDate;
+    if(mode==='monat'){ calViewYear = calFocusDate.getFullYear(); calViewMonth = calFocusDate.getMonth(); }
+    else if(mode==='woche'){ calWeekStart = mondayOfWeek(calFocusDate); }
+    else if(mode==='tag'){ calDayDate = calFocusDate; }
     document.getElementById('calViewMonthBtn').classList.toggle('active', mode==='monat');
     document.getElementById('calViewWeekBtn').classList.toggle('active', mode==='woche');
     document.getElementById('calViewDayBtn').classList.toggle('active', mode==='tag');
@@ -6761,11 +6778,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   function changeCalWeek(delta){
     calWeekStart = new Date(calWeekStart.getFullYear(), calWeekStart.getMonth(), calWeekStart.getDate()+7*delta);
+    calFocusDate = new Date(calWeekStart);
     renderWeekView(true);
   }
 
   function changeCalDay(delta){
     calDayDate = new Date(calDayDate.getFullYear(), calDayDate.getMonth(), calDayDate.getDate()+delta);
+    calFocusDate = new Date(calDayDate);
     renderDayView(false);
   }
 
@@ -7088,8 +7107,24 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       </div>`;
     }
 
+    // An einem NICHT-heutigen Tag gibt es für einen dort liegenden
+    // Geburtstag noch keine echte, abhakbare Aufgabe (die entsteht erst am
+    // Tag selbst, über den täglichen Sync) -- ohne diese Vorschau würde
+    // ein vorausgeblätterter Geburtstag hier spurlos fehlen, obwohl ihn
+    // der Punkt in der Monatsansicht längst zeigt (die rechnet live für
+    // jedes Datum, nicht nur für heute).
+    let previewBirthdays = [];
+    if(!isToday && profile.calendar_show_birthdays !== false){
+      const mmdd = viewedDateStr.slice(5);
+      previewBirthdays = ownContactsForTasks.filter(c=> c.geburtsdatum && c.geburtsdatum.slice(5)===mmdd);
+    }
+
     let html = relevant.map(rowHtml).join('');
-    if(!relevant.length && !undated.length) html += `<div class="task-empty-hint">Keine offenen Aufgaben.</div>`;
+    if(!relevant.length && !undated.length && !previewBirthdays.length) html += `<div class="task-empty-hint">Keine offenen Aufgaben.</div>`;
+    if(previewBirthdays.length){
+      html += `<div class="task-section-label">Geburtstag an diesem Tag (noch keine Aufgabe)</div>` +
+        previewBirthdays.map(c=> `<div class="task-row task-preview">🎂 <span class="task-title">${escHtml(c.name)}</span></div>`).join('');
+    }
     if(undated.length) html += `<div class="task-section-label">Ohne Termin</div>` + undated.map(rowHtml).join('');
     listEl.innerHTML = html;
 
