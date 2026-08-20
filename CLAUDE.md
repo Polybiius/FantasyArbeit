@@ -3777,6 +3777,43 @@ der gemeldete Sprung) gegen den echten Account verifiziert: Aufgabe UND
 Kalender-Punkt erscheinen korrekt am gefälschten Datum, Umschalten des
 Häkchens entfernt/erzeugt die Aufgaben-Zeile sofort ohne Neuladen.
 
+**Zweiter Nachtrag, noch am selben Tag — zwei echte, vom Nutzer beim
+manuellen Vorausblättern gefundene Bugs, beide behoben:**
+
+1. **Monat/Woche/Tag hatten je ihr eigenes, unabhängiges Datum.**
+   Doppelklick auf einen Tag in der Zukunft zeigte in der Tagesansicht
+   korrekt diesen Tag, sprang aber beim Wechsel zu Woche/Monat zurück
+   auf die aktuelle Woche/den aktuellen Monat — "inkonsistent", zu Recht
+   gemeldet. Neue gemeinsame `calFocusDate`-Variable (in `index.html`)
+   wird bei **jeder** Navigation (Vor/Zurück/Heute/Doppelklick, in allen
+   drei Ansichten) aktualisiert; `setCalViewMode()` liest sie beim
+   Reiter-Wechsel aus und leitet daraus `calViewYear/calViewMonth`
+   bzw. `calWeekStart` bzw. `calDayDate` ab, statt dass jede Ansicht ihr
+   Datum isoliert verwaltet. Betraf strukturell auch Monat↔Woche schon
+   vor dem Tag-Reiter, fiel dort nur nie auf.
+2. **Ein an einem NICHT-heutigen Tag liegender Geburtstag fehlte in der
+   Aufgaben-Liste komplett**, obwohl der alte Kalender-Punkt ihn längst
+   zeigte — Ursache: die alten Punkte rechnen live für jedes Datum, die
+   neuen Aufgaben-Zeilen entstehen aber nur für den echten heutigen Tag
+   (täglicher Sync). Neue, bewusst **nicht abhakbare** Vorschau-Zeile
+   ("Geburtstag an diesem Tag (noch keine Aufgabe)", 🎂, dezenter
+   Stil) in `renderTaskColumn()` schließt diese Lücke beim
+   Vorausblättern — wird erst zur echten, abhakbaren Aufgabe, sobald der
+   Tag tatsächlich "heute" ist.
+
+**Reiner Diagnose-Fund, kein Bug:** beim Nachstellen fiel auf, dass
+`calendar_show_birthdays` im echten Account zwischenzeitlich wieder auf
+"aus" stand (per direkter SQL-Abfrage bestätigt) — betrifft beide
+Systeme identisch und korrekt, kein Widerspruch. Für den Test über die
+echte Einstellungen-UI wieder eingeschaltet, dabei belassen.
+
+Per Playwright gegen den echten Account verifiziert (Vorblättern 10
+Monate, Doppelklick auf 10.06.2027, Wechsel Tag→Woche→Monat→Heute):
+Tagesansicht zeigt korrektes Datum, Wochenansicht zeigt die Woche um den
+10.06.2027 (nicht die aktuelle), Monatsansicht zeigt Juni 2027, "Heute"
+springt zuverlässig zurück — Geburtstags-Vorschau erscheint korrekt,
+keine Checkbox/Aufgaben-ID an der Vorschau-Zeile, keine Konsolenfehler.
+
 ## Bekannte, bewusst in Kauf genommene Lücken
 
 - ~~"Zuletzt kontaktiert"/Kontakt-Chronik zeigen nur eigene Einträge~~ —
