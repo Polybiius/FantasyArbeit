@@ -3758,6 +3758,25 @@ komplette Wiedervorlage-Ablauf über einen echten Testkontakt (Anlegen
 mit Datum → Aufgabe erscheint → Datum ändern → alte Aufgabe verschwindet,
 neue erscheint am neuen Tag → Testkontakt/-aufgabe wieder entfernt).
 
+**Nachtrag, noch am selben Tag:** Nutzer-Bugreport ("Systemuhr auf
+2027-06-10 vorgestellt, Kundengeburtstag taucht nirgends auf, auch nicht
+im Kalender") — Ursache war die eigene Einstellung
+`calendar_show_birthdays` (aus), per direkter SQL-Prüfung bestätigt
+(Kontaktdaten selbst waren korrekt). Dabei eine echte, zusätzliche
+Lücke gefunden und behoben: das Umschalten von "Geburtstage anzeigen" in
+Einstellungen wirkte bisher nur auf die alten, rein clientseitig
+berechneten Kalender-Punkte, **nicht** auf die neuen echten
+Aufgaben-Zeilen — die hätten erst beim nächsten Tageswechsel oder einem
+Neuladen der Seite nachgezogen (`syncBirthdayTasksIfNeeded()` läuft
+sonst nur einmal pro Kalendertag, siehe `tasks_synced_date` oben).
+`settingsToggleChanged()` setzt bei diesem einen Feld jetzt
+`profile.tasks_synced_date` lokal zurück und erzwingt so einen
+sofortigen Re-Sync. Per Playwright mit gefälschter Browser-Systemuhr
+(`context.addInitScript()`, `Date` auf 2027-06-10 überschrieben — exakt
+der gemeldete Sprung) gegen den echten Account verifiziert: Aufgabe UND
+Kalender-Punkt erscheinen korrekt am gefälschten Datum, Umschalten des
+Häkchens entfernt/erzeugt die Aufgaben-Zeile sofort ohne Neuladen.
+
 ## Bekannte, bewusst in Kauf genommene Lücken
 
 - ~~"Zuletzt kontaktiert"/Kontakt-Chronik zeigen nur eigene Einträge~~ —
