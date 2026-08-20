@@ -420,6 +420,12 @@ Funktionen benutzen statt eigene Fehlerbehandlung zu erfinden.**
   Getrennt von `action_log` (das bleibt reine XP-Buchhaltung), optional
   über `action_log_id` mit der zugehörigen XP-Buchung verknüpft. Gleiches
   RLS-Muster wie `termine`.
+- `tasks` — echte, abhakbare Aufgaben (seit Patch 51, live, siehe eigener
+  Abschnitt "Aufgaben-System" unten). `title`, optionales `due_date`,
+  optionaler `contact_id`, `source_type` (`'manual'|'geburtstag'|
+  'wiedervorlage'`). Gleiches RLS-Muster wie `termine`. **Kein
+  "erledigt"-Zustand** — Abhaken löscht die Zeile direkt, bewusst anders
+  als der Rest des Projekts (kein `done_at`-Feld).
 
 ### Supabase-CLI-Migrationstoolchain, seit 2026-08-08
 
@@ -1821,16 +1827,11 @@ verifizieren (selbst nachmessen, nicht nur rendern und hoffen) — erst danach
 das Ergebnis dem Nutzer zeigen. Kein Rückfall auf reines Augenmaß.
 
 ## Bewusst aufgeschobene Ideen (NICHT vergessen, aber NICHT von selbst bauen)
-- **Outlook-artige abhakbare Aufgaben** — vom Nutzer am 2026-08-09 als
-  Ausbau-Wunsch genannt: "ähnlich wie in Outlook Aufgaben, die wir abhaken
-  können". Es gibt bereits eine Teilbasis dafür (`tasksForDate()`,
-  Geburtstage + Wiedervorlage als nicht-blockierende Kalender-Hinweise,
-  siehe "Kalender-Aufgaben" oben) — aber komplett **abgeleitet, nicht
-  abhakbar** (kein eigener Erledigt-Zustand, keine frei anlegbaren
-  Aufgaben ohne Kontakt-Bezug). Ein echtes Abhak-System bräuchte
-  vermutlich eine neue Tabelle (eigener Zustand "erledigt am") statt der
-  bisherigen Ableitungs-Philosophie — Kernstruktur-Frage, erst
-  durchsprechen.
+- ~~**Outlook-artige abhakbare Aufgaben**~~ — **fertig gebaut, live,
+  2026-08-20, Patch 51**, siehe eigener Abschnitt "Aufgaben-System: echte,
+  abhakbare Aufgaben (Outlook-Stil)" oben. Neue Tabelle `tasks`, neuer
+  Tag-Reiter im Kalender, Geburtstags-/Wiedervorlage-Aufgaben laufen
+  automatisch mit. Kein offener Punkt mehr.
 - **Gamification-Ausschalter (reines CRM verkaufen)** — vom Nutzer am
   2026-08-09: eine Einstellung, mit der sich das gesamte Gamification-Thema
   (XP/Level/Klassen/Quests/Gilde/Charakter) organisationsweit abschalten
@@ -3633,22 +3634,129 @@ echte Gebäude-Grafik (Platzhalter bleibt bis auf Weiteres), eine
 Self-Service-Oberfläche für Gildenführer (kommt laut Nutzer erst mit der
 großen Automatisierung).
 
-**Direkt im Anschluss noch am selben Abend gefunden, NICHT mehr gebaut
-(nächste Session zuerst hiermit weitermachen):** die "+ hinzufügen"/
-"Gilde verlassen"-Aktionsleiste sitzt aktuell noch OBERHALB des
-Mitglieder/Freunde-Reiters, wirkt für beide Reiter gleichermaßen gültig —
+**Aktionsleiste-Politur, erledigt 2026-08-20:** die "+ hinzufügen"/
+"Gilde verlassen"-Aktionsleiste saß vorher OBERHALB des Mitglieder/
+Freunde-Reiters, wirkte für beide Reiter gleichermaßen gültig —
 verwirrend, weil "hinzufügen" im Mitglieder-Kontext (nur Gildenführer)
 etwas anderes meint als "hinzufügen" im Freunde-Kontext (das dort schon
-existierende Freunde-Suchfeld, für jeden sichtbar). Nutzerwunsch: Reiter
-zuerst ganz oben, "+ hinzufügen"/"Gilde verlassen" **innerhalb** des
-Mitglieder-Reiters (unter dem Reiter-Umschalter, nicht mehr geteilt über
-beide Reiter) — das Freunde-Suchfeld steckt dank der `#friendCard`-
-appendChild-Verschiebung ohnehin schon automatisch im Freunde-Reiter,
-dort ist nichts zu ändern. Rein strukturelle HTML-Verschiebung
-(`#guildAddBtn`/`#guildLeaveBtn` von vor `#guildAreaTabs` nach innerhalb
-von `#guildTabMitglieder`), keine neue Logik nötig — Ansatzstelle in
-`index.html` ist der `<div class="guild-actions-row">`-Block direkt vor
-`<div class="view-switch" id="guildAreaTabs">`.
+existierende Freunde-Suchfeld, für jeden sichtbar). "+ hinzufügen" sitzt
+jetzt **innerhalb** des Mitglieder-Reiters (unter dem Reiter-Umschalter,
+weiterhin nur für den Gründer sichtbar), "Gilde verlassen" wanderte
+stattdessen an den Gebäude-Header (gildenweite Aktion, für alle
+Mitglieder). Reine HTML-Verschiebung, keine neue Logik — per Playwright
+gegen den echten Account (Gründer-Rolle) verifiziert, Desktop + Mobile,
+keine Konsolenfehler.
+
+## Aufgaben-System: echte, abhakbare Aufgaben (Outlook-Stil), Patch 51 (2026-08-20)
+
+Löst den seit 2026-08-09 unter "Bewusst aufgeschobene Ideen" notierten
+Wunsch "Outlook-artige abhakbare Aufgaben" — nach ausführlicher
+Konzept-Diskussion (Nutzer beschrieb genau das Outlook-Verhalten:
+Aufgaben mit Termin, Abhaken lässt sie verschwinden). **Wichtig, nicht
+verwechseln:** die bereits bestehenden Kalender-Hinweise
+(`tasksForDate()`, Geburtstags-/Wiedervorlage-**Punkte/Chips** in Monats-
+und Wochenansicht, siehe Abschnitt "Kalender-Aufgaben" oben) bleiben
+unverändert bestehen — reine, nicht-interaktive Vorschau, komplett
+abgeleitet wie bisher. Das neue System ist eine **zusätzliche**, echte
+Tabelle mit tatsächlicher Interaktion, nur im neuen Tag-Reiter sichtbar.
+
+**Kernentscheidung, mit dem Nutzer abgestimmt: kein "erledigt"-Zustand.**
+Eine Aufgabe existiert nur, solange sie offen ist — Abhaken **löscht die
+Zeile direkt** (`tasks`-Tabelle, kein `done_at`-Feld). Nutzer-Begründung:
+eine Historie erledigter Aufgaben hat keinen praktischen Wert ("als ob
+sich das einer anguckt") — wurde ein Anruf/Termin wirklich wahrgenommen,
+steht das ohnehin schon in der Kontakt-Chronik/den Terminen.
+
+**Datenmodell (Migration `20260820120000_aufgaben_system.sql`):** neue
+Tabelle `tasks` — `title`, `due_date` (nullable, **kein Pflichtfeld**,
+bewusst wie in Outlook — eine Aufgabe ohne Datum ist gültig, steht im
+Tag-Reiter in einem eigenen "Ohne Termin"-Block, nie überfällig/rot),
+`contact_id` (optional, `on delete set null`), `source_type`
+(`'manual'`/`'geburtstag'`/`'wiedervorlage'`). RLS wie bei `termine`
+(Patch 33): rein persönlich, Admin darf lesen (nicht so abgeschottet wie
+`journal_entries`) — direkt im seit der RLS-Performance-Härtung
+aktuellen Muster geschrieben (`(select auth.uid())`, eine SELECT-Policy),
+statt es später nachoptimieren zu müssen. Bewusst **keine**
+UPDATE-Policy — Aufgaben werden in Version 1 nicht nachträglich
+bearbeitet, nur angelegt oder gelöscht (Rule of Three, Bearbeiten kommt
+erst bei echtem Bedarf). Ein Unique-Index
+(`owner_id, contact_id, source_type, due_date`, nur für die zwei
+automatischen Typen) verhindert doppelte Geburtstags-/Wiedervorlage-
+Aufgaben, falls sich Sync-Läufe zeitlich überschneiden.
+
+**Wiedervorlage-Aufgaben: synchron bei jedem Speichern von
+`contacts.naechster_kontakt`.** Genau das vom Nutzer beschriebene reale
+Ablauf-Beispiel: Anruf, Kunde sagt "melden Sie sich nächstes Jahr" →
+neues Wiedervorlage-Datum eintragen → die alte Aufgabe soll dabei nicht
+als Karteileiche stehen bleiben. `syncWiedervorlageTask(contactId,
+contactName, newDate)` in `index.html` löscht die bisherige offene
+Wiedervorlage-Aufgabe des Kontakts und legt bei gesetztem Datum sofort
+die neue an — läuft an **allen drei** Stellen, an denen
+`naechster_kontakt` geschrieben wird (per Audit aller Vorkommen
+gefunden, nicht nur der naheliegendsten): Kontaktformular-Speichern
+(Neuanlage UND Bearbeiten, ein gemeinsamer Pfad), Kanban-Lead-Anlage am
+Dungeon (`createLeadAndLogTerminVereinbart`), Wiedervorlage-Feld im
+"Gewonnen"-Verkaufspopup (`recordWonSalesLoop`).
+
+**Geburtstags-Aufgaben: täglicher Sync statt Speichervorgang**, da sie
+nicht an einer Nutzeraktion hängen, sondern rein am Kalendertag.
+`syncBirthdayTasksIfNeeded()` läuft beim Login UND über einen neuen
+**Tageswechsel-Wächter** (`startTaskDayRolloverWatcher()`) — Auslöser
+war der Nutzerhinweis, dass B2B-Laptops üblicherweise über Nacht
+durchlaufen ("die Damen fahren ihren PC nicht herunter"), ein reiner
+Login-Check hätte den Tageswechsel bei durchgehend offenem Tab verpasst.
+Der Wächter prüft alle 5 Minuten **und** sofort, sobald das Browser-Tab
+wieder sichtbar wird (`visibilitychange`/`focus`) — Best-Practice-Muster
+auf ausdrücklichen Nutzerwunsch, statt nur stumpf zu pollen. Ein neues
+Profilfeld `profiles.tasks_synced_date` merkt sich, für welchen Tag
+zuletzt synchronisiert wurde — verhindert, dass eine am selben Tag
+bereits abgehakte (= gelöschte) Geburtstags-Aufgabe durch einen zweiten
+Sync-Lauf desselben Tages wiederaufersteht. Normales, unbewachtes
+Profilfeld, kein Trigger-Schutz nötig (anders als
+role/character_class/total_xp/level). Nur eigene Kontakte
+(`owner_id` = eigene ID) — bewusst **keine** gilden-geteilten Kontakte,
+ausdrückliche Nutzerklärung: "man würde ja nicht die Kunden seiner
+Gildenmitglieder anrufen."
+
+**Neuer dritter Kalender-Reiter "Tag"** (`calViewMode` jetzt
+`'monat'|'woche'|'tag'`, `#calViewDayBtn` neben Monat/Woche) — Outlook-
+Tagesansicht: links derselbe Zeitraster-Kalender wie die Wochenansicht
+(wiederverwendet `renderDayEvents()`/`attachDragHandlers()`/
+`computeOverlapLayout()`/Arbeitszeiten-Abdunklung 1:1, nur auf einen
+Tag beschränkt), rechts die Aufgaben-Spalte (Eingabezeile Titel+Datum
+oben, Liste mit Checkbox darunter). Zurück/Heute/Vor (`calPrevBtn`/
+`calTodayBtn`/`calNextBtn`) funktionieren im Tag-Reiter jetzt tagesweise,
+exakt nach demselben Muster wie zuvor schon wochenweise in der
+Wochenansicht — genau der vom Nutzer selbst genannte Bauplan ("der
+Heute-Knopf springt im jeweiligen Ansichtsmodus"). Doppelklick auf einen
+Tag in Monats- **oder** Wochenansicht (`openDayView()`) springt
+zusätzlich direkt in den Tag-Reiter mit genau diesem Tag.
+
+**Aufgaben-Anzeige, mit dem Nutzer abgestimmt:** am **heutigen** Tag
+zeigt die Spalte alle offenen Aufgaben inkl. Überfälligem (Rückstand
+rollt automatisch mit, deutlich rot markiert, `var(--danger)`) — an
+**jedem anderen** Tag (Doppelklick auf einen Tag in der Vergangenheit
+oder Zukunft) nur die Aufgaben, die exakt für diesen Tag fällig sind,
+ohne den allgemeinen Überfällig-Rückstand (der wäre dort nur
+verwirrend). Aufgaben ohne Datum stehen immer in einem eigenen Block
+"Ohne Termin" am Ende, unabhängig vom angezeigten Tag, nie rot.
+
+**Layout:** `.day-view-grid` (Kalender 65% / Aufgaben 35%, unter 760px
+gestapelt — gleiche Schwelle wie beim Kanban-Umbau). **Stolperstein beim
+Bauen, behoben:** die wiederverwendeten Wochenraster-Klassen
+(`.week-body{min-width:550px}`) sprengten als Grid-Item auf dem Handy
+die 65%-Spalte, weil Grid-Items ohne explizites `min-width:0` per
+Default ihre eigene Inhaltsbreite vor der Spaltenbreite respektieren —
+per Playwright-Overflow-Check gefunden (`body.scrollWidth` > `390`) und
+mit `.day-view-cal-col{min-width:0}` behoben, danach verifiziert sauber.
+
+End-to-end per Playwright gegen den echten Account verifiziert: Aufgabe
+anlegen ohne/mit Datum, Abhaken löscht sofort, überfällige Aufgabe rot,
+Doppelklick springt korrekt in den Tag-Reiter, kein horizontales
+Overflow auf 390px nach dem Fix, keine Konsolenfehler — sowie der
+komplette Wiedervorlage-Ablauf über einen echten Testkontakt (Anlegen
+mit Datum → Aufgabe erscheint → Datum ändern → alte Aufgabe verschwindet,
+neue erscheint am neuen Tag → Testkontakt/-aufgabe wieder entfernt).
 
 ## Bekannte, bewusst in Kauf genommene Lücken
 
