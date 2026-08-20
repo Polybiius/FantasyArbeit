@@ -3814,6 +3814,49 @@ Tagesansicht zeigt korrektes Datum, Wochenansicht zeigt die Woche um den
 springt zuverlässig zurück — Geburtstags-Vorschau erscheint korrekt,
 keine Checkbox/Aufgaben-ID an der Vorschau-Zeile, keine Konsolenfehler.
 
+**Dritter Nachtrag, noch am selben Tag — betrachteter Tag übersteht jetzt
+ein Neuladen der Seite.** Nutzerwunsch, klar begründet: "ich bin bei
+einem Datum, trage dort was ein, lade neu, soll dort bleiben — für
+'heute' hab ich ja den Knopf." Neues drittes Hash-Format
+`#tagebuch/<monat|woche|tag>/<YYYY-MM-DD>` neben `#kontakt/<id>` und den
+einfachen Seitennamen (`routeToHash()` erweitert). `updateCalendarHash()`
+schreibt es bei jeder Kalender-Navigation über `history.replaceState()`
+— bewusst **kein** `location.hash=...` (würde das eigene
+`hashchange`-Listener sofort erneut auslösen, doppeltes Rendern) und
+**kein** neuer Browser-History-Eintrag pro Klick (sonst müsste "zurück"
+im Browser durch jeden einzelnen Vor/Zurück-Klick im Kalender
+zurückspulen, bevor man die Seite verlassen könnte).
+
+Beim Umsetzen zwei echte Race-Bugs gefunden und behoben, beide Folge
+davon, dass `initJournal()` in `enterApp()` bewusst **unawaited**
+aufgerufen wird (damit der restliche Login-Ablauf nicht auf das
+Tagebuch warten muss):
+1. Die Kalender-Grundvariablen (`calViewYear`/`calWeekStart`/
+   `calDayDate`/`calFocusDate`) wurden bisher erst NACH dem ersten
+   `await` in `initJournal()` gesetzt — je nach Netzwerk-Timing konnte
+   `restoreLastPage()` (das per Hash z.B. `calFocusDate` auf einen
+   fremden Tag setzt) VOR diesem Codeblock laufen, der die
+   wiederhergestellte Ansicht dann beim späteren Fortsetzen still
+   wieder auf "heute" zurückwarf. Jetzt steht der komplette Block ganz
+   am Anfang von `initJournal()`, vor dem ersten `await` — garantiert
+   synchron abgeschlossen, bevor `enterApp()` zu `restoreLastPage()`
+   weiterläuft.
+2. Ein unbedingtes `renderCalendar()` am Ende von `initJournal()`
+   überschrieb die schon korrekt wiederhergestellte `calMonthLabel`-
+   Kopfzeile (gemeinsam über alle drei Ansichten) wieder mit dem Monat
+   von "heute" — unabhängig davon, welche Ansicht gerade tatsächlich
+   sichtbar war. Jetzt modusabhängig (`renderDayView`/`renderWeekView`/
+   `renderCalendar`, je nach `calViewMode`).
+
+Beide Bugs wurden erst durch einen echten End-to-End-Test mit
+tatsächlichem Seiten-Reload sichtbar (nicht durch Code-Lesen) — per
+Playwright verifiziert: Doppelklick auf 10.08.2027 → Aufgabe eintragen
+→ **echter Reload** → Tag-Reiter, Datum UND Aufgabe korrekt erhalten;
+Wochenansicht-Wechsel → Reload → Wochenansicht mit der richtigen Woche
+erhalten; normale Seiten-Navigation (z.B. Klick auf Kontakte) bleibt
+unberührt (eigener, einfacher Hash wie gehabt); "Heute"-Knopf springt
+weiterhin zuverlässig zurück und aktualisiert den Hash entsprechend.
+
 ## Bekannte, bewusst in Kauf genommene Lücken
 
 - ~~"Zuletzt kontaktiert"/Kontakt-Chronik zeigen nur eigene Einträge~~ —
