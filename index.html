@@ -2766,9 +2766,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     try{ await loadOrg(); await loadConfig(); await loadLog(); }
     catch{ document.getElementById('loading').style.display='none'; return; }
     if(justCreatedCharacter){ await grantClassStarterEquipment(); justCreatedCharacter = false; }
-    await loadProducts();
-    await loadLocationTypes();
-    await loadMySales();
+    // Drei unabhängige Tabellen-Reads, kein gemeinsamer Zustand -- parallel
+    // statt sequenziell spart zwei Netzwerk-Rundlaufzeiten beim Login
+    // (Häppchen-6a-Review, 2026-08-21).
+    await Promise.all([loadProducts(), loadLocationTypes(), loadMySales()]);
     // Alle drei laufen auch beim Login, genau wie nach jeder Aktion (siehe die
     // anderen 6 Aufrufstellen) - zahlt bereits erfüllte Quests/Stufen/Epics
     // sofort aus (z.B. nach einer Regelwerk-Lockerung), statt erst auf die
@@ -4871,7 +4872,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   function saleDate(s){ return s.vertragsbeginn || s.datum; }
   function salesForPeriod(period){
-    const year = String(new Date().getFullYear());
+    const year = String(currentBusinessYear());
     return (mySalesCache||[]).filter(s=>{
       const d = saleDate(s);
       if(!d || d.slice(0,4)!==year) return false;
@@ -4978,13 +4979,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(cats.length===0){ chartCard.style.display='none'; return; }
     chartCard.style.display='block';
     const maxSum = Math.max(...cats.map(c=>byCategory[c].sum));
-    legendEl.innerHTML = cats.map(c=>`<span class="stat-legend-item"><span class="stat-legend-swatch" style="background:${catColors[c]||'var(--muted-2)'}"></span>${c}</span>`).join('');
+    legendEl.innerHTML = cats.map(c=>`<span class="stat-legend-item"><span class="stat-legend-swatch" style="background:${catColors[c]||'var(--muted-2)'}"></span>${escHtml(c)}</span>`).join('');
     rowsEl.innerHTML = cats.map(c=>{
       const d = byCategory[c];
       const pct = maxSum>0 ? (d.sum/maxSum*100) : 0;
       return `<div class="stat-bar-row">
-        <span class="sbr-label">${c}</span>
-        <div class="stat-bar-track"><div class="stat-bar-fill" style="width:${pct}%;background:${catColors[c]||'var(--muted-2)'}" title="${c}: ${fmtEuro(d.sum)} · ${d.stueck} Stück"></div></div>
+        <span class="sbr-label">${escHtml(c)}</span>
+        <div class="stat-bar-track"><div class="stat-bar-fill" style="width:${pct}%;background:${catColors[c]||'var(--muted-2)'}" title="${escHtml(c)}: ${fmtEuro(d.sum)} · ${d.stueck} Stück"></div></div>
         <span class="sbr-value">${fmtEuro(d.sum)}</span>
       </div>`;
     }).join('');
@@ -5013,8 +5014,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     let monthly = null;
     if(statSelectedPeriod==='jahr'){
-      monthly = [];
-      for(let m=0;m<12;m++) monthly.push(aggregateStats(salesForPeriod(String(m))));
+      // Statt 12x den kompletten mySalesCache neu nach Jahr+Monat zu filtern,
+      // die bereits jahresgefilterte salesList in einem Durchlauf auf 12
+      // Monats-Buckets aufteilen (Häppchen-6a-Review, 2026-08-21).
+      const buckets = Array.from({length:12}, ()=>[]);
+      salesList.forEach(s=>{ buckets[parseInt(saleDate(s).slice(5,7),10)-1].push(s); });
+      monthly = buckets.map(aggregateStats);
     }
     const series = (key)=> monthly ? monthly.map(mo=>mo[key]) : null;
 
@@ -5060,7 +5065,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('trophyRoomFsTitle').textContent = def.name;
   }
 
-  let trophyRoomYear = new Date().getFullYear();
+  let trophyRoomYear = currentBusinessYear();
 
   // Verkäufe eines beliebigen Jahres -- analog zu salesForPeriod(), aber
   // ohne die Monats-Verzweigung, da der Schatzraum immer ganze Jahre zeigt.
@@ -5165,6 +5170,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   function initTrophyRoom(){
     updateTrophyRoomTile();
     document.getElementById('trophyRoomTile').addEventListener('click', ()=>{
+      // Beim Öffnen immer aufs laufende Jahr springen -- sonst bliebe eine
+      // zuvor per Vor/Zurück angesteuerte Jahreszahl aus der letzten Sitzung
+      // hängen, entgegen dem Zweck "heute ist der naheliegende Startpunkt".
+      trophyRoomYear = currentBusinessYear();
       document.getElementById('trophyRoomModal').style.display = 'flex';
       renderTrophyRoom();
       history.pushState({trophyRoomOpen:true}, '', location.href);
@@ -5201,7 +5210,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   function renderStatTabs(){
     const el = document.getElementById('statTabs');
-    const year = new Date().getFullYear();
+    const year = currentBusinessYear();
     const tabs = [{key:'jahr', label:`Jahr ${year}`}, ...STAT_MONTH_NAMES.map((m,i)=>({key:String(i), label:m}))];
     el.innerHTML = tabs.map(t=>`<button class="stat-tab ${statSelectedPeriod===t.key?'active':''}" data-stattab="${t.key}">${t.label}</button>`).join('');
     el.querySelectorAll('[data-stattab]').forEach(btn=>{
