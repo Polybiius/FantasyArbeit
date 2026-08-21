@@ -2114,10 +2114,43 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     fmt.formatToParts(new Date(d)).forEach(p=>{ map[p.type]=p.value; });
     return { year:+map.year, month:+map.month, day:+map.day };
   }
-  function tz(){ return (org && org.timezone) || 'Europe/Berlin'; }
+  // Eigene Zeitzone geht vor der Organisations-Zeitzone (Salesforce-/Outlook-
+  // Muster, seit 2026-08-21: profiles.timezone, nullable, Fallback auf
+  // org.timezone) -- betrifft automatisch jede Stelle, die tz() nutzt, ohne
+  // eigenen Code je Aufrufstelle.
+  function tz(){ return (profile && profile.timezone) || (org && org.timezone) || 'Europe/Berlin'; }
   function todayKey(d){
     const p = localPartsInTZ(d, tz());
     return `${p.year}-${String(p.month).padStart(2,'0')}-${String(p.day).padStart(2,'0')}`;
+  }
+  // Wie localPartsInTZ(), aber inkl. Uhrzeit -- für die Zeitraster-Engine
+  // (Termin-Uhrzeit-Anzeige/-Positionierung), separate Funktion statt
+  // localPartsInTZ() zu erweitern, um dessen bereits erprobtes Verhalten
+  // (todayKey()/weekKey(), nur Datum) nicht anzufassen.
+  function fullPartsInTZ(d, tzName){
+    const fmt = new Intl.DateTimeFormat('en-CA', {timeZone:tzName, year:'numeric', month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hourCycle:'h23'});
+    const map = {};
+    fmt.formatToParts(new Date(d)).forEach(p=>{ map[p.type]=p.value; });
+    return { year:+map.year, month:+map.month, day:+map.day, hour:+map.hour, minute:+map.minute };
+  }
+  // Kehrt fullPartsInTZ() um: aus Wandzeit-Komponenten (Jahr/Monat/Tag/Stunde/
+  // Minute), interpretiert in einer bestimmten IANA-Zeitzone, den korrekten
+  // UTC-Zeitpunkt konstruieren -- Standard-Näherungsverfahren (2 Durchläufe
+  // reichen, da eine Zeitzone ihren Versatz nie zweimal in derselben Stunde
+  // wechselt): erste Näherung naiv als UTC interpretieren, per Intl prüfen,
+  // wie sie sich in der Zielzone tatsächlich liest, Differenz zur gewünschten
+  // Wandzeit draufaddieren.
+  function zonedTimeToUtc(y, m, d, hh, mm, tzName){
+    const wanted = Date.UTC(y, m-1, d, hh, mm);
+    let guess = wanted;
+    for(let i=0;i<2;i++){
+      const p = fullPartsInTZ(guess, tzName);
+      const seen = Date.UTC(p.year, p.month-1, p.day, p.hour, p.minute);
+      const diff = wanted - seen;
+      if(diff===0) break;
+      guess += diff;
+    }
+    return new Date(guess);
   }
   // Liefert einen Zeitstempel als Kalendertag DER ORGANISATION (nicht des
   // Browser-Geräts), verankert auf 12 Uhr mittags lokal -- sichere Grundlage
@@ -4391,8 +4424,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       sb.from('journal_entries').select('entry_date,q1,q2,q3,q4,q5').eq('user_id', profile.id).gte('entry_date', from).lte('entry_date', to),
       sb.from('journal_photos').select('entry_date').eq('user_id', profile.id).gte('entry_date', from).lte('entry_date', to),
       sb.from('termine').select('start_at').eq('owner_id', profile.id)
-        .gte('start_at', new Date(calViewYear, calViewMonth, 1).toISOString())
-        .lt('start_at', new Date(calViewYear, calViewMonth, daysInMonth(calViewYear,calViewMonth)+1).toISOString())
+        .gte('start_at', zonedTimeToUtc(calViewYear, calViewMonth+1, 1, 0, 0, tz()).toISOString())
+        .lt('start_at', zonedTimeToUtc(calViewYear, calViewMonth+1, daysInMonth(calViewYear,calViewMonth)+1, 0, 0, tz()).toISOString())
     ]);
     if(error) logSilentError('Tagebuch-Tage laden', error);
     calEntryDates = new Set((data||[]).filter(journalRowHasContent).map(r=>r.entry_date));
@@ -6793,8 +6826,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const [y,m,d] = datum.split('-').map(Number);
     const [sh,sm] = startStr.split(':').map(Number);
     const [eh,em] = endeStr.split(':').map(Number);
-    const startAt = new Date(y, m-1, d, sh, sm);
-    const endAt = new Date(y, m-1, d, eh, em);
+    const startAt = zonedTimeToUtc(y, m, d, sh, sm, tz());
+    const endAt = zonedTimeToUtc(y, m, d, eh, em, tz());
     if(endAt<=startAt) return;
     const { error } = await sb.from('termine').insert({
       org_id:profile.org_id, owner_id:profile.id, contact_id:contact.id,
@@ -6835,8 +6868,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         const [y,m,d] = datum.split('-').map(Number);
         const [sh,sm] = startEl.value.split(':').map(Number);
         const [eh,em] = endeEl.value.split(':').map(Number);
-        const startAt = new Date(y,m-1,d,sh,sm);
-        const endAt = new Date(y,m-1,d,eh,em);
+        const startAt = zonedTimeToUtc(y, m, d, sh, sm, tz());
+        const endAt = zonedTimeToUtc(y, m, d, eh, em, tz());
         if(endAt<=startAt){ statusEl.textContent = 'Ende muss nach dem Start liegen.'; return; }
         const { error } = await sb.from('termine').insert({
           org_id:profile.org_id, owner_id:profile.id, contact_id:contact.id,
@@ -6980,13 +7013,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       const [sh,sm] = series.start_time.split(':').map(Number);
       const [eh,em] = series.end_time.split(':').map(Number);
       const rows = dates.map(dateStr=>{
-        const d = new Date(dateStr+'T00:00:00');
+        const [y,m,dd] = dateStr.split('-').map(Number);
         return {
           org_id: series.org_id, owner_id: series.owner_id,
           contact_id: series.contact_id, location_id: series.location_id,
           title: series.title, series_id: series.id, kanal: series.kanal||null,
-          start_at: new Date(d.getFullYear(),d.getMonth(),d.getDate(),sh,sm).toISOString(),
-          end_at: new Date(d.getFullYear(),d.getMonth(),d.getDate(),eh,em).toISOString()
+          start_at: zonedTimeToUtc(y, m, dd, sh, sm, tz()).toISOString(),
+          end_at: zonedTimeToUtc(y, m, dd, eh, em, tz()).toISOString()
         };
       });
       const { error } = await sb.from('termine').insert(rows);
@@ -7022,9 +7055,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       closeBtn.onclick = ()=> finish(null);
     });
   }
-  function timeHHMM(d){ return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`; }
+  // Aufgelöste Zeitzone (eigene, sonst Org) statt Browser-lokal -- Zeitraster-
+  // Vereinheitlichung, 2026-08-21.
+  function timeHHMM(d){ const p = fullPartsInTZ(d, tz()); return `${pad2(p.hour)}:${pad2(p.minute)}`; }
   function minToHHMM(min){ return `${pad2(Math.floor(min/60))}:${pad2(min%60)}`; }
-  function minutesSinceMidnight(d){ return d.getHours()*60 + d.getMinutes(); }
+  function minutesSinceMidnight(d){ const p = fullPartsInTZ(d, tz()); return p.hour*60 + p.minute; }
 
   // Schreibt Ansicht+Fokus-Tag in den URL-Hash, OHNE ein 'hashchange'
   // auszulösen (replaceState statt location.hash=...) -- sonst würde der
@@ -7249,11 +7284,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     timeColEl.innerHTML = timeHtml;
     timeColEl.style.height = totalHeight+'px';
 
-    const weekEnd = new Date(calWeekStart.getFullYear(), calWeekStart.getMonth(), calWeekStart.getDate()+7);
+    const weekStartUtc = zonedTimeToUtc(calWeekStart.getFullYear(), calWeekStart.getMonth()+1, calWeekStart.getDate(), 0, 0, tz());
+    const weekEndUtc = zonedTimeToUtc(calWeekStart.getFullYear(), calWeekStart.getMonth()+1, calWeekStart.getDate()+7, 0, 0, tz());
     const { data, error } = await sb.from('termine')
       .select('*, contact:contacts(id,name), location:locations(id,name), organizer:organizer_id(display_name,real_name)')
       .eq('owner_id', profile.id)
-      .gte('start_at', calWeekStart.toISOString()).lt('start_at', weekEnd.toISOString());
+      .gte('start_at', weekStartUtc.toISOString()).lt('start_at', weekEndUtc.toISOString());
     if(error) logSilentError('Termine laden', error);
     weekTermine = data || [];
 
@@ -7325,12 +7361,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     timeColEl.innerHTML = timeHtml;
     timeColEl.style.height = totalHeight+'px';
 
-    const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-    const dayEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate()+1);
+    const dayStartUtc = zonedTimeToUtc(d.getFullYear(), d.getMonth()+1, d.getDate(), 0, 0, tz());
+    const dayEndUtc = zonedTimeToUtc(d.getFullYear(), d.getMonth()+1, d.getDate()+1, 0, 0, tz());
     const { data, error } = await sb.from('termine')
       .select('*, contact:contacts(id,name), location:locations(id,name), organizer:organizer_id(display_name,real_name)')
       .eq('owner_id', profile.id)
-      .gte('start_at', dayStart.toISOString()).lt('start_at', dayEnd.toISOString());
+      .gte('start_at', dayStartUtc.toISOString()).lt('start_at', dayEndUtc.toISOString());
     if(error) logSilentError('Termine laden', error);
     weekTermine = data || [];
 
@@ -7613,8 +7649,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const [sh,sm] = startStr.split(':').map(Number);
     const [eh,em] = endeStr.split(':').map(Number);
     const d = termineEntryDateForSave;
-    const startAt = new Date(d.getFullYear(), d.getMonth(), d.getDate(), sh, sm);
-    const endAt = new Date(d.getFullYear(), d.getMonth(), d.getDate(), eh, em);
+    const startAt = zonedTimeToUtc(d.getFullYear(), d.getMonth()+1, d.getDate(), sh, sm, tz());
+    const endAt = zonedTimeToUtc(d.getFullYear(), d.getMonth()+1, d.getDate(), eh, em, tz());
     if(endAt<=startAt){ statusEl.textContent = 'Ende muss nach dem Start liegen.'; return; }
 
     const payload = { title, start_at:startAt.toISOString(), end_at:endAt.toISOString(), contact_id:termineContactSelectedId, location_id:termineLocationSelectedId, kanal:termineEntryKanal||null };
@@ -7628,14 +7664,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         if(scope==='all'){
           const { error: seriesErr } = await sb.from('termin_series').update({ start_time:startStr, end_time:endeStr, kanal:termineEntryKanal||null }).eq('id', editingRow.series_id);
           if(seriesErr){ reportError('Serie ändern', seriesErr, statusEl); return; }
-          const startOfToday = new Date(); startOfToday.setHours(0,0,0,0);
+          const todayP = fullPartsInTZ(new Date(), tz());
+          const startOfToday = zonedTimeToUtc(todayP.year, todayP.month, todayP.day, 0, 0, tz());
           const { data: futureRows, error: futErr } = await sb.from('termine').select('id,start_at')
             .eq('series_id', editingRow.series_id).gte('start_at', startOfToday.toISOString());
           if(futErr) logSilentError('Serie: künftige Termine laden', futErr);
           await Promise.all((futureRows||[]).map(row=>{
-            const rd = new Date(row.start_at);
-            const ns = new Date(rd.getFullYear(), rd.getMonth(), rd.getDate(), sh, sm);
-            const ne = new Date(rd.getFullYear(), rd.getMonth(), rd.getDate(), eh, em);
+            const rp = fullPartsInTZ(row.start_at, tz());
+            const ns = zonedTimeToUtc(rp.year, rp.month, rp.day, sh, sm, tz());
+            const ne = zonedTimeToUtc(rp.year, rp.month, rp.day, eh, em, tz());
             return sb.from('termine').update({ title, start_at:ns.toISOString(), end_at:ne.toISOString(), contact_id:termineContactSelectedId, location_id:termineLocationSelectedId, kanal:termineEntryKanal||null }).eq('id', row.id);
           }));
         } else {
@@ -8568,6 +8605,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     { id:'planung_vks', group:'provision', label:'Planung Verkaufsgespräche', type:'number', field:'planung_vks', step:'1', placeholder:'Ziel-Anzahl Verkaufsgespräche' },
     { id:'planung_fa', group:'provision', label:'Planung Fachkontakte (FA)', type:'number', field:'planung_fa', step:'1', placeholder:'Ziel-Anzahl Fachkontakte' },
 
+    { id:'timezone_widget', group:'kalender', type:'alias', label:'Zeitzone', desc:'Eigene Zeitzone für Termin-Anzeige, unabhängig vom Standard der Organisation' },
     { id:'arbeitszeiten_widget', group:'kalender', type:'alias', label:'Arbeitszeiten', desc:'Wochentage, Startzeit, Endzeit, Mo–Fr auf einmal setzen' },
     { id:'calendar_hide_weekends', group:'kalender', label:'Wochenenden ausblenden', desc:'Samstag/Sonntag in der Wochenansicht komplett ausblenden statt nur grau.', type:'toggle', field:'calendar_hide_weekends' },
     { id:'calendar_show_birthdays', group:'kalender', label:'Geburtstage anzeigen', desc:'Geburtstage deiner Kontakte als Hinweis im Kalender.', type:'toggle', field:'calendar_show_birthdays', defaultChecked:true },
@@ -8622,6 +8660,46 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     </div>`;
   }
 
+  // Volle IANA-Zeitzonenliste vom Browser, falls verfügbar (moderne
+  // Chromium/Safari-Versionen) -- sonst eine handverlesene, praxisnahe
+  // Auswahl gängiger Geschäfts-Zeitzonen als Rückfall.
+  function allTimezones(){
+    if(typeof Intl.supportedValuesOf === 'function'){
+      try{ return Intl.supportedValuesOf('timeZone'); }catch{ /* Rückfall unten */ }
+    }
+    return ['Europe/Berlin','Europe/London','Europe/Paris','Europe/Madrid','Europe/Rome',
+      'Europe/Zurich','Europe/Vienna','Europe/Warsaw','Europe/Lisbon','Europe/Moscow',
+      'America/New_York','America/Chicago','America/Denver','America/Los_Angeles',
+      'America/Sao_Paulo','Asia/Dubai','Asia/Kolkata','Asia/Shanghai','Asia/Tokyo',
+      'Asia/Singapore','Australia/Sydney','Pacific/Auckland','UTC'];
+  }
+
+  function timezoneCustomHtml(){
+    const orgTz = escHtml((org && org.timezone) || 'Europe/Berlin');
+    return `<h3 class="settings-subheading">Zeitzone</h3>
+      <div class="empty-page-hint" style="margin-bottom:8px;">Wirkt sich auf die Termin-Anzeige im Kalender aus (Uhrzeit, Tages-/Wochenzuordnung) — nützlich, wenn du gerade nicht in ${orgTz} bist. Ohne Auswahl gilt die Standard-Zeitzone der Organisation.</div>
+      <select id="tzSelect" class="settings-input"></select>
+      <button class="cal-nav-btn" id="tzSaveBtn" style="width:100%;margin-top:10px;">Zeitzone speichern</button>
+      <div class="empty-page-hint" id="tzStatus"></div>`;
+  }
+
+  function wireTimezoneExtras(){
+    const sel = document.getElementById('tzSelect');
+    const orgTz = (org && org.timezone) || 'Europe/Berlin';
+    sel.innerHTML = [`<option value="">– Standard der Organisation (${escHtml(orgTz)}) –</option>`]
+      .concat(allTimezones().map(z=>`<option value="${escHtml(z)}">${escHtml(z)}</option>`)).join('');
+    sel.value = profile.timezone || '';
+    document.getElementById('tzSaveBtn').addEventListener('click', async ()=>{
+      const statusEl = document.getElementById('tzStatus');
+      const val = sel.value || null;
+      const { error } = await sb.from('profiles').update({ timezone: val }).eq('id', profile.id);
+      if(error){ reportError('Zeitzone speichern', error, statusEl); return; }
+      profile.timezone = val;
+      statusEl.textContent = 'Gespeichert.';
+      renderCalTasksNow();
+    });
+  }
+
   function arbeitszeitenCustomHtml(){
     return `<h3 class="settings-subheading">Arbeitszeiten</h3>
       <div class="empty-page-hint" style="margin-bottom:8px;">Wirkt sich nur auf die Wochenansicht im Kalender aus (Zeiten außerhalb werden abgedunkelt dargestellt) — Termine lassen sich trotzdem jederzeit überall eintragen.</div>
@@ -8662,7 +8740,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const basic = entries.filter(e=>!e.advanced);
     const adv = entries.filter(e=>e.advanced);
     const advOpen = !!settingsAdvancedOpen[gid] || (!!settingsSearchTerm && adv.some(e=>settingsFieldsMatch(e, settingsSearchTerm)));
-    const custom = gid==='kalender' ? arbeitszeitenCustomHtml() : '';
+    const custom = gid==='kalender' ? (timezoneCustomHtml() + arbeitszeitenCustomHtml()) : '';
     document.getElementById('settingsGroupModalBody').innerHTML = `
       ${custom}
       ${basic.map(settingsFieldHtml).join('')}
@@ -8670,7 +8748,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       <div class="settings-advanced-wrap" id="settingsAdvWrap_${gid}" style="display:${advOpen?'block':'none'};">${adv.map(settingsFieldHtml).join('')}</div>` : ''}
     `;
     attachSettingsFieldListeners();
-    if(gid==='kalender'){ renderArbeitszeitenRows(); wireArbeitszeitenExtras(); }
+    if(gid==='kalender'){ wireTimezoneExtras(); renderArbeitszeitenRows(); wireArbeitszeitenExtras(); }
     document.querySelectorAll('[data-adv-toggle]').forEach(a=>{
       const g2 = a.dataset.advToggle;
       a.addEventListener('click', ()=>{
