@@ -7883,7 +7883,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // einfach ohne Kanal-Zuordnung, kein Abbruch nötig.
   async function attachKanalToLoggedAction(logId, kanal){
     if(!logId || !kanal) return;
-    const { data, error } = await sb.from('action_log').update({ meta:{kanal} }).eq('id', logId).select().single();
+    // Läuft über eine eigene RPC-Funktion statt eines direkten .update() -
+    // action_log hat seit der RLS-Härtung (2026-08-15) keine Schreib-Policy
+    // mehr, ein direktes Update schlug hier seither IMMER lautlos fehl (siehe
+    // Migration 20260821120000_action_log_kanal_nachtrag_rpc.sql).
+    const { data, error } = await sb.rpc('attach_kanal_to_own_action', { p_log_id: logId, p_kanal: kanal });
     if(error){ logSilentError('Kanal nachtragen', error); return; }
     const idx = log.findIndex(e=>e.id===logId);
     if(idx>=0) log[idx] = data;
