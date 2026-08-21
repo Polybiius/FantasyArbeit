@@ -5566,6 +5566,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     }
   }
 
+  // Kontaktliste + ggf. offene Kontakt-Detailseite sind zwei unabhängige
+  // Neu-Renders (unterschiedliche DB-Abfragen) -- an mehreren Stellen
+  // bisher sequenziell nacheinander aufgerufen, obwohl sie sich nicht
+  // gegenseitig brauchen.
+  async function refreshContactsAndDetail(id){
+    await Promise.all([renderContactsPage(), refreshContactPageIfCurrent(id)]);
+  }
+
   function renderContactStatStrip(cSales, chronikCount, filesCount, lastTs){
     const chip = (num, lbl) => `<div class="kd-stat-chip"><div class="num">${num}</div><div class="lbl">${lbl}</div></div>`;
     document.getElementById('kdStatStrip').innerHTML = `<div class="kd-stat-strip">
@@ -5713,7 +5721,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const row = (s, showKuendigen) => {
       const p = productById(s.product_id);
       return `<div class="cc-notes kd-contract-row" data-sale="${s.id}">
-        <span class="kdc-main"><strong>${p ? p.name : '?'}</strong>${s.vertragsnummer ? ` <span class="kdc-meta">${escHtml(s.vertragsnummer)}</span>` : ''} — Start: ${fmtDate(s.vertragsbeginn)}
+        <span class="kdc-main"><strong>${p ? escHtml(p.name) : '?'}</strong>${s.vertragsnummer ? ` <span class="kdc-meta">${escHtml(s.vertragsnummer)}</span>` : ''} — Start: ${fmtDate(s.vertragsbeginn)}
         · laufender Beitrag: ${fmtEuro(s.laufender_beitrag)} · ausgeschüttete Provision: —
         ${s.status==='verloren' ? ' · <span style="color:var(--danger)">verloren</span>' : ''}
         ${s.vertragsende ? ` · gekündigt zum ${fmtDate(s.vertragsende)}` : ''}</span>
@@ -5746,8 +5754,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         else c.kanban_stage = status;
       }
       await recordWinOrLoss(c, status);
-      await renderContactsPage();
-      await refreshContactPageIfCurrent(c.id);
+      await refreshContactsAndDetail(c.id);
     });
     document.querySelectorAll('#contactDetailSales [data-kuendigen]').forEach(btn=>{
       btn.addEventListener('click', async ()=>{
@@ -5755,8 +5762,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         if(!datum) return;
         const { error } = await sb.from('sales').update({ vertragsende: datum }).eq('id', btn.dataset.kuendigen);
         if(error){ reportError('Vertrag als gekündigt markieren', error); return; }
-        await renderContactsPage();
-        await refreshContactPageIfCurrent(c.id);
+        await refreshContactsAndDetail(c.id);
       });
     });
   }
@@ -5847,32 +5853,34 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       const statusEl = document.getElementById('cdFileStatus');
       const picked = Array.from(fileInput.files || []);
       fileInput.value = '';
-      let hadError = false;
-      for(const file of picked){
+      statusEl.textContent = picked.length>1 ? `Lade ${picked.length} Dateien hoch…` : (picked.length ? `Lade ${picked[0].name} hoch…` : '');
+      // Unabhängige Uploads laufen parallel statt nacheinander -- jede
+      // Datei meldet ihr eigenes Ergebnis zurück, statt statusEl direkt
+      // aus mehreren gleichzeitig laufenden Zweigen heraus zu setzen.
+      const results = await Promise.all(picked.map(async (file)=>{
         if(!CONTACT_FILE_ALLOWED_TYPES.includes(file.type)){
-          statusEl.textContent = `${file.name}: nicht unterstützter Dateityp.`;
-          hadError = true; continue;
+          return { ok:false, message:`${file.name}: nicht unterstützter Dateityp.` };
         }
         if(file.size > CONTACT_FILE_MAX_BYTES){
-          statusEl.textContent = `${file.name}: größer als 10 MB.`;
-          hadError = true; continue;
+          return { ok:false, message:`${file.name}: größer als 10 MB.` };
         }
-        statusEl.textContent = `Lade ${file.name} hoch…`;
         const path = `${c.id}/${crypto.randomUUID()}_${file.name}`;
         const { error: upErr } = await sb.storage.from(CONTACT_FILE_BUCKET).upload(path, file, { contentType: file.type });
-        if(upErr){ reportError('Datei hochladen', upErr, statusEl); hadError = true; continue; }
+        if(upErr){ reportError('Datei hochladen', upErr); return { ok:false, message:'Fehler: '+(upErr.message||upErr) }; }
         const { error: insErr } = await sb.from('contact_files').insert({
           org_id: profile.org_id, contact_id: c.id, uploaded_by: profile.id,
           storage_path: path, filename: file.name, mime_type: file.type, size_bytes: file.size
         });
-        if(insErr){ reportError('Datei speichern', insErr, statusEl); hadError = true; continue; }
-      }
+        if(insErr){ reportError('Datei speichern', insErr); return { ok:false, message:'Fehler: '+(insErr.message||insErr) }; }
+        return { ok:true };
+      }));
+      const failed = results.filter(r=>!r.ok);
       // Wichtig: die Fehlermeldung NICHT vor dem Neuzeichnen löschen (das
       // hatte sie bisher unsichtbar gemacht, bevor der Nutzer sie lesen
       // konnte -- "Datei einfach verschwunden", Bugreport 2026-08-10).
-      const lastMessage = hadError ? statusEl.textContent : '';
+      const lastMessage = failed.length ? failed[failed.length-1].message : '';
       await renderContactFilesTab(c, canEdit);
-      if(hadError){
+      if(failed.length){
         const freshStatusEl = document.getElementById('cdFileStatus');
         if(freshStatusEl) freshStatusEl.textContent = lastMessage;
       }
@@ -5946,7 +5954,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       const icon = s.status==='gewonnen' ? '🏆' : '❌';
       const d = saleDate(s);
       items.push({ ts: new Date(d+'T12:00:00'), html:
-        `<div class="log-entry"><span class="lname">${icon} ${p?p.name:'?'}</span><span class="lright"><span class="ltime">${fmtDate(d)}</span></span></div>` });
+        `<div class="log-entry"><span class="lname">${icon} ${p?escHtml(p.name):'?'}</span><span class="lright"><span class="ltime">${fmtDate(d)}</span></span></div>` });
     });
 
     items.sort((a,b)=> b.ts - a.ts);
@@ -6016,7 +6024,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('page-kontakte').scrollIntoView({behavior:'smooth', block:'start'});
   }
 
-  document.getElementById('contactAddBtn').addEventListener('click', async ()=>{
+  document.getElementById('contactAddBtn').addEventListener('click', async (e)=>{
+    const btn = e.currentTarget;
     const vorname = document.getElementById('contactVornameInput').value.trim();
     const nachname = document.getElementById('contactNachnameInput').value.trim();
     const role = document.getElementById('contactRoleSelect').value;
@@ -6037,32 +6046,40 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     const payload = { vorname, nachname, role, location_id, status, kanban_stage, geburtsdatum, telefon, email, wohnort_strasse, wohnort_ort, bedarf_ist, bedarf_wunsch, naechster_kontakt, notes };
 
-    if(editingContactId){
-      const { data: savedContact, error } = await sb.from('contacts').update({ ...payload, updated_at:new Date().toISOString() }).eq('id', editingContactId).select().single();
-      if(error){ reportError('Kontakt speichern', error, statusEl); return; }
-      await syncWiedervorlageTask(savedContact.id, savedContact.name, savedContact.naechster_kontakt);
-      editingContactId = null;
-      document.getElementById('contactAddBtn').textContent = '+ Kontakt anlegen';
-    } else {
-      const { data: savedContact, error } = await sb.from('contacts').insert({ org_id:profile.org_id, owner_id:profile.id, ...payload }).select().single();
-      if(error){ reportError('Kontakt anlegen', error, statusEl); return; }
-      await syncWiedervorlageTask(savedContact.id, savedContact.name, savedContact.naechster_kontakt);
+    btn.disabled = true;
+    try{
+      if(editingContactId){
+        const { data: savedContact, error } = await sb.from('contacts').update({ ...payload, updated_at:new Date().toISOString() }).eq('id', editingContactId).select().single();
+        if(error){ reportError('Kontakt speichern', error, statusEl); return; }
+        await syncWiedervorlageTask(savedContact.id, savedContact.name, savedContact.naechster_kontakt);
+        editingContactId = null;
+        document.getElementById('contactAddBtn').textContent = '+ Kontakt anlegen';
+      } else {
+        const { data: savedContact, error } = await sb.from('contacts').insert({ org_id:profile.org_id, owner_id:profile.id, ...payload }).select().single();
+        if(error){ reportError('Kontakt anlegen', error, statusEl); return; }
+        await syncWiedervorlageTask(savedContact.id, savedContact.name, savedContact.naechster_kontakt);
+      }
+      document.getElementById('contactVornameInput').value = '';
+      document.getElementById('contactNachnameInput').value = '';
+      document.getElementById('contactLocationSearch').value = '';
+      contactLocationSelectedId = null;
+      document.getElementById('contactRoleSelect').selectedIndex = 0;
+      document.getElementById('contactStatusSelect').value = 'kalt';
+      document.getElementById('contactKanbanStageSelect').value = '';
+      document.getElementById('contactGeburtsdatumInput').value = '';
+      document.getElementById('contactTelefonInput').value = '';
+      document.getElementById('contactEmailInput').value = '';
+      document.getElementById('contactWohnortStrasseInput').value = '';
+      document.getElementById('contactWohnortOrtInput').value = '';
+      document.getElementById('contactBedarfIstInput').value = '';
+      document.getElementById('contactBedarfWunschInput').value = '';
+      document.getElementById('contactNextContactInput').value = '';
+      document.getElementById('contactNotesInput').value = '';
+      statusEl.textContent = '';
+      await renderContactsPage();
+    }finally{
+      btn.disabled = false;
     }
-    document.getElementById('contactVornameInput').value = '';
-    document.getElementById('contactNachnameInput').value = '';
-    document.getElementById('contactLocationSearch').value = '';
-    contactLocationSelectedId = null;
-    document.getElementById('contactGeburtsdatumInput').value = '';
-    document.getElementById('contactTelefonInput').value = '';
-    document.getElementById('contactEmailInput').value = '';
-    document.getElementById('contactWohnortStrasseInput').value = '';
-    document.getElementById('contactWohnortOrtInput').value = '';
-    document.getElementById('contactBedarfIstInput').value = '';
-    document.getElementById('contactBedarfWunschInput').value = '';
-    document.getElementById('contactNextContactInput').value = '';
-    document.getElementById('contactNotesInput').value = '';
-    statusEl.textContent = '';
-    await renderContactsPage();
   });
 
   const CONTACT_RELEVANT_ACTIONS = ['ansprache','bedarfsanalyse','abschluss','kundenausbau','empfehlung'];
@@ -6072,13 +6089,16 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const grid = document.getElementById('locActionGrid');
     const entries = Object.entries(config.actions).filter(([key])=>CONTACT_RELEVANT_ACTIONS.includes(key));
     entries.sort((a,b)=>a[1].xp-b[1].xp);
-    grid.innerHTML = entries.map(([key,a])=>{
-      const bossClass = key==='boss' ? ' boss' : '';
-      const bossIcon = key==='boss' ? '🐲 ' : '';
-      return `<button class="abtn${bossClass}" data-contactaction="${key}">${bossIcon}${a.label}<span class="xp">${fmtXp(a.xp)} XP · ${a.energy} Energie</span></button>`;
-    }).join('');
+    grid.innerHTML = entries.map(([key,a])=>
+      `<button class="abtn" data-contactaction="${key}">${a.label}<span class="xp">${fmtXp(a.xp)} XP · ${a.energy} Energie</span></button>`
+    ).join('');
     grid.querySelectorAll('[data-contactaction]').forEach(btn=>{
-      btn.addEventListener('click', ()=> logActionForContact(btn.dataset.contactaction, contact));
+      btn.addEventListener('click', ()=>{
+        grid.querySelectorAll('[data-contactaction]').forEach(b=>b.disabled=true);
+        logActionForContact(btn.dataset.contactaction, contact).finally(()=>{
+          grid.querySelectorAll('[data-contactaction]').forEach(b=>b.disabled=false);
+        });
+      });
     });
     document.getElementById('locActionModal').style.display='flex';
   }
@@ -6128,12 +6148,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     }
 
     render();
-    await renderContactsPage();
-    // Fehlte hier bisher komplett -- eine offene Kontakt-Seite zeigte den
-    // gerade eingetragenen Vertrag/die neue Kanban-Stufe erst nach einem
-    // manuellen Neuladen (gemeldet 2026-08-14), da nur die Kontakteliste,
-    // nicht die Detailseite selbst aktualisiert wurde.
-    await refreshContactPageIfCurrent(contact.id);
+    // Kontaktliste UND eine offene Kontakt-Detailseite müssen beide den
+    // gerade eingetragenen Vertrag/die neue Kanban-Stufe zeigen (gemeldeter
+    // Bug 2026-08-14, damals fehlte Letzteres komplett) -- laufen als zwei
+    // unabhängige Neu-Renders parallel statt nacheinander.
+    await refreshContactsAndDetail(contact.id);
   }
 
   // ---- Anruf/Email am Kontakt loggen (echte CRM-Aktivität, getrennt von
