@@ -2334,12 +2334,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       draw();
     }
 
-    setInterval(()=>{
+    const intervalId = setInterval(()=>{
       frame = (frame + 1) % ANIM_FRAMES;
       draw();
     }, 1000 / ANIM_FPS);
 
-    return { setLayers };
+    return { setLayers, stop: ()=>clearInterval(intervalId) };
   }
 
   const CLASS_NAMES = {
@@ -4535,10 +4535,20 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     });
 
     document.querySelectorAll('.inv-use[data-use]').forEach(btn=>{
-      btn.addEventListener('click', ()=> useItem(btn.dataset.use));
+      btn.addEventListener('click', async ()=>{
+        if(btn.disabled) return;
+        btn.disabled = true;
+        try{ await useItem(btn.dataset.use); }
+        finally{ btn.disabled = false; } // bei Erfolg längst durch renderInventory() ersetzt, harmlos
+      });
     });
     document.querySelectorAll('.inv-use[data-equip]').forEach(btn=>{
-      btn.addEventListener('click', ()=> toggleEquip(btn.dataset.equip, btn.dataset.slot));
+      btn.addEventListener('click', async ()=>{
+        if(btn.disabled) return;
+        btn.disabled = true;
+        try{ await toggleEquip(btn.dataset.equip, btn.dataset.slot); }
+        finally{ btn.disabled = false; }
+      });
     });
   }
 
@@ -4593,6 +4603,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       updateOrgSubtitle();
       updateGuildLabels();
       updateContactLabels();
+      updateKanbanLabels();
       updateStatistikLabels();
       updateJournalBookTile();
       updateTrophyRoomTile();
@@ -4606,8 +4617,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   // ---- Freunde (unabhängig von Gilden) ----
   async function initFriends(){
-    await renderFriendRequests();
-    await renderFriendGrid();
+    await Promise.all([renderFriendRequests(), renderFriendGrid()]);
   }
 
   async function renderFriendRequests(){
@@ -4643,7 +4653,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     });
   }
 
-  const AVATAR_PROFILE_FIELDS = 'id,display_name,character_class,level,gender,skin_tone,hair_style,equipped_weapon,equipped_armor,equipped_accessory,active_title';
+  const AVATAR_PROFILE_FIELDS = 'id,display_name,level,gender,skin_tone,hair_style,equipped_weapon,equipped_armor,equipped_accessory,active_title';
 
   // Löst eine gespeicherte Epic-id (profiles.active_title) in ihren
   // Titel-Text auf -- lebt im Regelwerk (config.questTree), nicht als
@@ -4662,16 +4672,32 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   function mountAvatarTile(canvas, p){
     const renderer = createSpriteRenderer(canvas, 1);
     renderer.setLayers(layersForCharacterProfile(p));
+    canvas._stopSprite = renderer.stop;
     canvas.addEventListener('click', ()=> openFriendSigil(p.id, p.display_name));
+  }
+
+  // Stoppt die Animations-Intervalle aller Avatar-Kacheln in einem Grid, bevor
+  // dessen innerHTML ersetzt wird -- sonst laufen die alten setInterval-Timer
+  // (createSpriteRenderer) für die längst aus dem DOM entfernten Canvas-
+  // Elemente unsichtbar für immer weiter (echter Leak bei jedem Neu-Rendern).
+  function stopGridAvatarRenderers(gridEl){
+    gridEl.querySelectorAll('[data-avatar]').forEach(c=>{ if(c._stopSprite) c._stopSprite(); });
   }
 
   async function openFriendSigil(userId, name){
     document.getElementById('friendSigilName').textContent = name;
     document.getElementById('friendSigilModal').style.display = 'flex';
-    const { data, error } = await sb.rpc('friend_skill_totals', { target_user: userId });
-    if(error){ logSilentError('Skill-Summen laden', error); return; }
     const skillXp = {};
     Object.keys(config.skills).forEach(k=>skillXp[k]=0);
+    const { data, error } = await sb.rpc('friend_skill_totals', { target_user: userId });
+    if(error){
+      logSilentError('Skill-Summen laden', error);
+      // Sigil auf 0 zurücksetzen statt den Stand der zuvor geöffneten Person
+      // stehen zu lassen -- sonst zeigt der Modal-Titel schon den neuen
+      // Namen, während das SVG noch fremde Werte anzeigt.
+      drawSigil(skillXp, config.skills, 'friendSigilSvg');
+      return;
+    }
     (data||[]).forEach(row=>{
       if(row.skill_key in skillXp) skillXp[row.skill_key] = Number(row.xp_sum);
     });
@@ -4687,6 +4713,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(error) logSilentError('Freundesliste laden', error);
     const ids = [...new Set((rows||[]).map(r => r.owner_id===profile.id ? r.friend_id : r.owner_id))];
     const grid = document.getElementById('friendGrid');
+    stopGridAvatarRenderers(grid);
     if(ids.length===0){ grid.innerHTML = '<div class="empty-page-hint">Noch keine Freunde.</div>'; return; }
     const { data: friendProfiles, error: profErr } = await sb.from('profiles').select(AVATAR_PROFILE_FIELDS).in('id', ids);
     if(profErr) logSilentError('Freundes-Profile laden', profErr);
@@ -4741,12 +4768,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       resultEl.innerHTML = '<div class="empty-page-hint">Kein exakter Treffer.</div>';
       return;
     }
-    const { data: existingA, error: exAErr } = await sb.from('friends').select('status').eq('owner_id', profile.id).eq('friend_id', match.id).maybeSingle();
-    if(exAErr) logSilentError('Bestehende Freundschaft prüfen', exAErr);
-    const { data: existingB, error: exBErr } = await sb.from('friends').select('status').eq('owner_id', match.id).eq('friend_id', profile.id).maybeSingle();
-    if(exBErr) logSilentError('Bestehende Freundschaft prüfen', exBErr);
-    if(existingA || existingB){
-      const status = (existingA||existingB).status;
+    // Die Freundschaft kann in beide Richtungen gespeichert sein (je nachdem
+    // wer die Anfrage gestellt hat) — ein .or() prüft beide auf einmal statt
+    // zweier sequenzieller Abfragen (gleiches Muster wie removeFriend()).
+    const { data: existing, error: exErr } = await sb.from('friends').select('status')
+      .or(`and(owner_id.eq.${profile.id},friend_id.eq.${match.id}),and(owner_id.eq.${match.id},friend_id.eq.${profile.id})`)
+      .maybeSingle();
+    if(exErr) logSilentError('Bestehende Freundschaft prüfen', exErr);
+    if(existing){
+      const status = existing.status;
       resultEl.innerHTML = `<div class="empty-page-hint">${status==='accepted' ? 'Ist bereits dein Freund.' : 'Anfrage bereits gestellt, wartet auf Bestätigung.'}</div>`;
       return;
     }
@@ -4784,14 +4814,17 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(profile.total_xp===totalXp && profile.level===level) return;
     clearTimeout(statsSyncTimer);
     statsSyncTimer = setTimeout(async ()=>{
-      profile.total_xp = totalXp;
-      profile.level = level;
       // Läuft seit dem RLS-Härtungs-Patch (2026-08-15) über
       // sync_own_level_cache() -- berechnet total_xp/level serverseitig
       // aus der echten action_log-Summe + Level-Kurve neu, statt die
       // hier übergebenen Werte einfach zu übernehmen.
       const { error } = await sb.rpc('sync_own_level_cache');
-      if(error) logSilentError('Level-Cache synchronisieren', error);
+      if(error){ logSilentError('Level-Cache synchronisieren', error); return; }
+      // Erst nach bestätigtem Erfolg lokal übernehmen -- sonst würde der
+      // Kurzschluss-Check oben einen fehlgeschlagenen Sync fälschlich als
+      // "schon aktuell" ansehen und nie erneut versuchen.
+      profile.total_xp = totalXp;
+      profile.level = level;
     }, 800);
   }
 
@@ -6317,6 +6350,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(error) logSilentError('Gildenmitglieder laden', error);
     const ids = (members||[]).map(m=>m.member_id);
     const grid = document.getElementById('guildGrid');
+    stopGridAvatarRenderers(grid);
     if(ids.length===0){ grid.innerHTML=''; return; }
     const rightsMap = {}; (members||[]).forEach(m=>rightsMap[m.member_id]=m);
     const { data: memberProfiles, error: profErr } = await sb.from('profiles').select(AVATAR_PROFILE_FIELDS).in('id', ids);
