@@ -3922,6 +3922,116 @@ vorbestehender (nicht neu eingeführter, nur durch den heutigen Umbau
 vergrößerter) Listener-Stapel-Bug bei mehrfachem `enterApp()`-Aufruf
 über die Admin-Debug-Funktion "🎭 Neu erschaffen".
 
+## Systematischer Bugfix-Durchgang übers gesamte `index.html`, in Häppchen (seit 2026-08-21)
+
+Nutzerwunsch: "die Bugfixes des GANZEN Systems in angemessen große
+Häppchen kleinteilen und schon mal anfangen — soll mit meinem Claude Pro
+Kontingent passen." Direkter Nachfolger des Code-Review-Durchgangs vom
+2026-08-20 (siehe oben) — dort lief EIN `/code-review high`-Durchgang mit
+5 parallelen Hintergrund-Agenten über die ganze Datei auf einmal. Diesmal
+bewusst in 12 kleinere Häppchen zerlegt (nach den bestehenden
+`// ----`-Abschnittsmarkierungen im `<script>`-Block), über mehrere
+Sitzungen verteilt abgearbeitet, damit ein einzelner Durchgang nicht das
+ganze Nutzungskontingent einer Sitzung verbraucht. **Methodik-Anpassung:**
+der `code-review`-Skill reviewt standardmäßig nur den aktuellen Diff, auch
+mit Datei-Pfad als Zusatzargument — für einen Vollständigkeits-Audit von
+bereits committetem Code laufen stattdessen pro Häppchen 5 selbst
+formulierte, parallele Hintergrund-Agenten (Agent-Tool) mit fünf festen
+Blickwinkeln: **Korrektheit/Logikfehler, Wiederverwendung/Effizienz,
+Cross-File-Konsistenz (JS↔SQL/RPC), akribischer Zeile-für-Zeile-Scan,
+totes/inkonsistentes Verhalten** — jeder gemeldete Fund wird vor dem
+Fixen selbst im Code gegengeprüft, nicht blind übernommen. Laufender
+Fortschritt/Häppchen-Einteilung: siehe Erinnerung
+`project_full_bugfix_sweep` (Claude), nicht hier — dieser Abschnitt hält
+nur die tatsächlich gefundenen und behobenen Bugs fest.
+
+**Häppchen 1 (Fundament/Onboarding, Commit 713ee4d):**
+`enterProfileOnboarding()` (Alt-Account-Nachtrag + Admin-"Neu erschaffen")
+wählte die Klasse beim Fortsetzen eines bestehenden Profils nicht vor —
+ein Klick auf eine andere Klassenkarte hätte `character_class` entgegen
+"einmalig, dauerhaft" überschreiben können. Behoben: Klasse wird jetzt
+aus dem bestehenden Profil vorausgewählt.
+
+**Häppchen 2 (Sigil/Aktionsraster/Questbaum-Engine, Commits 2bc429a +
+c89e135):**
+- `lastQuestActivity()` verglich `action_key` per strikter Gleichheit,
+  obwohl `metric.denominator` bei Ratio-Quests laut eigenem Code-Kommentar
+  auch ein Array sein darf (z.B. anruf_erreicht/nicht_erreicht) — solche
+  Ketten hatten dadurch immer `lastActivity:null` und rutschten in der
+  Questbaum-Schnellansicht fälschlich ans Ende. Fix: nutzt jetzt
+  `questActionMatches()` wie der Rest der Engine.
+- `logTallyAction()` (5er-Anruf-Zähler) setzte den Zähler VOR dem
+  RPC-Aufruf zurück — schlug der Aufruf fehl, gingen alle 5 gesammelten
+  Taps stillschweigend verloren. Fix: Reset erst nach Erfolg.
+- `drawSigil()` hatte einen nie gelesenen `totalXp`-Parameter (tote
+  Signatur seit der Umstellung auf eine feste, vom Gesamt-XP unabhängige
+  Obergrenze) — entfernt, inkl. einer dadurch überflüssigen Summierung in
+  `openFriendSigil()`.
+- **Kanban-Kanal-Nachtrag schlug seit der RLS-Härtung vom 2026-08-15 immer
+  still fehl:** `attachKanalToLoggedAction()` versuchte ein direktes
+  `.update()` auf `action_log`, wofür es seitdem keine Schreib-Policy mehr
+  gibt. Per Drag&Drop auf eine BESTEHENDE Kanban-Karte gebuchte Termine
+  bekamen dadurch nie einen Kanal (online/büro/betrieb) ins Log und
+  fielen aus den Kanal-Questbaum-Ketten heraus. Neue Migration
+  `20260821120000_action_log_kanal_nachtrag_rpc.sql` fügt
+  `attach_kanal_to_own_action()` als SECURITY-DEFINER-RPC hinzu (mergt
+  `meta.kanal` statt zu überschreiben, feste Kanal-Erlaubnisliste) —
+  selbes Härtungsmuster wie `log_action_for_self()`. Per
+  `begin`/`rollback`-Dry-Run mit drei Testfällen verifiziert, dann per
+  Nutzer-Go gepusht.
+
+**Häppchen 3 (Zunftbuch/Changelog/Quest-Belohnungen, Commit 8b5df18) —
+wichtigster Fund des bisherigen Durchgangs:**
+`checkAndAwardEpics()` gab beim ALLERERSTEN Check einer Sitzung
+(`celebratedEpicIds===null`) sofort komplett auf, VOR der eigentlichen
+Vergabe-Schleife — der Code-Kommentar sagte explizit, das solle NUR die
+Feier-Animation unterdrücken, nicht die XP-Vergabe. Tatsächlich bekam
+dadurch JEDES zu diesem Zeitpunkt schon erfüllte Epic nie seinen Bonus
+(100–800 XP laut Regelwerk) — dauerhaft, seit Patch 50 (2026-08-17), weil
+ein bereits erfülltes Epic sofort in den neuen Sitzungs-Baseline-Snapshot
+wandert und dadurch für immer als "schon gesehen" gilt. Fix: die
+Vergabe-Schleife läuft jetzt immer (weiterhin durch lokalen +
+serverseitigen Duplikat-Schutz abgesichert), nur der Toast wird beim
+ersten Sitzungs-Check ausgelassen — betroffene Nutzer bekommen die
+ausstehende XP beim nächsten Login nachgezahlt. Zweiter, kleinerer Fund:
+`checkAndAwardRecurringQuests()` fehlte beim Login (`enterApp()`), obwohl
+alle 6 anderen Aufrufstellen alle drei Quest-Check-Funktionen zusammen
+aufrufen — ergänzt.
+
+**Häppchen 4 (Tagebuch/Abenteuerlog + Aufgaben-System, Commit fbb2ed4):**
+- `refreshDotForDate()` entfernte nur den ERSTEN `.dot` statt des ganzen
+  `.cal-day-dots`-Wrappers — an Tagen mit mehreren Punkt-Typen (Termin +
+  Wiedervorlage/Geburtstag) gleichzeitig blieb beim nächsten Tagebuch-/
+  Foto-Save der Rest-Punkt als Karteileiche stehen, während ein zweiter,
+  kompletter Wrapper danebengesetzt wurde (sichtbar doppelte Punkte). Fix:
+  entfernt jetzt den ganzen Wrapper vor dem Neu-Einfügen.
+- `syncWiedervorlageTask()`/`syncBirthdayTasksIfNeeded()` prüften den
+  Rückgabewert ihrer `.delete()`-Aufrufe nicht, entgegen der sonstigen
+  Projekt-Konvention — schlug das Löschen fehl, blieb die alte Aufgabe
+  unbemerkt als Karteileiche stehen, genau der Fall, den
+  `syncWiedervorlageTask()` laut eigenem Kommentar verhindern soll. Fix:
+  beide Aufrufe loggen jetzt über `logSilentError()`.
+- `syncBirthdayTasksIfNeeded()` bekam zusätzlich einen einfachen
+  In-Flight-Schutz gegen echte Überlappung innerhalb derselben Sitzung
+  (z.B. schneller Doppelklick auf den Geburtstage-Schalter in den
+  Einstellungen) — der rein clientseitige `tasks_synced_date`-Check
+  allein greift erst nach mehreren `await`-Punkten.
+- `startTaskDayRolloverWatcher()` bekam einen Mehrfachaufruf-Schutz (2x
+  unabhängig von den Review-Agenten gefunden) — ohne ihn häufte der
+  Admin-Debug-Knopf "Neu erschaffen" bei jedem Durchlauf ein weiteres
+  paralleles 5-Minuten-Intervall plus weitere
+  `visibilitychange`/`focus`-Listener an.
+
+**Bewusst nicht angefasst, an mehreren Häppchen wiederkehrend:** reine
+Effizienzfunde ohne falsches Ergebnis (mehrfache Neuberechnung, doppelte
+Lookups, sequenzielle statt parallele Ladeaufrufe) — bei der aktuellen
+Datenmenge (~7 Nutzer) nicht spürbar, passt zur sonstigen Projekt-Linie
+"nicht vorbeugend optimieren". Die bereits bekannte, bewusst
+zurückgestellte Zeitzonen-Inkonsistenz (`dateKeyLocal()` vs. `todayKey()`)
+wurde an einer weiteren Stelle (Monatsansicht-Kalenderpunkte) bestätigt,
+aber nicht gefixt — passt zur bestehenden Entscheidung, das gebündelt
+anzugehen statt Stelle für Stelle.
+
 ## Bekannte, bewusst in Kauf genommene Lücken
 
 - ~~"Zuletzt kontaktiert"/Kontakt-Chronik zeigen nur eigene Einträge~~ —
