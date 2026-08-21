@@ -2170,11 +2170,16 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const week = Math.ceil((((localNoon-onejan)/86400000)+onejan.getUTCDay()+1)/7);
     return p.year+'-W'+week;
   }
+  // Aufgelöste Zeitzone (eigene, sonst Org) statt Browser-lokal für Datum
+  // UND Uhrzeit -- Zeitraster-Vereinheitlichung, Fortsetzung 2026-08-21
+  // (App-weite Zeitstempel-Anzeige: Chronik/Fehlerprotokoll/
+  // Sicherheitswarnungen/Changelog).
   function fmtTime(ts){
-    const d=new Date(ts), now=new Date();
-    const timeStr = d.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
-    if(todayKey(d)===todayKey(now)) return 'heute ' + timeStr;
-    return d.toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit'}) + ' ' + timeStr;
+    const now = new Date();
+    const p = fullPartsInTZ(ts, tz());
+    const timeStr = `${String(p.hour).padStart(2,'0')}:${String(p.minute).padStart(2,'0')}`;
+    if(todayKey(ts)===todayKey(now)) return 'heute ' + timeStr;
+    return `${String(p.day).padStart(2,'0')}.${String(p.month).padStart(2,'0')}.` + ' ' + timeStr;
   }
 
   // ---- Level-Kurve ----
@@ -6127,9 +6132,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   let activitySelectedOutcome = 'erreicht';
   let activityCurrentContact = null;
 
+  // Aufgelöste Zeitzone statt Browser-lokal (Zeitraster-Vereinheitlichung,
+  // Fortsetzung 2026-08-21) -- ein <input type="datetime-local"> kennt
+  // selbst keine Zeitzone, zeigt nur die Ziffern; welche Wandzeit sie
+  // darstellen, entscheidet ausschließlich, wie wir sie hier befüllen/
+  // zurücklesen (siehe activitySaveBtn-Handler unten für den Rückweg).
   function localDatetimeInputValue(d){
-    const local = new Date(d.getTime() - d.getTimezoneOffset()*60000);
-    return local.toISOString().slice(0,16);
+    const p = fullPartsInTZ(d, tz());
+    return `${p.year}-${String(p.month).padStart(2,'0')}-${String(p.day).padStart(2,'0')}T${String(p.hour).padStart(2,'0')}:${String(p.minute).padStart(2,'0')}`;
   }
 
   function selectActivityType(type){
@@ -6177,7 +6187,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(a && a.energy > remaining){ statusEl.textContent = 'Nicht genug Energie heute übrig.'; return; }
 
     const zeitpunktVal = document.getElementById('activityZeitpunktInput').value;
-    const occurredAt = zeitpunktVal ? new Date(zeitpunktVal).toISOString() : new Date().toISOString();
+    let occurredAt;
+    if(zeitpunktVal){
+      const [datePart, timePart] = zeitpunktVal.split('T');
+      const [zy,zm,zd] = datePart.split('-').map(Number);
+      const [zh,zmin] = timePart.split(':').map(Number);
+      occurredAt = zonedTimeToUtc(zy, zm, zd, zh, zmin, tz()).toISOString();
+    } else {
+      occurredAt = new Date().toISOString();
+    }
     const betreff = activitySelectedType==='email' ? (document.getElementById('activityBetreffInput').value.trim() || null) : null;
     const inhalt = document.getElementById('activityInhaltInput').value.trim() || null;
 
