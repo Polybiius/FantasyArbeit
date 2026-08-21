@@ -2694,6 +2694,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('companyInput').value = existingProfile.company || '';
     document.querySelectorAll('.gender-btn').forEach(b=>b.classList.toggle('active', b.dataset.gender===existingProfile.gender));
     selectedGender = existingProfile.gender || null;
+    // Klassenwahl ist laut Konzept "einmalig, dauerhaft" - beim Fortsetzen eines
+    // bestehenden Profils (Alt-Account-Nachtrag ODER Admin-"Neu erschaffen") muss
+    // die schon getroffene Klasse vorausgewählt bleiben, sonst müsste blind neu
+    // gewählt werden und ein Klick auf eine andere Karte würde character_class
+    // in appearanceDoneBtn stillschweigend überschreiben.
+    selectedClass = existingProfile.character_class || null;
+    document.querySelectorAll('.class-card').forEach(c=>c.classList.toggle('selected', c.dataset.class===selectedClass));
+    updateCharCreateBtn();
     updateProfileNextBtn();
     document.getElementById('profileScreen').style.display='block';
   }
