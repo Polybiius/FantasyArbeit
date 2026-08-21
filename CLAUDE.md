@@ -4069,6 +4069,61 @@ Sauberkeit innerhalb der bestehenden Architektur, keine Abkehr vom
 "nicht vorbeugend optimieren"-Prinzip bei echten Infrastruktur-
 Entscheidungen (siehe "Technische Skalierungs-Schwellen" oben).
 
+**Häppchen 5 (Inventar/Freunde/Gilde-Basics/Kontakte-Einstieg, Commit
+9a05d3d, 2026-08-21):**
+- Admin-Klassenschalter aktualisierte `updateKanbanLabels()` nicht mit —
+  Nav-Button/Seitenüberschrift des Kanban blieben nach einem Klassenwechsel
+  auf dem alten Begriff stehen (z.B. "Questpfad" statt "Gildenbrett"), bis
+  die Seite neu geladen wurde, während alle fünf anderen abhängigen
+  Update-Aufrufe korrekt liefen. Ergänzt.
+- `createSpriteRenderer()` (die animierte Sprite-Technik hinter jedem
+  bewegten Avatar) startete pro Aufruf ein `setInterval`, das nie gestoppt
+  wurde — echter, unbegrenzt wachsender Leak: jedes Neu-Rendern der
+  Freundes-/Gildenkacheln (nach Annehmen/Entfernen einer Freundschaft,
+  neuer Anfrage) ersetzte die Canvas-Elemente per `innerHTML`, ihre alten
+  Animations-Timer liefen aber unsichtbar für die längst entfernten
+  Elemente weiter. Fix: `createSpriteRenderer()` gibt jetzt zusätzlich
+  `stop()` zurück, `mountAvatarTile()` merkt sich das pro Canvas
+  (`canvas._stopSprite`), neuer Helfer `stopGridAvatarRenderers(gridEl)`
+  wird vor jedem `innerHTML`-Ersatz in `renderFriendGrid()` UND
+  `renderGuildMembers()` aufgerufen (gleicher Helfer, beide Stellen
+  betroffen).
+- `syncProfileStatsCache()` übernahm `profile.total_xp`/`level` lokal,
+  BEVOR der `sync_own_level_cache()`-RPC-Aufruf sein Ergebnis kannte —
+  schlug der Sync fehl, verhinderte der Kurzschluss-Guard beim nächsten
+  Aufruf mit denselben (unveränderten) Werten jeden weiteren Versuch
+  innerhalb derselben Sitzung. Fix: lokale Übernahme erst nach
+  bestätigtem RPC-Erfolg.
+- `openFriendSigil()` setzte den Modal-Titel sofort, ließ aber bei einem
+  RPC-Fehler (`friend_skill_totals`) das SVG der zuvor geöffneten Person
+  unverändert stehen — Titel und Sigil-Inhalt konnten dadurch
+  auseinanderdriften. Fix: bei Fehler wird das Sigil jetzt explizit auf 0
+  zurückgesetzt statt den alten Stand zu behalten.
+
+Cross-File-Agent (JS↔SQL/RPC) fand in diesem Häppchen ausnahmsweise
+**keine** Diskrepanzen — alle Aufrufe gegen `user_inventory`/`profiles`/
+`friends`/die RPCs stimmten mit den tatsächlichen Migrationen überein.
+Effizienzfunde direkt mitgefixt (kein Zurückstellen mehr, siehe
+`feedback_fix_efficiency_findings_dont_defer`): Doppelklick-Schutz bei
+Inventar-Buttons (`btn.disabled` synchron vor dem `await`, damit ein
+zweiter Klick während eines laufenden RPC-Aufrufs nicht doppelt feuert),
+`initFriends()` lädt Anfragen+Freundesliste jetzt per `Promise.all`
+parallel statt sequenziell, `searchFriendByName()`s zwei sequenzielle
+"gibt es schon eine Freundschaft"-Abfragen (eine je Richtung) zu einer
+einzigen `.or()`-Abfrage zusammengefasst (Muster von `removeFriend()`
+übernommen), ungenutztes `character_class` aus `AVATAR_PROFILE_FIELDS`
+entfernt (in beiden Konsumenten nie gelesen — der Avatar rendert nur aus
+den Sprite-Layer-Feldern).
+
+Per Playwright gegen den echten Account verifiziert: Klassenwechsel zeigt
+den Kanban-Label-Fix live, danach korrekt auf die Ausgangsklasse
+zurückgesetzt; Doppelklick auf einen Ausrüstungs-Button löst keine
+Exception aus; Sigil-Modal öffnet korrekt; drei Reiter-Wechsel zwischen
+Charakter- und Gilde-Seite ohne Fehlerhäufung; 0 Konsolenfehler
+durchgehend. Ein durch den Doppelklick-Test versehentlich ausgezogenes
+Holzschwert wurde danach wieder angezogen, Testzustand exakt
+wiederhergestellt.
+
 ## Bekannte, bewusst in Kauf genommene Lücken
 
 - ~~"Zuletzt kontaktiert"/Kontakt-Chronik zeigen nur eigene Einträge~~ —
