@@ -4022,15 +4022,30 @@ aufrufen — ergänzt.
   paralleles 5-Minuten-Intervall plus weitere
   `visibilitychange`/`focus`-Listener an.
 
-**Bewusst nicht angefasst, an mehreren Häppchen wiederkehrend:** reine
-Effizienzfunde ohne falsches Ergebnis (mehrfache Neuberechnung, doppelte
-Lookups, sequenzielle statt parallele Ladeaufrufe) — bei der aktuellen
-Datenmenge (~7 Nutzer) nicht spürbar, passt zur sonstigen Projekt-Linie
-"nicht vorbeugend optimieren". Die bereits bekannte, bewusst
-zurückgestellte Zeitzonen-Inkonsistenz (`dateKeyLocal()` vs. `todayKey()`)
-wurde an einer weiteren Stelle (Monatsansicht-Kalenderpunkte) bestätigt,
-aber nicht gefixt — passt zur bestehenden Entscheidung, das gebündelt
-anzugehen statt Stelle für Stelle.
+**Korrektur, noch am selben Tag:** die reinen Effizienzfunde (mehrfache
+Neuberechnung, doppelte Lookups, sequenzielle statt parallele
+Ladeaufrufe) waren hier ursprünglich als "bewusst nicht angefasst"
+protokolliert ("bei der aktuellen Datenmenge nicht spürbar"). Der Nutzer
+hat das ausdrücklich zurückgewiesen — Effizienz-/Aufräumfunde aus einem
+Review werden ab sofort standardmäßig mitgefixt, nicht selbst als
+"lohnt sich noch nicht" abgewertet (siehe Erinnerung
+`feedback_fix_efficiency_findings_dont_defer`). Alle in Häppchen 2-4
+gefundenen Effizienzfunde wurden daraufhin nachträglich umgesetzt:
+`logInCurrentYear()` memoisiert, `matchingSalesForArt()`/
+`isBirthdayOn()`-Helfer lösen Code-Dopplung auf, Streak-Totals
+(`dailyActionTotals`/`weeklyActionTotals`) werden pro Kette einmal statt
+pro Stufe neu aufgebaut, `computeQuestTreeStages()` +
+`checkAndAwardQuestTreeAndEpics()` + `grantQuestTreeStageBonus()`
+bündeln die vorher mehrfach unabhängig traversierte Questbaum-Auswertung,
+`renderCalendar()`/`showDayPreview()` laden per `Promise.all` parallel,
+`initJournalMentions()` nutzt einen delegierten statt fünf einzelner
+Klick-Listener. Alle Aufrufstellen einzeln nachverfolgt, ESLint +
+Syntax-Check sauber, keine Verhaltensänderung. Die bereits bekannte,
+bewusst zurückgestellte Zeitzonen-Inkonsistenz (`dateKeyLocal()` vs.
+`todayKey()`) bleibt weiterhin unangetastet — anders als die
+Effizienzfunde ist das eine echte, wenn auch seltene Verhaltens-
+Abweichung, die der Nutzer bewusst gebündelt statt Stelle für Stelle
+angehen wollte, kein reiner Cleanup-Fund.
 
 ## Bekannte, bewusst in Kauf genommene Lücken
 
