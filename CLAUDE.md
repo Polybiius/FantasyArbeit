@@ -3909,11 +3909,10 @@ verifiziert:
 
 **Bewusst zurückgestellt** (kleinere, im selben Durchgang gefundene
 Punkte, kein akuter Nutzer-Schmerz): veraltete Kopfzeile beim Wechsel
-Tag→Woche, eine Zeitzonen-Inkonsistenz zwischen `dateKeyLocal()`
+Tag→Woche — ~~eine Zeitzonen-Inkonsistenz zwischen `dateKeyLocal()`
 (Browser-lokal) und `todayKey()` (feste Org-Zeitzone) in der neuen
-Aufgaben-Spalte — bei einem rein in Europe/Berlin ansässigen Team
-aktuell ohne praktische Auswirkung, aber ein echter Konventionsbruch,
-lohnt sich bei nächster Gelegenheit zu vereinheitlichen —, doppeltes
+Aufgaben-Spalte~~ **vollständig behoben, 2026-08-21, Commit `ca8d896`**,
+siehe eigener Abschnitt weiter unten — doppeltes
 Laden beim Login mit gespeichertem Kalender-Hash, spürbare
 Code-Duplikation zwischen `renderDayView()` und `renderWeekView()`
 (Zeitraster/Termine-Abfrage/Arbeitszeiten-Abdunklung fast wortgleich
@@ -4040,12 +4039,12 @@ bündeln die vorher mehrfach unabhängig traversierte Questbaum-Auswertung,
 `renderCalendar()`/`showDayPreview()` laden per `Promise.all` parallel,
 `initJournalMentions()` nutzt einen delegierten statt fünf einzelner
 Klick-Listener. Alle Aufrufstellen einzeln nachverfolgt, ESLint +
-Syntax-Check sauber, keine Verhaltensänderung. Die bereits bekannte,
-bewusst zurückgestellte Zeitzonen-Inkonsistenz (`dateKeyLocal()` vs.
-`todayKey()`) bleibt weiterhin unangetastet — anders als die
-Effizienzfunde ist das eine echte, wenn auch seltene Verhaltens-
-Abweichung, die der Nutzer bewusst gebündelt statt Stelle für Stelle
-angehen wollte, kein reiner Cleanup-Fund.
+Syntax-Check sauber, keine Verhaltensänderung. Die damals bewusst
+zurückgestellte Zeitzonen-Inkonsistenz (`dateKeyLocal()` vs.
+`todayKey()`) — anders als die Effizienzfunde eine echte, wenn auch
+seltene Verhaltens-Abweichung, die der Nutzer bewusst gebündelt statt
+Stelle für Stelle angehen wollte — ist seit 2026-08-21 vollständig
+behoben, siehe eigener Abschnitt unten.
 
 **Nachtrag, noch am selben Tag:** ein letzter zurückgestellter Fund
 (doppelter `journal_entries`-Schreibzugriff in `confirmMention()` —
@@ -4190,6 +4189,101 @@ Jahr/Monat-Reiter-Wechsel, Schatzraum öffnen/schließen/erneut öffnen,
 (~830 Zeilen, ursprünglich fälschlich als Teil des "Schatzraum"-Blocks
 mitgezählt) ist ein eigenes, noch nicht begonnenes Häppchen 6b, siehe
 Erinnerung `project_full_bugfix_sweep`.
+
+**Nachtrag, noch am selben Tag: Kranken als eigene Sparte statt in
+"Bewertungsbeitrag sonstige" gemischt (Commit `d1277b9`).** Direkte
+Nutzerkorrektur zum offen vorgelegten Fund oben — "alles zusammenfassen
+macht gar kein Sinn, Kranken muss eine eigene Sparte sein". `aggregateStats()`
+summiert jetzt `beitragKranken` (nur `individuell_kv`) getrennt von
+`beitragSonstige` (SH/Kfz/RS/pmaSUH/pmaKV/Darlehen). Beide Kartensätze
+(Verkaufsstatistik-Seite UND Schatzraum-Zusammenfassung, beide nutzen
+denselben `aggregateStats()`-Kern) zeigen seitdem 6 statt 5 Karten — die
+neue "Bewertungsbeitrag Kranken"-Karte trägt den Fortschrittsring gegen
+`profile.planung_kv_mb`, "sonstige" bleibt eine Karte ohne Ziel (wie
+Provision/Differenzprovision). Per Playwright verifiziert (beide Seiten
+zeigen korrekt 6 Karten mit Kranken-Trennung, 0 Konsolenfehler). Die
+zusätzlich gepushte `products_provision_mode_check`-Migration (Fund 1
+oben) wurde im selben Zug per Nutzer-Go angewendet, Commit `e6d5f4b`
+(nachträglich, war zunächst nur gepusht, nicht committet — nachgeholt).
+
+## Zeitzonen-Inkonsistenz `dateKeyLocal()` vs. `todayKey()`, vollständig behoben (2026-08-21)
+
+Löst den seit dem Code-Review-Durchgang vom 2026-08-20 bekannten, damals
+bewusst zurückgestellten Fund vollständig auf ("ein rein in Europe/Berlin
+ansässiges Team hat aktuell ohne praktische Auswirkung, aber ein echter
+Konventionsbruch") — auf ausdrücklichen Nutzerwunsch ("mach das zeitzonen
+thema komplett") nicht nur die ursprünglich gemeldete eine Stelle (Tag-
+Reiter-Aufgabenspalte) gefixt, sondern alle 16 `dateKeyLocal()`-Aufrufstellen
+im gesamten Kalender-/Termin-/Konstanz-Code einzeln klassifiziert.
+
+**Kernunterscheidung, die die ganze Analyse trägt:** `dateKeyLocal(d)`
+extrahiert Jahr/Monat/Tag über die Browser-lokalen Date-Getter — korrekt
+und unproblematisch für Date-Objekte, die der eigene Code selbst rein aus
+Kalender-Arithmetik konstruiert hat (Wochenraster-Iteration, `calFocusDate`/
+`calDayDate`, Serientermine-Generierung — "Typ B"), aber falsch für Date-
+Objekte, die aus einem echten Zeitstempel (`start_at`, `created_at`, `new
+Date()` als "jetzt") geparst wurden ("Typ A") — dort hängt der extrahierte
+Kalendertag vom Zeitzone des BETRACHTENDEN GERÄTS ab, nicht von der
+Organisations-Zeitzone (`org.timezone`, Default `Europe/Berlin`), obwohl
+`todayKey()`/`localPartsInTZ()` genau dafür seit Langem existieren und an
+den meisten anderen Stellen im Projekt (Streaks, Aufgaben-Sync, Quests)
+bereits korrekt genutzt werden.
+
+**Neue Helferfunktion `orgLocalNoonDay(ts)`** (neben `todayKey()`):
+wandelt einen Zeitstempel in den Org-Zeitzonen-Kalendertag, verankert auf
+12 Uhr mittags lokal — sichere Grundlage für nachfolgende reine
+Kalendertag-Arithmetik (`mondayOfWeek()`, `dateKeyLocal()`) ohne
+Mitternachts-/DST-Fallstricke, gleiches Muster wie `computeRecontactDate()`
+schon vorher für Vertrags-Nachfass-Termine nutzte.
+
+**Fünf echte Fundstellen behoben:**
+- **Wurzelursache:** `calWeekStart`/`calDayDate`/`calFocusDate` wurden bei
+  `initJournal()` und im "Heute"-Knopf direkt aus `new Date()` (Browser-
+  lokal) gesetzt — obwohl im SELBEN Codeblock `calViewYear`/`calViewMonth`
+  für die Monatsansicht bereits korrekt über `localPartsInTZ()` liefen.
+  Monats- vs. Wochen-/Tagesansicht konnten dadurch von unterschiedlichen
+  "heute"-Referenzen ausgehen.
+- `calTermineDates` (Monatsansicht-Kalenderpunkte "hier liegt ein Termin")
+  und die Termin-Tag-Zuordnung in der Wochenansicht nutzten
+  `dateKeyLocal(new Date(t.start_at))` auf echten Zeitstempeln statt
+  `todayKey(t.start_at)`.
+- Der "today"-Vergleich (CSS-Hervorhebung) in Wochen- und Tagesansicht
+  nutzte `dateKeyLocal(new Date())` statt `todayKey(new Date())`.
+- `weeklyActionTotals()`/`streakFromWeeklyTotals()` (Konstanz-Kachel,
+  Wochen-Schwellenwert) nutzten Browser-lokale Zeit, während das direkt
+  danebenstehende Tages-Pendant `dailyActionTotals()` schon immer
+  `todayKey()` nutzte — beide Schwellenwerte derselben Kachel konnten
+  dadurch inkonsistent wirken.
+- `termineEntryDateForSave` beim Bearbeiten eines bestehenden Termins
+  (Basis für eine daraus neu erstellte Serie) las den Kalendertag Browser-
+  lokal statt org-zeitzonenbewusst.
+
+**Bewusst NICHT Teil dieser Änderung, klar abgegrenzt:** die restlichen
+`dateKeyLocal()`-Aufrufstellen (Serientermine-Generierung, Wochen-/
+Tagesraster-Iteration, `calFocusDate`-Hash-Serialisierung) arbeiten auf
+bereits lokal konstruierten Kalendertag-Objekten (Typ B) — dort bleibt
+`dateKeyLocal()` weiterhin korrekt. Ebenfalls bewusst unangetastet: die
+Uhrzeit-Anzeige/-Positionierung von Terminen im Zeitraster (`timeHHMM`,
+Drag&Drop-Positionsberechnung) und die UTC-Grenzen der Tag-/Wochen-
+Datenbankabfragen bleiben weiterhin Browser-lokal verankert — eine
+vollständige Umstellung der kompletten Termin-Erzeugung/-Anzeige auf
+Org-Zeitzone unabhängig vom anzeigenden Gerät wäre ein deutlich größerer,
+eigener architektonischer Schritt (beträfe die komplette Zeitraster-
+Engine), nicht Teil des ursprünglich gemeldeten `dateKeyLocal`-vs-
+`todayKey`-Funds — bei Bedarf als eigenes, separates Vorhaben aufgreifen.
+
+**Verifikation, bewusst nicht nur mit der echten aktuellen Uhrzeit** (die
+zufällig zu keiner Tagesgrenzen-Überschneidung geführt hätte): per
+Playwright mit `context.addInitScript()` manipulierter Systemzeit
+(`2026-08-21T23:30:00Z`, in Europe/Berlin bereits der 22.08., in der
+Geräte-Zeitzone `Pacific/Honolulu`, UTC−10, noch der 21.08. — ein
+garantierter Tagesgrenzen-Konflikt) UND vor dem Fix gegen den vorherigen
+Commit getestet (`git stash`): Tag-Reiter zeigte davor fälschlich
+"Freitag 21.08.", danach korrekt "Samstag 22.08." (der tatsächliche
+Org-Kalendertag) — bewiesen echter Fix, kein Zufallstreffer. Zusätzlich
+mit zwei realen Zeitzonen (Europe/Berlin, Pacific/Honolulu) zur echten
+aktuellen Uhrzeit gegen Monats-/Wochen-/Tagesansicht plus "Heute"-Knopf
+getestet, keine Konsolenfehler, ESLint sauber. Commit `ca8d896`.
 
 ## Bekannte, bewusst in Kauf genommene Lücken
 
