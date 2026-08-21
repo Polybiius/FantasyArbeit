@@ -4047,6 +4047,28 @@ Effizienzfunde ist das eine echte, wenn auch seltene Verhaltens-
 Abweichung, die der Nutzer bewusst gebündelt statt Stelle für Stelle
 angehen wollte, kein reiner Cleanup-Fund.
 
+**Nachtrag, noch am selben Tag:** ein letzter zurückgestellter Fund
+(doppelter `journal_entries`-Schreibzugriff in `confirmMention()` —
+ein eigener sofortiger Upsert fürs @mention-Fremdschlüssel-Erfordernis
+UND derselbe Schreibvorgang nochmal 700ms später über den Tagebuch-
+Debounce) wurde dem Nutzer als echter Grenzfall vorgelegt (Fix würde den
+vielgenutzten Debounce-Mechanismus anfassen, Gewinn klein). Antwort:
+"das was langfristig am besten ist. irgendwann werden tausende Menschen
+das System nutzen. programmier es dementsprechend." Der eigentliche
+Speicher-Code ist jetzt in `saveJournalEntryNow()` extrahiert — sowohl
+der Debounce (`scheduleJournalSave()`, Tippen) als auch `confirmMention()`
+(sofort, kein Debounce bei einem einzelnen Klick sinnvoll) rufen dieselbe
+Funktion auf. Ergebnis: nur noch EIN Schreibzugriff pro @mention-
+Bestätigung statt zwei, plus sofortiges "gespeichert"-Feedback/Kalender-/
+Serien-Update statt erst nach 700ms verzögert. Tiebreaker-Regel für
+künftige ähnliche Grenzfälle (sicherer Fix möglich, nur Aufwand/kleiner
+Gewinn heute dagegen): langfristige Nutzerzahl-Perspektive gewinnt,
+"reicht für jetzt" wird nicht akzeptiert — siehe Erinnerung
+`feedback_fix_efficiency_findings_dont_defer`. Gilt nur für Code-
+Sauberkeit innerhalb der bestehenden Architektur, keine Abkehr vom
+"nicht vorbeugend optimieren"-Prinzip bei echten Infrastruktur-
+Entscheidungen (siehe "Technische Skalierungs-Schwellen" oben).
+
 ## Bekannte, bewusst in Kauf genommene Lücken
 
 - ~~"Zuletzt kontaktiert"/Kontakt-Chronik zeigen nur eigene Einträge~~ —
