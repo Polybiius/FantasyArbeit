@@ -2769,8 +2769,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     await loadProducts();
     await loadLocationTypes();
     await loadMySales();
-    await checkAndAwardEpics(); // legt nur den Ausgangszustand fest, feiert beim Login nichts nach
-    await checkAndAwardQuestTreeBonuses(); // zahlt bereits erfüllte Stufen sofort aus, nicht erst bei der nächsten Aktion
+    // Alle drei laufen auch beim Login, genau wie nach jeder Aktion (siehe die
+    // anderen 6 Aufrufstellen) - zahlt bereits erfüllte Quests/Stufen/Epics
+    // sofort aus (z.B. nach einer Regelwerk-Lockerung), statt erst auf die
+    // nächste eigene Aktion zu warten.
+    await checkAndAwardRecurringQuests();
+    await checkAndAwardQuestTreeBonuses();
+    await checkAndAwardEpics(); // feiert beim allerersten Check einer Sitzung nichts nach (siehe celebratedEpicIds), zahlt aber trotzdem aus
     await syncBirthdayTasksIfNeeded(); // Geburtstags-Aufgaben für heute nachziehen, falls noch nicht geschehen
     phoneTally = Number(localStorage.getItem('phoneTally_'+profile.id) || 0);
     lastKnownLevel = levelInfo(computeTotals().totalXp).level;
@@ -3569,10 +3574,19 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   async function checkAndAwardEpics(){
     if(!config || !config.questTree) return;
     const doneNow = computeDoneEpicIds();
-    if(celebratedEpicIds===null){ celebratedEpicIds = doneNow; return; }
+    // Bugfix (Häppchen-3-Review, 2026-08-21): der frühere Code gab beim
+    // allererste Check einer Sitzung (celebratedEpicIds===null) sofort
+    // komplett auf, VOR der Vergabe-Schleife - dadurch bekam ein zu diesem
+    // Zeitpunkt schon erfülltes Epic NIE seine Bonus-XP (weder jetzt noch
+    // später, da es ab da dauerhaft in celebratedEpicIds steht). Laut
+    // Kommentar sollte celebratedEpicIds===null aber NUR die Feier
+    // unterdrücken ("die eigentliche XP-Vergabe unten ist server-seitig
+    // gegen Duplikate abgesichert"), nicht die Vergabe selbst - jetzt läuft
+    // die Schleife immer, nur showEpicToast() wird beim allerersten Check
+    // ausgelassen.
+    const isFirstCheck = celebratedEpicIds===null;
     const year = String(currentBusinessYear());
     for(const id of doneNow){
-      if(celebratedEpicIds.has(id)) continue;
       const q = config.questTree.find(e=>e.id===id);
       if(!q) continue;
       if(q.bonus){
@@ -3583,7 +3597,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
           else if(data) log.push(data);
         }
       }
-      showEpicToast(q);
+      if(!isFirstCheck && !(celebratedEpicIds && celebratedEpicIds.has(id))) showEpicToast(q);
     }
     celebratedEpicIds = doneNow;
   }
