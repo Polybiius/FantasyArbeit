@@ -241,6 +241,28 @@ sondern auf genau diese Auslöser warten:
   Performance-Limit). Nicht vorher spekulieren, sondern gegen das
   tatsächliche Supabase-Limit bauen, sobald es auftritt — nicht die ganze
   Liste auf einmal.
+- **Vollständige Zeitraster-Engine (Termin-Zeiten geräteunabhängig in der
+  Organisations-Zeitzone statt der Zeitzone des anzeigenden/erzeugenden
+  Geräts):** aufgeworfen bei der Zeitzonen-Vereinheitlichung vom
+  2026-08-21 (siehe eigener Abschnitt oben, `dateKeyLocal()` vs.
+  `todayKey()`) — dort wurde bewusst nur behoben, WELCHER Kalendertag ein
+  Termin zugeordnet wird (Org-Zeitzone), nicht WELCHE Uhrzeit er anzeigt
+  (Zeitraster-Positionierung, Drag&Drop, DB-Abfragegrenzen bleiben
+  Browser-lokal). Betrifft nur, wenn ein Teammitglied real in eine andere
+  Zeitzone reist (Laptop-Systemzeitzone wechselt automatisch mit) oder
+  dauerhaft aus einer anderen Zeitzone arbeitet — bei einem rein in
+  Europe/Berlin ansässigen Team (aktuell alle 7 Profile) ohne praktische
+  Auswirkung. **Auslöser:** ein echter (nicht hypothetischer) Fall genau
+  davon — nicht vorbeugend bauen. Aufwand bleibt vom Grundmuster her
+  vergleichbar mit der jetzigen Kalendertag-Fix (derselbe
+  `localPartsInTZ()`/`todayKey()`-Baustein, nur konsequent auch auf
+  Stunde/Minute statt nur auf den Tag angewendet) — wird aber mit jedem
+  weiteren Kalender-Feature, das in der Zwischenzeit dazukommt (wie schon
+  bei Serientermine/Tag-Reiter/Termin-Einladungen geschehen), tendenziell
+  etwas mehr Fundstellen zu prüfen haben, da der Kalender-Code stetig
+  wächst — beim Anstoßen also denselben "erst alle `new Date(...start_at)`-
+  artigen Stellen klassifizieren"-Ansatz wie am 2026-08-21 wiederholen,
+  nicht davon ausgehen, dass es exakt derselbe Umfang bleibt.
 
 Diese Liste ist absichtlich nicht abschließend — ein neues Thema verdient
 erst dann eine eigene Schwelle, wenn es wichtig genug wird, statt vage
