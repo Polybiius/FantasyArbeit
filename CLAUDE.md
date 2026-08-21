@@ -4124,6 +4124,73 @@ durchgehend. Ein durch den Doppelklick-Test versehentlich ausgezogenes
 Holzschwert wurde danach wieder angezogen, Testzustand exakt
 wiederhergestellt.
 
+**Häppchen 6a (Verkaufsstatistik + Schatzraum, Commit 284b48e,
+2026-08-21) — Häppchen 6 wegen Kontingent-Sorge in 6a/6b gesplittet,
+siehe Erinnerung `project_full_bugfix_sweep`:**
+- `renderStatCategoryChart()` escapte den admin-editierbaren
+  Produktkategorienamen an drei Stellen nicht — Legende,
+  Balkenbeschriftung, UND das `title`-Attribut (dort am gefährlichsten,
+  Ausbruch aus dem Attribut-Kontext möglich). Echte, ausnutzbare
+  Stored-XSS-Lücke, gleiche Klasse wie der Sicherheits-Durchgang vom
+  2026-08-07/die `locName()`-Lücke vom 2026-08-11 — und **keine**
+  `rule_configs`-Ausnahme, da `products.category` über das In-App-
+  Produktformular gepflegt wird, nicht per SQL-Editor. Fix: `escHtml()`
+  an allen drei Stellen ergänzt.
+- Der Schatzraum sprang beim Wiederöffnen nicht mehr aufs laufende Jahr
+  zurück, wenn zuvor per Vor/Zurück navigiert wurde — `trophyRoomYear`
+  wurde beim Öffnen nie zurückgesetzt, entgegen dem eigenen
+  Code-Kommentar ("heute ist der naheliegende Startpunkt"). Fix: Klick-
+  Handler setzt `trophyRoomYear = currentBusinessYear()` vor dem Öffnen.
+- Drei Stellen (`salesForPeriod()`, `trophyRoomYear`-Initialisierung,
+  `renderStatTabs()`) nutzten `new Date().getFullYear()` statt dem im
+  selben Feature-Bereich bereits vorhandenen `currentBusinessYear()`-
+  Helfer — vereinheitlicht (reiner Cleanup, keine Verhaltensänderung).
+
+Effizienz direkt mitgefixt: `renderStatistikPage()` filterte für die 12
+Monats-Sparklines bisher den KOMPLETTEN `mySalesCache` zwölfmal neu nach
+Jahr+Monat, obwohl die bereits jahresgefilterte `salesList` längst da
+war — jetzt ein einziger Durchlauf, der `salesList` in 12 Monats-Buckets
+aufteilt. `enterApp()` lud Produkte/Ortstypen/eigene Verkäufe bisher
+sequenziell, obwohl es drei unabhängige Tabellen-Reads ohne
+gemeinsamen Zustand sind — jetzt per `Promise.all` parallel, spart zwei
+Netzwerk-Rundlaufzeiten bei jedem Login.
+
+**Zwei Funde bewusst NICHT selbst entschieden, liegen dem Nutzer vor:**
+1. Der Cross-File-Agent fand eine SQL-Lücke: `products_provision_mode_
+   check` erlaubt nur `'fest'`/`'individuell_lv'`/`'individuell_kv'`,
+   obwohl `PRODUCT_ART_CONFIG` (Zeile ~8394) für die Arten pmaSUH/pmaKV
+   seit dem BWS-Verrechnungs-Rework (2026-08-14) bereits
+   `'individuell_pma_suh'`/`'individuell_pma_kv'` setzt — ein Admin, der
+   ein Produkt dieser beiden Arten anlegt, bekommt seither zwingend eine
+   CHECK-Constraint-Verletzung. Diese zwei Produktarten waren dadurch nie
+   tatsächlich anlegbar, obwohl `saleProvision()` längst vollständig
+   dafür vorbereitet ist. Migration
+   `supabase/migrations/20260821140000_products_provision_mode_pma_check_fix.sql`
+   liegt bereit (erweitert die Erlaubnisliste um die beiden fehlenden
+   Werte, per `begin`/`rollback`-Dry-Run inkl. Testinsert verifiziert),
+   **wartet auf Nutzer-Go, noch nicht gepusht** (SQL-Änderungen sind
+   nicht durch den Commit/Push-Blankoscheck gedeckt).
+2. Der Korrektheits-Agent fand eine echte Business-Logik-Frage: der KPI
+   "Bewertungsbeitrag sonstige" (`aggregateStats()`, summiert JEDE
+   nicht-Leben-Sparte: Kranken+Sach/Hausrat+Kfz+Rechtsschutz+pmaSUH+
+   pmaKV+Darlehen zusammen) wird im Fortschritts-Ring gegen
+   `profile.planung_kv_mb` gemessen — ein Zielfeld, das in den
+   Einstellungen explizit "Planung **Kranken**-Beitrag" heißt und laut
+   Platzhaltertext nur das Kranken-Ziel meint. Verkauft ein Nutzer
+   überwiegend Sach/Kfz/RS statt Kranken, ist der Ring-Füllstand
+   irreführend (zu hoch oder zu niedrig, je nach Mix). Bewusst nicht
+   code-seitig entschieden (Kategorie trennen? Zielfeld umbenennen/neues
+   Feld für "sonstige" einführen?) — braucht ein Gespräch mit dem Nutzer,
+   passt zur bestehenden Linie bei BWS-Verrechnungs-Themen (siehe
+   Erinnerung `project_bws_verrechnung`).
+
+Per Playwright gegen den echten Account verifiziert (Statistik-Seite,
+Jahr/Monat-Reiter-Wechsel, Schatzraum öffnen/schließen/erneut öffnen,
+0 Konsolenfehler). Die eigentlich noch offene Kontakte-Kernseite
+(~830 Zeilen, ursprünglich fälschlich als Teil des "Schatzraum"-Blocks
+mitgezählt) ist ein eigenes, noch nicht begonnenes Häppchen 6b, siehe
+Erinnerung `project_full_bugfix_sweep`.
+
 ## Bekannte, bewusst in Kauf genommene Lücken
 
 - ~~"Zuletzt kontaktiert"/Kontakt-Chronik zeigen nur eigene Einträge~~ —
