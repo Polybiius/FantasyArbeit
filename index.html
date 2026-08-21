@@ -2774,8 +2774,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     // sofort aus (z.B. nach einer Regelwerk-Lockerung), statt erst auf die
     // nächste eigene Aktion zu warten.
     await checkAndAwardRecurringQuests();
-    await checkAndAwardQuestTreeBonuses();
-    await checkAndAwardEpics(); // feiert beim allerersten Check einer Sitzung nichts nach (siehe celebratedEpicIds), zahlt aber trotzdem aus
+    await checkAndAwardQuestTreeAndEpics(); // feiert beim allerersten Check einer Sitzung nichts nach (siehe celebratedEpicIds), zahlt aber trotzdem aus
     await syncBirthdayTasksIfNeeded(); // Geburtstags-Aufgaben für heute nachziehen, falls noch nicht geschehen
     phoneTally = Number(localStorage.getItem('phoneTally_'+profile.id) || 0);
     lastKnownLevel = levelInfo(computeTotals().totalXp).level;
@@ -2935,7 +2934,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       else{
         phoneTally=0;
         localStorage.setItem('phoneTally_'+profile.id, 0);
-        log.push(data); await checkAndAwardRecurringQuests(); await checkAndAwardQuestTreeBonuses(); await checkAndAwardEpics();
+        log.push(data); await checkAndAwardRecurringQuests(); await checkAndAwardQuestTreeAndEpics();
       }
     }
     render();
@@ -2989,24 +2988,38 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // computeJournalStreak() — Tages-/Wochen-Schwellenwert aus dem bereits
   // geladenen eigenen action_log ableiten, dann dieselbe
   // "läuft die Serie noch" / "ist sie gerissen"-Logik anwenden.
-  function computeDailyThresholdStreak(entries, actionKey, perEntryQty, threshold, todayStr){
+  // In "Totals aufbauen" (einmal pro entries+actionKey) und "Streak aus
+  // Totals ableiten" (einmal pro Schwellenwert) aufgeteilt - eine
+  // mehrstufige Streak-Quest (siehe evaluateStreakQuest) UND die
+  // Konstanz-Kachel (zwei Schwellenwerte gleichzeitig, z.B. ≥10/≥20
+  // Telefonate) riefen vorher denselben Totals-Aufbau pro Schwellenwert
+  // erneut auf, obwohl er unabhängig vom Schwellenwert ist (Häppchen-2-
+  // Review, 2026-08-21) - alle Aufrufer nutzen seitdem direkt diese beiden
+  // Bausteine statt einer Kombi-Funktion.
+  function dailyActionTotals(entries, actionKey, perEntryQty){
     const totals = new Map();
     entries.filter(e=>e.action_key===actionKey).forEach(e=>{
       const key = todayKey(e.created_at);
       totals.set(key, (totals.get(key)||0) + perEntryQty);
     });
+    return totals;
+  }
+  function streakFromDailyTotals(totals, threshold, todayStr){
     const qualifyingDays = new Set([...totals.entries()].filter(([,v])=>v>=threshold).map(([k])=>k));
     return computeJournalStreak(qualifyingDays, todayStr);
   }
   // Wochen-Pendant dazu — arbeitet auf Montags-Datumsschlüsseln statt
   // Tagesschlüsseln, addDaysToKey(...,-7) springt zuverlässig eine Woche
   // zurück, unabhängig von Monats-/Jahresgrenzen.
-  function computeWeeklyThresholdStreak(entries, actionKey, threshold, todayDate){
+  function weeklyActionTotals(entries, actionKey){
     const weekTotals = new Map();
     entries.filter(e=>e.action_key===actionKey).forEach(e=>{
       const wk = dateKeyLocal(mondayOfWeek(new Date(e.created_at)));
       weekTotals.set(wk, (weekTotals.get(wk)||0)+1);
     });
+    return weekTotals;
+  }
+  function streakFromWeeklyTotals(weekTotals, threshold, todayDate){
     const currentWeekKey = dateKeyLocal(mondayOfWeek(todayDate));
     const thisWeekDone = (weekTotals.get(currentWeekKey)||0) >= threshold;
     let cursor = thisWeekDone ? currentWeekKey : addDaysToKey(currentWeekKey, -7);
@@ -3038,9 +3051,24 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // einem Folgejahr erneut verdienen. Reine Hilfsfunktionen, gleiche
   // "reine, DB-lose Funktion"-Linie wie der Rest der Questbaum-Engine.
   function currentBusinessYear(){ return new Date().getFullYear(); }
+  // Wird pro Rendering-/Prüfungs-Durchlauf mehrfach unabhängig voneinander
+  // aufgerufen (evaluateLadderQuest/evaluateRatioQuest/evaluateStreakQuest,
+  // sowohl aus computeQuestTreeQuickView() als auch aus
+  // checkAndAwardQuestTreeAndEpics()) - filtert dabei jedes Mal denselben,
+  // sich innerhalb eines synchronen Durchlaufs nicht ändernden log-Array neu.
+  // Einfacher Cache-Schlüssel aus Array-Referenz+Länge+Jahr reicht als
+  // Invalidierung: log wächst nur per push() (Länge ändert sich), ein
+  // Jahreswechsel ändert den Jahres-Teil des Schlüssels (Häppchen-2-Review,
+  // 2026-08-21).
+  let _yearLogCache = null;
   function logInCurrentYear(logEntries){
     const y = String(currentBusinessYear());
-    return logEntries.filter(e=>e.created_at && e.created_at.slice(0,4)===y);
+    if(_yearLogCache && _yearLogCache.source===logEntries && _yearLogCache.length===logEntries.length && _yearLogCache.year===y){
+      return _yearLogCache.result;
+    }
+    const result = logEntries.filter(e=>e.created_at && e.created_at.slice(0,4)===y);
+    _yearLogCache = { source:logEntries, length:logEntries.length, year:y, result };
+    return result;
   }
 
   function questMatchesLocationType(entry, locationType, locationTypeById){
@@ -3078,6 +3106,22 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     return Array.isArray(spec) ? spec.includes(actionKey) : actionKey===spec;
   }
 
+  // Gemeinsamer Helfer für alle Sparten-Ladder-Ketten (Sach-/Leben-/Kranken-/
+  // Finanzierung): löst das Produkt pro Verkauf EINMAL auf und hängt es an,
+  // statt es beim Filtern UND erneut beim Aufsummieren/Sortieren nachzuschlagen
+  // - gemeinsam genutzt von evaluateSalesLadderQuest() und
+  // lastSalesQuestActivity() (vorher fast identischer Code an beiden Stellen,
+  // Häppchen-2-Review, 2026-08-21).
+  function matchingSalesForArt(productArt, productSubcategory){
+    return (mySalesCache||[]).reduce((acc, s)=>{
+      const p = productById(s.product_id);
+      if(!p || p.art!==productArt) return acc;
+      if(productSubcategory && p.subcategory!==productSubcategory) return acc;
+      acc.push({ sale:s, product:p });
+      return acc;
+    }, []);
+  }
+
   // metric.source:'sales' (Default weiterhin 'log') -- für Ketten, die eine
   // kumulierte Verkaufssumme statt einer action_log-Zählung brauchen (Sach-/
   // Leben-/Kranken-/Finanzierungssparte). Nutzt dieselbe kumulierte
@@ -3087,15 +3131,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // ist immer eine reine Summe.
   function evaluateSalesLadderQuest(q, m){
     const year = String(currentBusinessYear());
-    const matching = (mySalesCache||[]).filter(s=>{
-      const p = productById(s.product_id);
-      if(!p || p.art!==m.productArt) return false;
-      if(m.productSubcategory && p.subcategory!==m.productSubcategory) return false;
-      const d = saleDate(s);
-      if(!d || d.slice(0,4)!==year) return false;
-      return true;
+    const matching = matchingSalesForArt(m.productArt, m.productSubcategory).filter(({sale})=>{
+      const d = saleDate(sale);
+      return !!d && d.slice(0,4)===year;
     });
-    const value = matching.reduce((sum,s)=>sum + saleBasisValue(s, productById(s.product_id)), 0);
+    const value = matching.reduce((sum,{sale,product})=>sum + saleBasisValue(sale, product), 0);
     return q.stages.map(s=>({ ...s, current: Math.round(value), target: s.threshold, done: value>=s.threshold }));
   }
 
@@ -3151,20 +3191,25 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   // Fünfter Quest-Typ (Streak) - "Konstanz statt Rohvolumen"
-  // (Telefonakquise-/Termine-Serien aus dem Questbaum). Wrapper um
-  // computeDailyThresholdStreak()/computeWeeklyThresholdStreak(), die schon
-  // für die Konstanz-Kachel existieren (kein Doppelbau der Kernlogik). Jede
-  // Stufe trägt ihr EIGENES perPeriodThreshold+streakTarget-Paar, nicht nur
+  // (Telefonakquise-/Termine-Serien aus dem Questbaum). Nutzt dieselben
+  // Totals-/Streak-Bausteine wie die Konstanz-Kachel (kein Doppelbau der
+  // Kernlogik). Jede Stufe trägt ihr EIGENES perPeriodThreshold+
+  // streakTarget-Paar, nicht nur
   // ein wachsendes streakTarget bei fixem Schwellenwert - deckt sowohl den
   // Telefon-Fall (fixe Serienlänge, wachsender Tages-Schwellenwert) als auch
   // den Termine-Fall (beide Achsen wachsen zugleich) mit demselben Schema ab.
   function evaluateStreakQuest(q, log, now){
     const m = q.metric;
     const yearLog = logInCurrentYear(log);
+    // Totals einmal für die ganze Kette aufbauen, nicht pro Stufe erneut -
+    // eine Kette mit mehreren Stufen (z.B. ≥10/≥20 Telefonate am Tag) teilt
+    // sich denselben Rohbestand, nur der Schwellenwert je Stufe unterscheidet
+    // sich (Häppchen-2-Review, 2026-08-21).
+    const totals = m.period==='weekly' ? weeklyActionTotals(yearLog, m.action) : dailyActionTotals(yearLog, m.action, m.perEntryQty||1);
     return q.stages.map(s=>{
       const r = m.period==='weekly'
-        ? computeWeeklyThresholdStreak(yearLog, m.action, s.perPeriodThreshold, now)
-        : computeDailyThresholdStreak(yearLog, m.action, m.perEntryQty||1, s.perPeriodThreshold, todayKey(now));
+        ? streakFromWeeklyTotals(totals, s.perPeriodThreshold, now)
+        : streakFromDailyTotals(totals, s.perPeriodThreshold, todayKey(now));
       return { ...s, current: r.streak, target: s.streakTarget, done: r.streak>=s.streakTarget };
     });
   }
@@ -3208,14 +3253,9 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // bekommen und in der Schnellansicht nie hochsortiert werden, egal wie
   // aktiv gerade verkauft wird.
   function lastSalesQuestActivity(productArt, productSubcategory){
-    const matching = (mySalesCache||[]).filter(s=>{
-      const p = productById(s.product_id);
-      if(!p || p.art!==productArt) return false;
-      if(productSubcategory && p.subcategory!==productSubcategory) return false;
-      return true;
-    });
+    const matching = matchingSalesForArt(productArt, productSubcategory);
     if(matching.length===0) return null;
-    return matching.reduce((a,b)=> new Date(a.created_at)>new Date(b.created_at) ? a : b).created_at;
+    return matching.reduce((a,b)=> new Date(a.sale.created_at)>new Date(b.sale.created_at) ? a : b).sale.created_at;
   }
 
   // Schnellansicht-Auswahl (Handlungen-Seite): pro Kette nur die nächste noch
@@ -3316,15 +3356,20 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   function renderZunftbuchCategory(cat, byCat){
+    // byCat deckt denselben vollständigen Questbaum ab wie
+    // computeQuestTreeStages() (beide leiten aus config.questTree||[] ab) -
+    // vorher wurde questTreeEvaluateChain() für Ketten der aktuell
+    // sichtbaren Kategorie zweimal aufgerufen (einmal für stageDoneMap über
+    // ALLE Kategorien, einmal erneut fürs Rendern der einen sichtbaren
+    // Kategorie), jetzt einmal gemeinsam berechnet (Häppchen-3-Review,
+    // 2026-08-21).
+    const stagesByQuestId = computeQuestTreeStages();
     const stageDoneMap = {};
-    Object.values(byCat).flat().forEach(q=>{
-      const stages = questTreeEvaluateChain(q);
-      if(stages) stages.forEach(s=>{ stageDoneMap[s.id] = s.done; });
-    });
+    Object.values(stagesByQuestId).forEach(stages=>{ stages.forEach(s=>{ stageDoneMap[s.id] = s.done; }); });
     const entries = byCat[cat]||[];
     let html = '';
     entries.forEach(q=>{
-      const stages = questTreeEvaluateChain(q);
+      const stages = stagesByQuestId[q.id];
       if(!stages) return;
       const firstActiveIdx = stages.findIndex(s=>!s.done);
       html += `<div class="qtb-chain"><h3>${escHtml(q.label)}</h3>`;
@@ -3553,27 +3598,53 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // Login) -- dort wird nur der Ausgangszustand festgehalten, absichtlich
   // OHNE zu feiern, sonst würde jeder Login alte Erfolge erneut zelebrieren.
   let celebratedEpicIds = null;
-  function computeDoneEpicIds(){
-    const stageDoneMap = {};
+  // Berechnet die Stufen-Ergebnisse aller Ladder-/Ratio-/Streak-Ketten EINMAL
+  // pro Aufruf ({questId: stages[]}) - vorher durchliefen computeDoneEpicIds()
+  // und checkAndAwardQuestTreeBonuses() den kompletten Questbaum unabhängig
+  // voneinander noch einmal, obwohl beide bei jeder Aktion (logAction() &
+  // Co.) im selben Atemzug aufgerufen werden (Häppchen-3-Review, 2026-08-21).
+  // Wird von checkAndAwardQuestTreeAndEpics() einmal berechnet und an beide
+  // weitergereicht.
+  function computeQuestTreeStages(){
+    const byQuestId = {};
     (config.questTree||[]).forEach(q=>{
-      const stages = questTreeEvaluateChain(q);
-      if(stages) stages.forEach(s=>{ stageDoneMap[s.id] = s.done; });
+      const stages = questTreeEvaluateChain(q); // liefert null für epic/habit
+      if(stages) byQuestId[q.id] = stages;
     });
+    return byQuestId;
+  }
+  function computeDoneEpicIds(stagesByQuestId){
+    const stageDoneMap = {};
+    Object.values(stagesByQuestId).forEach(stages=>{ stages.forEach(s=>{ stageDoneMap[s.id] = s.done; }); });
     const done = new Set();
     (config.questTree||[]).forEach(q=>{
       if(q.type==='epic' && evaluateEpicQuest(q, stageDoneMap).done) done.add(q.id);
     });
     return done;
   }
+  // Gemeinsamer Duplikat-Check + RPC-Aufruf für Questbaum-Stufen UND Epics
+  // (stageId ist bei einem Epic bewusst seine eigene id) - vorher an beiden
+  // Aufrufstellen fast wortgleich dupliziert (Häppchen-3-Review,
+  // 2026-08-21). Gibt true zurück, wenn wirklich neu vergeben wurde (nicht
+  // schon vorher erledigt oder ein Fehler auftrat), sonst false.
+  async function grantQuestTreeStageBonus(questId, stageId, year, errorLabel){
+    const already = log.some(e=>e.action_key==='questtree_bonus' && e.meta && e.meta.questTreeId===questId && e.meta.stageId===stageId && e.meta.year===year);
+    if(already) return false;
+    const { data, error } = await sb.rpc('grant_quest_bonus_to_self', { p_kind:'questtree', p_quest_id:questId, p_stage_id:stageId, p_period_key:year });
+    if(error){ logSilentError(errorLabel, error); return false; }
+    if(data) log.push(data);
+    return true;
+  }
+
   // Epics geben seit dem Jahres-Reset echte Bonus-XP wie Ladder-/Ratio-/
   // Streak-Stufen (eigenes flaches bonus-Feld statt eines stages-Arrays,
   // siehe grant_quest_bonus_to_self()) -- und feuern jährlich erneut, sobald
   // ihre Voraussetzungen im selben Kalenderjahr wieder gleichzeitig erfüllt
   // sind (Duplikat-Schutz server-seitig über questTreeId+stageId+Jahr, wie
   // bei den Stufen -- stageId ist bei einem Epic bewusst seine eigene id).
-  async function checkAndAwardEpics(){
+  async function checkAndAwardEpics(stagesByQuestId){
     if(!config || !config.questTree) return;
-    const doneNow = computeDoneEpicIds();
+    const doneNow = computeDoneEpicIds(stagesByQuestId);
     // Bugfix (Häppchen-3-Review, 2026-08-21): der frühere Code gab beim
     // allererste Check einer Sitzung (celebratedEpicIds===null) sofort
     // komplett auf, VOR der Vergabe-Schleife - dadurch bekam ein zu diesem
@@ -3589,14 +3660,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     for(const id of doneNow){
       const q = config.questTree.find(e=>e.id===id);
       if(!q) continue;
-      if(q.bonus){
-        const already = log.some(e=>e.action_key==='questtree_bonus' && e.meta && e.meta.questTreeId===q.id && e.meta.stageId===q.id && e.meta.year===year);
-        if(!already){
-          const { data, error } = await sb.rpc('grant_quest_bonus_to_self', { p_kind:'questtree', p_quest_id:q.id, p_stage_id:q.id, p_period_key:year });
-          if(error) logSilentError('Epic-Bonus verbuchen', error);
-          else if(data) log.push(data);
-        }
-      }
+      if(q.bonus) await grantQuestTreeStageBonus(q.id, q.id, year, 'Epic-Bonus verbuchen');
       if(!isFirstCheck && !(celebratedEpicIds && celebratedEpicIds.has(id))) showEpicToast(q);
     }
     celebratedEpicIds = doneNow;
@@ -3610,22 +3674,29 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // Questbaum-Einträge lebt) -- gleiches Duplikat-Schutz-Prinzip wie
   // checkAndAwardRecurringQuests(): ein Blick in log VOR dem RPC-Aufruf,
   // damit nicht jedes Mal unnötig die Datenbank gefragt werden muss.
-  async function checkAndAwardQuestTreeBonuses(){
+  async function checkAndAwardQuestTreeBonuses(stagesByQuestId){
     if(!config || !config.questTree) return;
     const year = String(currentBusinessYear());
     for(const q of config.questTree){
-      const stages = questTreeEvaluateChain(q); // liefert null für epic/habit -- automatisch übersprungen
+      const stages = stagesByQuestId[q.id]; // fehlt für epic/habit -- automatisch übersprungen
       if(!stages) continue;
       for(const s of stages){
         if(!s.done || !s.bonus) continue;
-        const already = log.some(e=>e.action_key==='questtree_bonus' && e.meta && e.meta.questTreeId===q.id && e.meta.stageId===s.id && e.meta.year===year);
-        if(already) continue;
-        const { data, error } = await sb.rpc('grant_quest_bonus_to_self', { p_kind:'questtree', p_quest_id:q.id, p_stage_id:s.id, p_period_key:year });
-        if(error){ logSilentError('Questbaum-Bonus verbuchen', error); continue; }
-        if(data) log.push(data);
-        showQuestRewardToast(s.label, s.bonus, null, 0);
+        const granted = await grantQuestTreeStageBonus(q.id, s.id, year, 'Questbaum-Bonus verbuchen');
+        if(granted) showQuestRewardToast(s.label, s.bonus, null, 0);
       }
     }
+  }
+
+  // Gemeinsamer Einstiegspunkt für alle Aufrufstellen (ersetzt das vorher an
+  // 7 Stellen wiederholte Paar checkAndAwardQuestTreeBonuses()+
+  // checkAndAwardEpics()) - berechnet den Baum einmal, reicht ihn an beide
+  // weiter, statt dass jede Funktion ihn unabhängig ein zweites Mal aufbaut.
+  async function checkAndAwardQuestTreeAndEpics(){
+    if(!config || !config.questTree) return;
+    const stagesByQuestId = computeQuestTreeStages();
+    await checkAndAwardQuestTreeBonuses(stagesByQuestId);
+    await checkAndAwardEpics(stagesByQuestId);
   }
 
   async function checkAndAwardRecurringQuests(){
@@ -3707,8 +3778,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(error){ reportError('Aktion speichern', error); return; }
     log.push(data);
     await checkAndAwardRecurringQuests();
-    await checkAndAwardQuestTreeBonuses();
-    await checkAndAwardEpics();
+    await checkAndAwardQuestTreeAndEpics();
     render();
   }
 
@@ -3941,7 +4011,16 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         clearTimeout(mentionSearchTimer);
         mentionSearchTimer = setTimeout(()=> searchMentionSuggestions(match.query, ta, box), 250);
       });
-      document.addEventListener('click', (e)=>{
+    });
+    // Ein einziger delegierter Klick-Listener statt fünf separaten (einer pro
+    // Feld, identische Logik) - schließt bei Klick außerhalb einer
+    // Vorschlagsbox + ihres eigenen Textfelds alle fünf Boxen gleichzeitig
+    // durch (Häppchen-4-Review, 2026-08-21).
+    document.addEventListener('click', (e)=>{
+      JOURNAL_FIELDS.forEach((f,i)=>{
+        const qIndex = i+1;
+        const ta = document.getElementById(f);
+        const box = document.getElementById('jSugg'+qIndex);
         if(!box.contains(e.target) && e.target!==ta) box.style.display='none';
       });
     });
@@ -4122,12 +4201,20 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(error){ logSilentError('Kalender-Aufgaben laden', error); return; }
     ownContactsForTasks = data || [];
   }
+  // Gemeinsame Bedingung "hat an diesem Monat/Tag Geburtstag", vorher an drei
+  // Stellen (tasksForDate/syncBirthdayTasksIfNeeded/Tag-Spalten-Vorschau)
+  // unabhängig voneinander gleich geschrieben (Häppchen-4-Review,
+  // 2026-08-21) - hält alle drei synchron, falls sich die Bedingung mal
+  // ändert (z.B. Schaltjahr-Edge-Case).
+  function isBirthdayOn(contact, mmdd){
+    return !!(contact.geburtsdatum && contact.geburtsdatum.slice(5)===mmdd);
+  }
   function tasksForDate(dateStr){
     const mmdd = dateStr.slice(5);
     const showBirthdays = profile.calendar_show_birthdays !== false;
     const tasks = [];
     ownContactsForTasks.forEach(c=>{
-      if(showBirthdays && c.geburtsdatum && c.geburtsdatum.slice(5)===mmdd){
+      if(showBirthdays && isBirthdayOn(c, mmdd)){
         tasks.push({type:'geburtstag', icon:'🎂', label:'Geburtstag', name:c.name, contactId:c.id});
       }
       if(c.naechster_kontakt === dateStr){
@@ -4206,7 +4293,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       if(delError) logSilentError('Alte Geburtstags-Aufgaben entfernen', delError);
       if(profile.calendar_show_birthdays !== false){
         const mmdd = today.slice(5);
-        const due = ownContactsForTasks.filter(c=> c.geburtsdatum && c.geburtsdatum.slice(5)===mmdd);
+        const due = ownContactsForTasks.filter(c=> isBirthdayOn(c, mmdd));
         if(due.length){
           const rows = due.map(c=>({
             org_id: profile.org_id, owner_id: profile.id, contact_id: c.id,
@@ -4257,15 +4344,24 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     const from = `${calViewYear}-${pad2(calViewMonth+1)}-01`;
     const to = `${calViewYear}-${pad2(calViewMonth+1)}-${pad2(daysInMonth(calViewYear,calViewMonth))}`;
-    const { data, error } = await sb.from('journal_entries').select('entry_date,q1,q2,q3,q4,q5').eq('user_id', profile.id).gte('entry_date', from).lte('entry_date', to);
+    // Drei unabhängige Tabellen - parallel statt nacheinander laden (Häppchen-
+    // 4-Review, 2026-08-21: waren drei sequenzielle Roundtrips pro
+    // Monatswechsel, obwohl keine Abhängigkeit zwischeneinander besteht).
+    const [
+      { data, error },
+      { data: photoData, error: photoErr },
+      { data: termineData, error: termineErr }
+    ] = await Promise.all([
+      sb.from('journal_entries').select('entry_date,q1,q2,q3,q4,q5').eq('user_id', profile.id).gte('entry_date', from).lte('entry_date', to),
+      sb.from('journal_photos').select('entry_date').eq('user_id', profile.id).gte('entry_date', from).lte('entry_date', to),
+      sb.from('termine').select('start_at').eq('owner_id', profile.id)
+        .gte('start_at', new Date(calViewYear, calViewMonth, 1).toISOString())
+        .lt('start_at', new Date(calViewYear, calViewMonth, daysInMonth(calViewYear,calViewMonth)+1).toISOString())
+    ]);
     if(error) logSilentError('Tagebuch-Tage laden', error);
     calEntryDates = new Set((data||[]).filter(journalRowHasContent).map(r=>r.entry_date));
-    const { data: photoData, error: photoErr } = await sb.from('journal_photos').select('entry_date').eq('user_id', profile.id).gte('entry_date', from).lte('entry_date', to);
     if(photoErr) logSilentError('Foto-Tage laden', photoErr);
     calPhotoDates = new Set((photoData||[]).map(r=>r.entry_date));
-    const { data: termineData, error: termineErr } = await sb.from('termine').select('start_at').eq('owner_id', profile.id)
-      .gte('start_at', new Date(calViewYear, calViewMonth, 1).toISOString())
-      .lt('start_at', new Date(calViewYear, calViewMonth, daysInMonth(calViewYear,calViewMonth)+1).toISOString());
     if(termineErr) logSilentError('Termin-Tage laden', termineErr);
     calTermineDates = new Set((termineData||[]).map(r=> dateKeyLocal(new Date(r.start_at))));
 
@@ -4330,9 +4426,16 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   async function showDayPreview(dateStr){
     const preview = document.getElementById('calPreview');
-    const { data, error } = await sb.from('journal_entries').select('*').eq('user_id', profile.id).eq('entry_date', dateStr).maybeSingle();
+    // Zwei unabhängige Tabellen - parallel statt nacheinander (Häppchen-4-
+    // Review, 2026-08-21).
+    const [
+      { data, error },
+      { data: photoRow, error: photoErr }
+    ] = await Promise.all([
+      sb.from('journal_entries').select('*').eq('user_id', profile.id).eq('entry_date', dateStr).maybeSingle(),
+      sb.from('journal_photos').select('*').eq('user_id', profile.id).eq('entry_date', dateStr).maybeSingle()
+    ]);
     if(error) logSilentError('Tageseintrag laden', error);
-    const { data: photoRow, error: photoErr } = await sb.from('journal_photos').select('*').eq('user_id', profile.id).eq('entry_date', dateStr).maybeSingle();
     if(photoErr) logSilentError('Foto des Tages laden', photoErr);
     let photoHtml = '';
     if(photoRow){
@@ -5033,12 +5136,16 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // Questbaum ("Konstanz statt Rohvolumen", 2026-08-09).
   function renderStatStreaks(){
     const todayStr = todayKey(new Date());
-    const s10 = computeDailyThresholdStreak(log, 'telefon_5', 5, 10, todayStr);
-    const s20 = computeDailyThresholdStreak(log, 'telefon_5', 5, 20, todayStr);
+    // Totals je Aktion einmal aufgebaut, für beide Schwellenwerte
+    // wiederverwendet (Häppchen-2-Review, 2026-08-21).
+    const dailyTotals = dailyActionTotals(log, 'telefon_5', 5);
+    const s10 = streakFromDailyTotals(dailyTotals, 10, todayStr);
+    const s20 = streakFromDailyTotals(dailyTotals, 20, todayStr);
     document.getElementById('statCallStreakHint').textContent =
       `📞 Telefonakquise: ${s10.streak} Tage in Folge ≥10 Nummern gewählt · ${s20.streak} Tage in Folge ≥20 Nummern gewählt`;
-    const w5 = computeWeeklyThresholdStreak(log, 'termin_wahrgenommen', 5, new Date());
-    const w7 = computeWeeklyThresholdStreak(log, 'termin_wahrgenommen', 7, new Date());
+    const weeklyTotals = weeklyActionTotals(log, 'termin_wahrgenommen');
+    const w5 = streakFromWeeklyTotals(weeklyTotals, 5, new Date());
+    const w7 = streakFromWeeklyTotals(weeklyTotals, 7, new Date());
     document.getElementById('statTerminStreakHint').textContent =
       `🗓️ Termine: ${w5.streak} Wochen in Folge ≥5 wahrgenommen · ${w7.streak} Wochen in Folge ≥7 wahrgenommen`;
   }
@@ -5858,8 +5965,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     // zwei Modals gleichzeitig offen haben).
     document.getElementById('locActionModal').style.display='none';
     await checkAndAwardRecurringQuests();
-    await checkAndAwardQuestTreeBonuses();
-    await checkAndAwardEpics();
+    await checkAndAwardQuestTreeAndEpics();
 
     // Kundenausbau bei einem Kontakt ohne Kanban-Zugehörigkeit holt ihn aktiv
     // zurück in die Pipeline — zusätzlich "Termin vereinbart" loggen und bei
@@ -5976,8 +6082,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(actErr){ reportError('Aktivität speichern', actErr, statusEl); return; }
 
     await checkAndAwardRecurringQuests();
-    await checkAndAwardQuestTreeBonuses();
-    await checkAndAwardEpics();
+    await checkAndAwardQuestTreeAndEpics();
 
     document.getElementById('contactActivityModal').style.display = 'none';
     render();
@@ -6538,8 +6643,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(error){ reportError('Aktion am Dungeon speichern', error); return; }
     log.push(data);
     await checkAndAwardRecurringQuests();
-    await checkAndAwardQuestTreeBonuses();
-    await checkAndAwardEpics();
+    await checkAndAwardQuestTreeAndEpics();
     document.getElementById('locActionModal').style.display='none';
     render();
   }
@@ -7222,7 +7326,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     let previewBirthdays = [];
     if(!isToday && profile.calendar_show_birthdays !== false){
       const mmdd = viewedDateStr.slice(5);
-      previewBirthdays = ownContactsForTasks.filter(c=> c.geburtsdatum && c.geburtsdatum.slice(5)===mmdd);
+      previewBirthdays = ownContactsForTasks.filter(c=> isBirthdayOn(c, mmdd));
     }
 
     let html = relevant.map(rowHtml).join('');
@@ -7914,8 +8018,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(error){ reportError(`Kanban-Aktion speichern (${a.label})`, error); return false; }
     log.push(data);
     await checkAndAwardRecurringQuests();
-    await checkAndAwardQuestTreeBonuses();
-    await checkAndAwardEpics();
+    await checkAndAwardQuestTreeAndEpics();
     render();
     return data.id;
   }
