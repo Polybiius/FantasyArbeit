@@ -2119,6 +2119,17 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const p = localPartsInTZ(d, tz());
     return `${p.year}-${String(p.month).padStart(2,'0')}-${String(p.day).padStart(2,'0')}`;
   }
+  // Liefert einen Zeitstempel als Kalendertag DER ORGANISATION (nicht des
+  // Browser-Geräts), verankert auf 12 Uhr mittags lokal -- sichere Grundlage
+  // für nachfolgende reine Kalendertag-Arithmetik (Wochenanfang, Tag-für-Tag-
+  // Navigation per dateKeyLocal()/mondayOfWeek()) ohne Mitternachts-/DST-
+  // Fallstricke. Behebt die seit dem Code-Review vom 2026-08-20 bekannte
+  // Inkonsistenz: dateKeyLocal() (Browser-lokal) wurde bisher direkt auf
+  // rohe Zeitstempel/"jetzt" angewendet, statt zuerst wie todayKey() über
+  // die Organisations-Zeitzone zu gehen.
+  function orgLocalNoonDay(ts){
+    return new Date(todayKey(ts)+'T12:00:00');
+  }
   function weekKey(d){
     const p = localPartsInTZ(d, tz());
     const localNoon = new Date(Date.UTC(p.year, p.month-1, p.day, 12));
@@ -3015,13 +3026,16 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   function weeklyActionTotals(entries, actionKey){
     const weekTotals = new Map();
     entries.filter(e=>e.action_key===actionKey).forEach(e=>{
-      const wk = dateKeyLocal(mondayOfWeek(new Date(e.created_at)));
+      // Org-Zeitzone statt Browser-lokal, sonst würde derselbe Log-Eintrag
+      // je nach Gerät in einer anderen Woche landen als bei
+      // dailyActionTotals() nebenan (dort schon immer über todayKey()).
+      const wk = dateKeyLocal(mondayOfWeek(orgLocalNoonDay(e.created_at)));
       weekTotals.set(wk, (weekTotals.get(wk)||0)+1);
     });
     return weekTotals;
   }
   function streakFromWeeklyTotals(weekTotals, threshold, todayDate){
-    const currentWeekKey = dateKeyLocal(mondayOfWeek(todayDate));
+    const currentWeekKey = dateKeyLocal(mondayOfWeek(orgLocalNoonDay(todayDate)));
     const thisWeekDone = (weekTotals.get(currentWeekKey)||0) >= threshold;
     let cursor = thisWeekDone ? currentWeekKey : addDaysToKey(currentWeekKey, -7);
     let streak = 0;
@@ -3914,9 +3928,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const now = new Date();
     const p = localPartsInTZ(now, tz());
     calViewYear = p.year; calViewMonth = p.month-1;
-    calWeekStart = mondayOfWeek(now);
-    calDayDate = new Date();
-    calFocusDate = new Date();
+    // Org-Zeitzone statt Browser-lokal (wie oben schon für calViewYear/
+    // -Month) -- sonst könnte "heute" in Woche/Tag-Ansicht vom Monats-
+    // Reiter abweichen, wenn Gerät und Organisation in unterschiedlichen
+    // Zeitzonen stehen (Zeitzonen-Vereinheitlichung, 2026-08-21).
+    const orgToday = new Date(p.year, p.month-1, p.day, 12);
+    calWeekStart = mondayOfWeek(orgToday);
+    calDayDate = new Date(orgToday);
+    calFocusDate = new Date(orgToday);
     document.getElementById('calPrevBtn').addEventListener('click', ()=>{
       if(calViewMode==='tag') changeCalDay(-1);
       else if(calViewMode==='woche') changeCalWeek(-1);
@@ -3928,12 +3947,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       else changeCalMonth(1);
     });
     document.getElementById('calTodayBtn').addEventListener('click', ()=>{
-      calFocusDate = new Date();
+      calFocusDate = orgLocalNoonDay(new Date());
       if(calViewMode==='tag'){
-        calDayDate = new Date();
+        calDayDate = orgLocalNoonDay(new Date());
         renderDayView(true);
       } else if(calViewMode==='woche'){
-        calWeekStart = mondayOfWeek(new Date());
+        calWeekStart = mondayOfWeek(orgLocalNoonDay(new Date()));
         renderWeekView(true);
       } else {
         const p2 = localPartsInTZ(new Date(), tz());
@@ -4380,7 +4399,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(photoErr) logSilentError('Foto-Tage laden', photoErr);
     calPhotoDates = new Set((photoData||[]).map(r=>r.entry_date));
     if(termineErr) logSilentError('Termin-Tage laden', termineErr);
-    calTermineDates = new Set((termineData||[]).map(r=> dateKeyLocal(new Date(r.start_at))));
+    calTermineDates = new Set((termineData||[]).map(r=> todayKey(r.start_at)));
 
     const grid = document.getElementById('calGrid');
     const firstWeekday = (new Date(calViewYear, calViewMonth, 1).getDay()+6)%7; // Montag=0
@@ -7199,7 +7218,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     for(let i=0;i<7;i++) allDays.push(new Date(calWeekStart.getFullYear(), calWeekStart.getMonth(), calWeekStart.getDate()+i));
     const hideWeekends = !!profile.calendar_hide_weekends;
     const days = hideWeekends ? allDays.filter(d=> d.getDay()!==0 && d.getDay()!==6) : allDays;
-    const todayStr = dateKeyLocal(new Date());
+    const todayStr = todayKey(new Date());
 
     const headerRowEl = document.getElementById('weekHeaderRow');
     const tasksRowEl = document.getElementById('weekTasksRow');
@@ -7272,7 +7291,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         dayCol.appendChild(full);
       }
 
-      const dayEvents = weekTermine.filter(t=> dateKeyLocal(new Date(t.start_at))===dateKeyLocal(d));
+      const dayEvents = weekTermine.filter(t=> todayKey(t.start_at)===dateKeyLocal(d));
       renderDayEvents(dayCol, d, dayEvents);
       attachDragHandlers(dayCol, d);
       daysEl.appendChild(dayCol);
@@ -7318,7 +7337,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const daysEl = document.getElementById('dayDays');
     daysEl.innerHTML = '';
     const dayCol = document.createElement('div');
-    dayCol.className = 'week-day-col' + (dateStr===dateKeyLocal(new Date()) ? ' today' : '');
+    dayCol.className = 'week-day-col' + (dateStr===todayKey(new Date()) ? ' today' : '');
     dayCol.style.height = totalHeight+'px';
 
     const wz = profile.arbeitszeiten ? profile.arbeitszeiten[WEEKDAY_KEYS[(d.getDay()+6)%7]] : null;
@@ -7436,7 +7455,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     termineEditingId = opts.editing ? opts.editing.id : null;
     termineContactSelectedId = opts.editing ? (opts.editing.contact_id || null) : null;
     termineLocationSelectedId = opts.editing ? (opts.editing.location_id || null) : null;
-    termineEntryDateForSave = opts.editing ? new Date(opts.editing.start_at) : opts.date;
+    // Org-Zeitzone statt Browser-lokal für den Kalendertag (Zeitzonen-
+    // Vereinheitlichung, 2026-08-21) -- die Uhrzeit selbst wird unverändert
+    // separat aus start_at gelesen (siehe termineEntryStart/-Ende unten).
+    termineEntryDateForSave = opts.editing ? orgLocalNoonDay(opts.editing.start_at) : opts.date;
     termineEntryKanal = opts.editing ? (opts.editing.kanal || null) : null;
     setKanalSwitch('termineEntryKanalSwitch', termineEntryKanal);
 
