@@ -5288,6 +5288,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     initScrollFade(el);
   }
 
+  let contactPageListenersInitialized = false;
   async function initContacts(){
     updateContactLabels();
     const roles = config.contactRoles || {};
@@ -5298,8 +5299,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('betriebArtSelect').innerHTML =
       Object.entries(types).map(([key,t])=>`<option value="${key}">${t.icon} ${t.label}</option>`).join('');
 
-    initContactLocationAutocomplete();
-    initContactFormToggle();
+    if(!contactPageListenersInitialized){
+      initContactLocationAutocomplete();
+      initContactFormToggle();
+      contactPageListenersInitialized = true;
+    }
     await renderContactsPage();
   }
 
@@ -5345,9 +5349,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const box = document.getElementById('contactLocationSuggestions');
     const { data: matches, error } = await sb.from('locations').select('id,name').eq('org_id', profile.org_id).ilike('name', `%${q}%`).limit(8);
     if(error) logSilentError('Betriebsvorschläge suchen', error);
-    const safeQ = q.replace(/"/g,'&quot;');
     let html = (matches||[]).map(m=>`<div class="loc-sugg-item" data-id="${m.id}" data-name="${escHtml(m.name)}">${escHtml(m.name)}</div>`).join('');
-    html += `<div class="loc-sugg-item loc-sugg-new" data-newbetrieb="${safeQ}">+ „${q}" als neuen Betrieb anlegen</div>`;
+    html += `<div class="loc-sugg-item loc-sugg-new" data-newbetrieb="${escHtml(q)}">+ „${escHtml(q)}" als neuen Betrieb anlegen</div>`;
     box.innerHTML = html;
     box.style.display = 'block';
     box.querySelectorAll('[data-id]').forEach(el=>{
@@ -5365,7 +5368,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     });
   }
 
-  document.getElementById('betriebCreateBtn').addEventListener('click', async ()=>{
+  document.getElementById('betriebCreateBtn').addEventListener('click', async (e)=>{
+    const btn = e.currentTarget;
     const name = document.getElementById('betriebNameInput').value.trim();
     const type = document.getElementById('betriebArtSelect').value;
     const plz = document.getElementById('betriebPlzInput').value.trim();
@@ -5376,6 +5380,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     const fullAddress = `${strasse}, ${plz} ${stadt}`.trim();
     statusEl.textContent = 'Suche Koordinaten …';
+    btn.disabled = true;
     try{
       const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(fullAddress)}`);
       const results = await res.json();
@@ -5398,17 +5403,25 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       document.getElementById('newBetriebForm').style.display = 'none';
     }catch(err){
       statusEl.textContent = 'Fehler bei der Adresssuche: '+err.message;
+    }finally{
+      btn.disabled = false;
     }
   });
 
   async function loadContactsBundle(){
-    const { data: contacts, error } = await sb.from('contacts').select('*').order('created_at', {ascending:false});
+    const [
+      { data: contacts, error },
+      { data: locs, error: locErr },
+      { data: journalMentions, error: mentionErr }
+    ] = await Promise.all([
+      sb.from('contacts').select('*').order('created_at', {ascending:false}),
+      sb.from('locations').select('id,name,type').eq('org_id', profile.org_id),
+      sb.from('journal_entry_mentions').select('entry_date,contact_id').eq('user_id', profile.id)
+    ]);
     if(error) return { error };
-    const { data: locs, error: locErr } = await sb.from('locations').select('id,name,type').eq('org_id', profile.org_id);
     if(locErr) logSilentError('Betriebe für Kontaktliste laden', locErr);
     const locMap = {}; (locs||[]).forEach(l=>locMap[l.id]={name:l.name, type:l.type});
 
-    const { data: journalMentions, error: mentionErr } = await sb.from('journal_entry_mentions').select('entry_date,contact_id').eq('user_id', profile.id);
     if(mentionErr) logSilentError('Tagebuch-Markierungen laden', mentionErr);
     const mentionMap = {};
     (journalMentions||[]).forEach(m=>{
@@ -5506,10 +5519,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   function jumpToJournalDay(dateStr){
-    const p = { year:+dateStr.slice(0,4), month:+dateStr.slice(5,7)-1 };
+    const p = { year:+dateStr.slice(0,4), month:+dateStr.slice(5,7)-1, day:+dateStr.slice(8,10) };
     calViewYear = p.year; calViewMonth = p.month;
-    showPage('tagebuch');
-    renderCalendar().then(()=> showDayPreview(dateStr));
+    calFocusDate = new Date(p.year, p.month, p.day);
+    showPage('tagebuch', false);
+    renderCalendar().then(()=>{ showDayPreview(dateStr); updateCalendarHash(); });
   }
 
   // Echte Kontakt-Unterseite (seit 2026-08-10) statt Popup -- eigene URL
@@ -5519,8 +5533,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // Anruf/Email, Termin) die Seite in-place aktualisieren, statt sie wie
   // früher das Modal einfach zu schließen.
   let currentContactPageId = null;
+  let currentContactDetailTab = 'overview';
 
   async function openContactPage(id){
+    if(currentContactPageId !== id) currentContactDetailTab = 'overview';
     currentContactPageId = id;
     // Kontakt-Seite hat keinen eigenen Nav-Button -- gehört zu "Kontakte"
     // (Register/Arkanes Register/Kriegsarchiv/Jägerchronik je Klasse),
@@ -5536,6 +5552,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(location.hash !== '#kontakt/'+id) location.hash = 'kontakt/'+id;
 
     const bundle = await loadContactsBundle();
+    if(currentContactPageId !== id) return; // inzwischen zu einem anderen Kontakt navigiert
     if(bundle.error){ logSilentError('Kontakt laden', bundle.error); document.getElementById('kdNotFound').style.display='block'; return; }
     const c = bundle.contacts.find(x=>x.id===id);
     if(!c){ document.getElementById('kdNotFound').style.display='block'; return; }
@@ -5547,12 +5564,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(currentContactPageId===id && document.getElementById('page-kontakt-detail').style.display!=='none'){
       await openContactPage(id);
     }
-  }
-
-  async function contactFilesCount(contactId){
-    const { count, error } = await sb.from('contact_files').select('id', {count:'exact', head:true}).eq('contact_id', contactId);
-    if(error){ logSilentError('Dateien zählen', error); return 0; }
-    return count || 0;
   }
 
   function renderContactStatStrip(cSales, chronikCount, filesCount, lastTs){
@@ -5609,9 +5620,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('contactDetailBody').innerHTML = html || '<div class="empty-page-hint">Keine weiteren Angaben.</div>';
 
     renderContactSalesTab(c, cSales, canEdit, fmtDate);
-    await renderContactChronikTab(c, cSales, fmtDate);
-    await renderContactFilesTab(c, canEdit);
-    const filesCount = await contactFilesCount(c.id);
+    const [, filesCount] = await Promise.all([
+      renderContactChronikTab(c, cSales, fmtDate),
+      renderContactFilesTab(c, canEdit)
+    ]);
     renderContactStatStrip(cSales, chronikItemsCache.length, filesCount, lastTs);
 
     const journalHtml = mentions.length>0
@@ -5619,7 +5631,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       : `<div class="empty-page-hint">Noch kein Tagebucheintrag mit diesem Kontakt.</div>`;
     document.getElementById('contactDetailJournal').innerHTML = journalHtml;
 
-    showContactDetailTab('overview');
+    showContactDetailTab(currentContactDetailTab);
 
     document.querySelectorAll('#contactDetailBody [data-jump], #contactDetailJournal [data-jump]').forEach(a=>{
       a.addEventListener('click', ()=> jumpToJournalDay(a.dataset.jump));
@@ -5670,6 +5682,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   document.getElementById('kdBackBtn').addEventListener('click', ()=> showPage('kontakte'));
 
   function showContactDetailTab(tab){ // 'overview' | 'chronik' | 'journal' | 'files'
+    currentContactDetailTab = tab;
     document.getElementById('cdTabOverviewBtn').classList.toggle('active', tab==='overview');
     document.getElementById('cdTabChronikBtn').classList.toggle('active', tab==='chronik');
     document.getElementById('cdTabJournalBtn').classList.toggle('active', tab==='journal');
@@ -5769,7 +5782,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const wrap = document.getElementById('contactDetailFiles');
     wrap.innerHTML = '<div class="empty-page-hint">Lade Dateien…</div>';
     const { data: files, error } = await sb.from('contact_files').select('*').eq('contact_id', c.id).order('created_at', {ascending:false});
-    if(error){ logSilentError('Kontaktdateien laden', error); wrap.innerHTML = '<div class="empty-page-hint">Dateien konnten nicht geladen werden.</div>'; return; }
+    if(error){ logSilentError('Kontaktdateien laden', error); wrap.innerHTML = '<div class="empty-page-hint">Dateien konnten nicht geladen werden.</div>'; return 0; }
 
     let html = '';
     if(canEdit){
@@ -5864,6 +5877,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         if(freshStatusEl) freshStatusEl.textContent = lastMessage;
       }
     });
+    return files.length;
   }
 
   // Chronik-Reiter am Kontakt: echte CRM-Fakten (Anrufe, Emails, Termine,
