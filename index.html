@@ -4900,13 +4900,19 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     return 0;
   }
   function aggregateStats(salesList){
-    let bwsLeben=0, beitragSonstige=0, bwp=0, provision=0, diffProvision=0;
+    // Kranken ist eine eigene Sparte, nicht Teil von "sonstige" (Nutzer-
+    // Korrektur 2026-08-21: "alles zusammenfassen macht gar kein Sinn")
+    // -- planung_kv_mb ist explizit ein Kranken-Ziel, "sonstige" bleibt
+    // ohne eigenes Planungsziel (wie Provision/Differenzprovision).
+    let bwsLeben=0, beitragKranken=0, beitragSonstige=0, bwp=0, provision=0, diffProvision=0;
     const byCategory = {};
     salesList.forEach(s=>{
       const p = productById(s.product_id);
       if(!p) return;
       const basis = saleBasisValue(s,p);
-      if(p.provision_mode==='individuell_lv') bwsLeben += basis; else beitragSonstige += basis;
+      if(p.provision_mode==='individuell_lv') bwsLeben += basis;
+      else if(p.provision_mode==='individuell_kv') beitragKranken += basis;
+      else beitragSonstige += basis;
       bwp += saleBwp(s,p);
       provision += saleProvision(s,p);
       diffProvision += saleDiffProvision(s,p);
@@ -4917,7 +4923,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       byCategory[p.category].products[p.name].sum += basis;
       byCategory[p.category].products[p.name].stueck += (s.menge||1);
     });
-    return { bwsLeben, beitragSonstige, bwp, provision, diffProvision, byCategory };
+    return { bwsLeben, beitragKranken, beitragSonstige, bwp, provision, diffProvision, byCategory };
   }
 
   function statCategoryColorMap(){
@@ -5025,7 +5031,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     document.getElementById('statHeroGrid').innerHTML = [
       statHeroCard('Bewertungssumme Leben', agg.bwsLeben, profile.planung_lv_bws, fmtEuro, series('bwsLeben')),
-      statHeroCard('Bewertungsbeitrag sonstige', agg.beitragSonstige, profile.planung_kv_mb, fmtEuro, series('beitragSonstige')),
+      statHeroCard('Bewertungsbeitrag Kranken', agg.beitragKranken, profile.planung_kv_mb, fmtEuro, series('beitragKranken')),
+      statHeroCard('Bewertungsbeitrag sonstige', agg.beitragSonstige, null, fmtEuro, series('beitragSonstige')),
       statHeroCard('Bewertungspunkte', agg.bwp, profile.planung_bwp, fmtNum, series('bwp')),
       statHeroCard('Provision', agg.provision, null, fmtEuro, series('provision')),
       statHeroCard('Differenzprovision', agg.diffProvision, null, fmtEuro, series('diffProvision')),
@@ -5153,6 +5160,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const fmtNum = (n)=>n.toLocaleString('de-DE',{maximumFractionDigits:1});
     document.getElementById('trophyRoomStats').innerHTML = [
       trophyRoomStatCard('Bewertungssumme Leben', agg.bwsLeben, fmtEuro),
+      trophyRoomStatCard('Bewertungsbeitrag Kranken', agg.beitragKranken, fmtEuro),
       trophyRoomStatCard('Bewertungsbeitrag sonstige', agg.beitragSonstige, fmtEuro),
       trophyRoomStatCard('Bewertungspunkte', agg.bwp, fmtNum),
       trophyRoomStatCard('Provision', agg.provision, fmtEuro),
