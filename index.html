@@ -6211,7 +6211,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('contactActivityModal').style.display = 'none';
   });
 
-  document.getElementById('activitySaveBtn').addEventListener('click', async ()=>{
+  document.getElementById('activitySaveBtn').addEventListener('click', async (e)=>{
+    const btn = e.currentTarget;
     const statusEl = document.getElementById('activityModalStatus');
     const contact = activityCurrentContact;
     const actionKey = ACTIVITY_ACTION_KEY[activitySelectedType][activitySelectedOutcome];
@@ -6219,48 +6220,54 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const remaining = config.energyMax - energyUsedToday();
     if(a && a.energy > remaining){ statusEl.textContent = 'Nicht genug Energie heute übrig.'; return; }
 
-    const zeitpunktVal = document.getElementById('activityZeitpunktInput').value;
-    let occurredAt;
-    if(zeitpunktVal){
-      const [datePart, timePart] = zeitpunktVal.split('T');
-      const [zy,zm,zd] = datePart.split('-').map(Number);
-      const [zh,zmin] = timePart.split(':').map(Number);
-      occurredAt = zonedTimeToUtc(zy, zm, zd, zh, zmin, tz()).toISOString();
-    } else {
-      occurredAt = new Date().toISOString();
-    }
-    const betreff = activitySelectedType==='email' ? (document.getElementById('activityBetreffInput').value.trim() || null) : null;
-    const inhalt = document.getElementById('activityInhaltInput').value.trim() || null;
+    btn.disabled = true;
+    try{
+      const zeitpunktVal = document.getElementById('activityZeitpunktInput').value;
+      let occurredAt;
+      if(zeitpunktVal){
+        const [datePart, timePart] = zeitpunktVal.split('T');
+        const [zy,zm,zd] = datePart.split('-').map(Number);
+        const [zh,zmin] = timePart.split(':').map(Number);
+        occurredAt = zonedTimeToUtc(zy, zm, zd, zh, zmin, tz()).toISOString();
+      } else {
+        occurredAt = new Date().toISOString();
+      }
+      const betreff = activitySelectedType==='email' ? (document.getElementById('activityBetreffInput').value.trim() || null) : null;
+      const inhalt = document.getElementById('activityInhaltInput').value.trim() || null;
 
-    let actionLogId = null;
-    if(a){
-      const { data, error } = await sb.rpc('log_action_for_self', {
-        p_action_key: actionKey, p_context: contact.name, p_location_id: contact.location_id||null,
-        p_contact_id: contact.id, p_occurred_at: occurredAt
+      let actionLogId = null;
+      if(a){
+        const { data, error } = await sb.rpc('log_action_for_self', {
+          p_action_key: actionKey, p_context: contact.name, p_location_id: contact.location_id||null,
+          p_contact_id: contact.id, p_occurred_at: occurredAt
+        });
+        if(error){ reportError('Aktivität: XP-Buchung', error, statusEl); return; }
+        log.push(data);
+        actionLogId = data.id;
+      }
+
+      const { error: actErr } = await sb.from('contact_activities').insert({
+        org_id: profile.org_id, user_id: profile.id, contact_id: contact.id,
+        type: activitySelectedType, outcome: activitySelectedOutcome,
+        betreff, inhalt, occurred_at: occurredAt, action_log_id: actionLogId
       });
-      if(error){ reportError('Aktivität: XP-Buchung', error, statusEl); return; }
-      log.push(data);
-      actionLogId = data.id;
+      if(actErr){ reportError('Aktivität speichern', actErr, statusEl); return; }
+
+      await checkAndAwardRecurringQuests();
+      await checkAndAwardQuestTreeAndEpics();
+
+      document.getElementById('contactActivityModal').style.display = 'none';
+      render();
+      // Kontaktliste + eine offene Kontakt-Detailseite müssen beide den
+      // gerade geloggten Anruf/die Email zeigen -- ohne dieses Neu-Rendern
+      // bliebe die Chronik auf dem Stand von vor dem Speichern, da
+      // showContactDetailTab() nur zwischen bereits gerenderten Tabs
+      // umschaltet, nicht neu lädt. Laufen als zwei unabhängige Neu-
+      // Renders parallel statt nacheinander.
+      await refreshContactsAndDetail(contact.id);
+    }finally{
+      btn.disabled = false;
     }
-
-    const { error: actErr } = await sb.from('contact_activities').insert({
-      org_id: profile.org_id, user_id: profile.id, contact_id: contact.id,
-      type: activitySelectedType, outcome: activitySelectedOutcome,
-      betreff, inhalt, occurred_at: occurredAt, action_log_id: actionLogId
-    });
-    if(actErr){ reportError('Aktivität speichern', actErr, statusEl); return; }
-
-    await checkAndAwardRecurringQuests();
-    await checkAndAwardQuestTreeAndEpics();
-
-    document.getElementById('contactActivityModal').style.display = 'none';
-    render();
-    // Kontaktseite bleibt hinter dem Aktivitäts-Popup offen -- ohne dieses
-    // Neu-Rendern bliebe die Chronik auf dem Stand von vor dem Speichern,
-    // da showContactDetailTab() nur zwischen bereits gerenderten Tabs
-    // umschaltet, nicht neu lädt.
-    await refreshContactPageIfCurrent(contact.id);
-    await renderContactsPage();
   });
 
   function updateGuildLabels(){
@@ -6272,8 +6279,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   async function initGuild(){
     updateGuildLabels();
-    await loadGuildInvitationsCard();
-    await loadGuildState();
+    // Einladungs-Karte und Mitgliedschafts-Status sind unabhängige
+    // Abfragen (guild_invitations vs. guild_members/guilds) auf getrennten
+    // DOM-Bereichen -- dürfen parallel laden statt nacheinander.
+    await Promise.all([loadGuildInvitationsCard(), loadGuildState()]);
   }
 
   // Echte Einladung statt direktem Einfügen (Nutzer-Bugreport 2026-08-18):
@@ -6303,8 +6312,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         btn.disabled = true;
         const { error: rpcErr } = await sb.rpc('respond_to_guild_invitation', { p_invitation_id: btn.dataset.accept, p_accept: true });
         if(rpcErr){ reportError('Gilden-Einladung annehmen', rpcErr); btn.disabled = false; return; }
-        await loadGuildInvitationsCard();
-        await loadGuildState();
+        await Promise.all([loadGuildInvitationsCard(), loadGuildState()]);
       });
     });
     listEl.querySelectorAll('[data-decline]').forEach(btn=>{
@@ -6331,7 +6339,17 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         document.getElementById('guildTabFreunde').style.display = btn.dataset.tab==='freunde' ? 'block' : 'none';
       });
     });
-    document.querySelector('#guildAreaTabs [data-tab="mitglieder"]').classList.add('active');
+  }
+
+  // Getrennt vom Once-Guard oben: soll bei JEDEM Betreten der Gilden-
+  // Mitgliedsansicht auf "Mitglieder" zurückspringen, nicht nur beim
+  // allerersten Gilden-Beitritt -- sonst bliebe die Ansicht nach einem
+  // Verlassen+Neu-Beitreten auf dem zuletzt gewählten Reiter "Freunde"
+  // hängen, obwohl das Once-Guard-Wiring gar nicht erneut lief.
+  function resetGuildAreaTabToMitglieder(){
+    document.querySelectorAll('#guildAreaTabs [data-tab]').forEach(b=>b.classList.toggle('active', b.dataset.tab==='mitglieder'));
+    document.getElementById('guildTabMitglieder').style.display = 'block';
+    document.getElementById('guildTabFreunde').style.display = 'none';
   }
 
   async function loadGuildState(){
@@ -6349,20 +6367,25 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       return;
     }
     wireGuildAreaTabsOnce();
+    resetGuildAreaTabToMitglieder();
     document.getElementById('guildTabFreunde').appendChild(friendCard);
     document.getElementById('guildNoGuildCard').style.display='none';
+    document.getElementById('guildNoGuildView').style.display='none';
     document.getElementById('guildMemberView').style.display='block';
     const { data: guild, error: guildErr } = await sb.from('guilds').select('*').eq('id', membership.guild_id).maybeSingle();
     if(guildErr) logSilentError('Gilde laden', guildErr);
     currentGuild = guild;
     document.getElementById('guildAddBtn').style.display = (guild && guild.founder_id===profile.id) ? 'inline-block' : 'none';
     if(guild){
-      await renderGuildMembers(guild.id);
-      // Reihenfolge wichtig: Team-Ziele werden HIER geprüft/ggf. vergeben
+      // renderGuildMembers()/renderGuildTeamQuests() laden unabhängige
+      // Daten (Mitgliederliste vs. Verkaufs-Aggregation) und dürfen
+      // parallel laufen -- renderGuildBuilding() muss aber weiterhin
+      // NACH renderGuildTeamQuests() bleiben (siehe Kommentar unten).
+      await Promise.all([renderGuildMembers(guild.id), renderGuildTeamQuests(guild.id)]);
+      // Reihenfolge wichtig: Team-Ziele werden oben geprüft/ggf. vergeben
       // (loadAndEvaluateGuildTeamQuests ruft grant_guild_quest_completion
       // auf) -- das Gebäude muss danach gerendert werden, sonst zeigt es
       // bei genau der Erfüllungs-Runde noch den alten, veralteten Stand.
-      await renderGuildTeamQuests(guild.id);
       await renderGuildBuilding(guild.id);
     }
   }
@@ -6405,11 +6428,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   async function renderJoinableGuilds(){
-    const { data: guilds, error } = await sb.from('guilds').select('*').eq('org_id', profile.org_id);
+    // guilds + allMembers sind unabhängige Abfragen (Letztere hängt nur an
+    // profile.org_id, nicht am Ergebnis von guilds) -- dürfen parallel laden.
+    const [{ data: guilds, error }, { data: allMembers, error: memErr }] = await Promise.all([
+      sb.from('guilds').select('*').eq('org_id', profile.org_id),
+      sb.from('guild_members').select('guild_id').eq('org_id', profile.org_id)
+    ]);
     if(error) logSilentError('Beitretbare Gilden laden', error);
     const listEl = document.getElementById('guildJoinList');
     if(!guilds || guilds.length===0){ listEl.innerHTML = '<div class="empty-page-hint">Noch keine Gilden vorhanden.</div>'; return; }
-    const { data: allMembers, error: memErr } = await sb.from('guild_members').select('guild_id').eq('org_id', profile.org_id);
     if(memErr) logSilentError('Gildenmitglieder zählen', memErr);
     const counts = {};
     (allMembers||[]).forEach(m=> counts[m.guild_id]=(counts[m.guild_id]||0)+1);
@@ -6423,7 +6450,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         <button class="cal-nav-btn" data-join="${g.id}">Beitreten</button>
       </div>`).join('');
     listEl.querySelectorAll('[data-join]').forEach(btn=>{
-      btn.addEventListener('click', ()=> joinGuild(btn.dataset.join));
+      btn.addEventListener('click', ()=>{
+        btn.disabled = true;
+        joinGuild(btn.dataset.join).finally(()=>{ btn.disabled = false; });
+      });
     });
   }
 
@@ -6433,28 +6463,34 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     await loadGuildState();
   }
 
-  document.getElementById('guildCreateBtn').addEventListener('click', async ()=>{
+  document.getElementById('guildCreateBtn').addEventListener('click', async (e)=>{
+    const btn = e.currentTarget;
     const name = document.getElementById('guildNameInput').value.trim();
     if(!name) return;
-    const { data: guild, error } = await sb.from('guilds').insert({ org_id:profile.org_id, name, founder_id:profile.id }).select().single();
-    if(error){ reportError('Gilde gründen', error); return; }
-    // Gründer bekommt von Anfang an volle Rechte in der eigenen Gilde --
-    // keine Sinn ergebende Einschränkung gegen sich selbst.
-    const { error: memErr } = await sb.from('guild_members').insert({
-      member_id:profile.id, guild_id:guild.id, org_id:profile.org_id,
-      contacts_access:'write', dungeons_access:'write', team_rights:true
-    });
-    if(memErr){ reportError('Als Gildenmitglied eintragen', memErr); return; }
-    // Eigene, bisher private Dungeons (angelegt oder besessen) wandern
-    // automatisch in den Pool der neuen Gilde -- es ist die eigene Welt
-    // des Gründers, dafür braucht es keine gesonderte Prüfung wie beim
-    // Beitritt eines fremden Mitglieds.
-    const { error: locErr } = await sb.from('locations')
-      .update({ guild_id: guild.id })
-      .or(`owner_id.eq.${profile.id},created_by.eq.${profile.id}`)
-      .is('guild_id', null);
-    if(locErr) logSilentError('Eigene Dungeons in neue Gilde übernehmen', locErr);
-    await loadGuildState();
+    btn.disabled = true;
+    try{
+      const { data: guild, error } = await sb.from('guilds').insert({ org_id:profile.org_id, name, founder_id:profile.id }).select().single();
+      if(error){ reportError('Gilde gründen', error); return; }
+      // Gründer bekommt von Anfang an volle Rechte in der eigenen Gilde --
+      // keine Sinn ergebende Einschränkung gegen sich selbst.
+      const { error: memErr } = await sb.from('guild_members').insert({
+        member_id:profile.id, guild_id:guild.id, org_id:profile.org_id,
+        contacts_access:'write', dungeons_access:'write', team_rights:true
+      });
+      if(memErr){ reportError('Als Gildenmitglied eintragen', memErr); return; }
+      // Eigene, bisher private Dungeons (angelegt oder besessen) wandern
+      // automatisch in den Pool der neuen Gilde -- es ist die eigene Welt
+      // des Gründers, dafür braucht es keine gesonderte Prüfung wie beim
+      // Beitritt eines fremden Mitglieds.
+      const { error: locErr } = await sb.from('locations')
+        .update({ guild_id: guild.id })
+        .or(`owner_id.eq.${profile.id},created_by.eq.${profile.id}`)
+        .is('guild_id', null);
+      if(locErr) logSilentError('Eigene Dungeons in neue Gilde übernehmen', locErr);
+      await loadGuildState();
+    }finally{
+      btn.disabled = false;
+    }
   });
 
   document.getElementById('guildLeaveBtn').addEventListener('click', async ()=>{
@@ -6532,13 +6568,16 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('guildMemberRightsModal').style.display='none';
   });
 
-  document.getElementById('guildRightsSaveBtn').addEventListener('click', async ()=>{
+  document.getElementById('guildRightsSaveBtn').addEventListener('click', async (e)=>{
+    const btn = e.currentTarget;
     const contactsVal = document.querySelector('#guildRightsContactsSwitch .view-switch-btn.active')?.dataset.val || 'read';
     const dungeonsVal = document.querySelector('#guildRightsDungeonsSwitch .view-switch-btn.active')?.dataset.val || 'read';
     const teamRights = document.getElementById('guildRightsTeamCheck').checked;
+    btn.disabled = true;
     const { error } = await sb.from('guild_members').update({
       contacts_access: contactsVal, dungeons_access: dungeonsVal, team_rights: teamRights
     }).eq('guild_id', currentGuild.id).eq('member_id', guildRightsMemberId);
+    btn.disabled = false;
     if(error){ reportError('Gilden-Rechte speichern', error); return; }
     document.getElementById('guildMemberRightsModal').style.display='none';
     await renderGuildMembers(currentGuild.id);
@@ -6610,23 +6649,30 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     // Suche bewusst ueber real_name UND display_name -- im B2B-Alltag kennt
     // man Kollegen am echten Namen, nicht am Charakternamen (real_name ist
     // aber optional, bei alten Profilen vor Patch 24 evtl. leer).
-    const { data: orgMembers, error } = await sb.from('profiles')
-      .select('id,display_name,real_name,character_class')
-      .eq('org_id', profile.org_id)
-      .or(`real_name.ilike.%${q}%,display_name.ilike.%${q}%`)
-      .limit(15);
+    // Alle drei Abfragen sind unabhängig voneinander (keine hängt am
+    // Ergebnis einer anderen) -- parallel statt nacheinander laden.
+    const [
+      { data: orgMembers, error },
+      { data: existing, error: existErr },
+      { data: openInvites, error: invErr }
+    ] = await Promise.all([
+      sb.from('profiles')
+        .select('id,display_name,real_name,character_class')
+        .eq('org_id', profile.org_id)
+        .or(`real_name.ilike.%${q}%,display_name.ilike.%${q}%`)
+        .limit(15),
+      // Org-weit, nicht nur diese Gilde -- ein Nutzer kann höchstens einer
+      // Gilde angehören (guild_members.member_id ist Primärschlüssel), wer
+      // irgendwo schon Mitglied ist, ist kein gültiges Einladungsziel mehr.
+      sb.from('guild_members').select('member_id').eq('org_id', profile.org_id),
+      // Bereits offen eingeladene Kandidaten bekommen "Zurückziehen" statt
+      // "Einladen" -- verhindert doppelte Einladungen und macht sichtbar,
+      // wer schon eine Anfrage offen hat.
+      sb.from('guild_invitations').select('id,invited_user_id').eq('guild_id', currentGuild.id).eq('status','offen')
+    ]);
     if(error){ logSilentError('Kollegen suchen', error); return; }
-    // Org-weit, nicht nur diese Gilde -- ein Nutzer kann höchstens einer
-    // Gilde angehören (guild_members.member_id ist Primärschlüssel), wer
-    // irgendwo schon Mitglied ist, ist kein gültiges Einladungsziel mehr.
-    const { data: existing, error: existErr } = await sb.from('guild_members').select('member_id').eq('org_id', profile.org_id);
     if(existErr) logSilentError('Bestehende Gildenmitglieder laden', existErr);
     const existingIds = new Set((existing||[]).map(e=>e.member_id));
-    // Bereits offen eingeladene Kandidaten bekommen "Zurückziehen" statt
-    // "Einladen" -- verhindert doppelte Einladungen und macht sichtbar,
-    // wer schon eine Anfrage offen hat.
-    const { data: openInvites, error: invErr } = await sb.from('guild_invitations')
-      .select('id,invited_user_id').eq('guild_id', currentGuild.id).eq('status','offen');
     if(invErr) logSilentError('Offene Gilden-Einladungen laden', invErr);
     const pendingMap = {};
     (openInvites||[]).forEach(i=> pendingMap[i.invited_user_id] = i.id);
