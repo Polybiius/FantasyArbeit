@@ -4060,13 +4060,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     box.innerHTML = '';
 
     const qIndex = JOURNAL_FIELDS.indexOf(ta.id) + 1;
-    scheduleJournalSave(qIndex);
+    // Direkt speichern statt scheduleJournalSave() + eigenem Upsert - die
+    // @mention-Zeile braucht die journal_entries-Zeile SOFORT (Fremdschlüssel),
+    // ein 700ms-Debounce wäre bei einem einzelnen Klick ohnehin unnötig. Ein
+    // eventuell noch laufender Debounce-Timer für dasselbe Feld wird verworfen,
+    // da dieser Save-Vorgang bereits den aktuellsten Feldinhalt schreibt.
+    clearTimeout(journalSaveTimers[qIndex]);
+    const { ok, today } = await saveJournalEntryNow(qIndex);
+    if(!ok) return; // Fehler ist bereits über reportError() sichtbar
 
-    const today = todayKey(new Date());
-    const row = { user_id:profile.id, org_id:profile.org_id, entry_date:today, updated_at:new Date().toISOString() };
-    JOURNAL_FIELDS.forEach((f,i)=>{ row['q'+(i+1)] = document.getElementById(f).value; });
-    const { error: entryErr } = await sb.from('journal_entries').upsert(row, { onConflict:'user_id,entry_date' });
-    if(entryErr) logSilentError('Tagebucheintrag speichern (@mention)', entryErr);
     const { error: mentionErr } = await sb.from('journal_entry_mentions').upsert(
       { user_id:profile.id, org_id:profile.org_id, entry_date:today, contact_id:contactId },
       { onConflict:'user_id,entry_date,contact_id' }
@@ -4150,32 +4152,46 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     preview.innerHTML = signed ? `<img class="photo-thumb" src="${signed.signedUrl}">` : '<div class="photo-hint">Foto konnte nicht geladen werden.</div>';
   }
 
-  function scheduleJournalSave(qIndex){
+  // Ein Tagebuchfeld sofort speichern + alle Folgeeffekte (Indikator,
+  // Kalenderpunkt, Serie, @mention-Aufräumen) auslösen - der eigentliche
+  // Speicher-Vorgang, den sowohl der 700ms-Debounce beim Tippen
+  // (scheduleJournalSave) als auch confirmMention() (@mention bestätigen,
+  // braucht die Zeile SOFORT wegen des Fremdschlüssels, kein Debounce
+  // sinnvoll bei einem einzelnen Klick) auslösen. Vorher schrieb
+  // confirmMention() zusätzlich einen eigenen, unabhängigen Upsert derselben
+  // Zeile - bei tausenden Nutzern wäre das ein spürbarer doppelter
+  // Schreibzugriff pro @mention gewesen, jetzt nur noch ein einziger
+  // (Nutzerentscheidung 2026-08-21: langfristig richtig bauen, nicht nur
+  // "reicht für jetzt").
+  async function saveJournalEntryNow(qIndex){
     const indicator = document.getElementById('jsave'+qIndex);
-    clearTimeout(journalSaveTimers[qIndex]);
-    journalSaveTimers[qIndex] = setTimeout(async ()=>{
-      const today = todayKey(new Date());
-      const row = { user_id: profile.id, org_id: profile.org_id, entry_date: today, updated_at: new Date().toISOString() };
-      JOURNAL_FIELDS.forEach((f,i)=>{ row['q'+(i+1)] = document.getElementById(f).value; });
-      const { error } = await sb.from('journal_entries').upsert(row, { onConflict: 'user_id,entry_date' });
-      if(error){
-        reportError('Tagebuch speichern', error, indicator);
-        indicator.classList.add('show');
-        setTimeout(()=>indicator.classList.remove('show'), 4000);
-        return;
-      }
-      indicator.textContent = 'gespeichert';
+    const today = todayKey(new Date());
+    const row = { user_id: profile.id, org_id: profile.org_id, entry_date: today, updated_at: new Date().toISOString() };
+    JOURNAL_FIELDS.forEach((f,i)=>{ row['q'+(i+1)] = document.getElementById(f).value; });
+    const { error } = await sb.from('journal_entries').upsert(row, { onConflict: 'user_id,entry_date' });
+    if(error){
+      reportError('Tagebuch speichern', error, indicator);
       indicator.classList.add('show');
-      setTimeout(()=>indicator.classList.remove('show'), 1500);
-      // Zeile bleibt beim Leeren aller Felder in der DB stehen (siehe
-      // journalRowHasContent-Kommentar oben), zählt ab jetzt aber konsequent
-      // auch lokal nicht mehr als Eintrag, sobald nichts mehr drinsteht.
-      if(journalRowHasContent(row)) calEntryDates.add(today);
-      else calEntryDates.delete(today);
-      refreshDotForDate(today);
-      loadJournalStreak();
-      pruneRemovedMentions(today, row);
-    }, 700);
+      setTimeout(()=>indicator.classList.remove('show'), 4000);
+      return { ok:false };
+    }
+    indicator.textContent = 'gespeichert';
+    indicator.classList.add('show');
+    setTimeout(()=>indicator.classList.remove('show'), 1500);
+    // Zeile bleibt beim Leeren aller Felder in der DB stehen (siehe
+    // journalRowHasContent-Kommentar oben), zählt ab jetzt aber konsequent
+    // auch lokal nicht mehr als Eintrag, sobald nichts mehr drinsteht.
+    if(journalRowHasContent(row)) calEntryDates.add(today);
+    else calEntryDates.delete(today);
+    refreshDotForDate(today);
+    loadJournalStreak();
+    pruneRemovedMentions(today, row);
+    return { ok:true, today };
+  }
+
+  function scheduleJournalSave(qIndex){
+    clearTimeout(journalSaveTimers[qIndex]);
+    journalSaveTimers[qIndex] = setTimeout(()=> saveJournalEntryNow(qIndex), 700);
   }
 
   function daysInMonth(y,m){ return new Date(y, m+1, 0).getDate(); }
