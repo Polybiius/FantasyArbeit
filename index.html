@@ -4166,7 +4166,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // Ablauf-Beispiel des Nutzers (Anruf → neues Wiedervorlage-Datum
   // eintragen → alte Aufgabe soll nicht als Karteileiche stehen bleiben).
   async function syncWiedervorlageTask(contactId, contactName, newDate){
-    await sb.from('tasks').delete().eq('owner_id', profile.id).eq('contact_id', contactId).eq('source_type', 'wiedervorlage');
+    const { error: delError } = await sb.from('tasks').delete().eq('owner_id', profile.id).eq('contact_id', contactId).eq('source_type', 'wiedervorlage');
+    if(delError) logSilentError('Alte Wiedervorlage-Aufgabe entfernen', delError);
     if(newDate){
       const { error } = await sb.from('tasks').insert({
         org_id: profile.org_id, owner_id: profile.id, contact_id: contactId,
@@ -4185,33 +4186,57 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // am selben Tag bereits abgehakte (gelöschte) Geburtstags-Aufgabe durch
   // einen zweiten Lauf desselben Tages wiederaufersteht. Nur eigene
   // Kontakte (owner_id = eigene ID), keine gilden-geteilten.
+  // birthdayTaskSyncInFlight schützt gegen echte Überlappung innerhalb
+  // DERSELBEN Sitzung (z.B. schneller Doppelklick auf den "Geburtstage
+  // anzeigen"-Schalter in den Einstellungen, der tasks_synced_date lokal
+  // zurücksetzt und die Funktion erneut aufruft, bevor der erste Durchlauf
+  // fertig ist) - der clientseitige tasks_synced_date-Check allein reicht
+  // dafür nicht, weil er erst nach mehreren await-Punkten aktualisiert wird.
+  // Schützt NICHT gegen mehrere gleichzeitig offene Tabs/Geräte (eigenes,
+  // größeres Problem, nicht Teil dieses Fixes).
+  let birthdayTaskSyncInFlight = false;
   async function syncBirthdayTasksIfNeeded(){
     const today = todayKey(new Date());
     if(profile.tasks_synced_date === today) return;
-    await loadContactTaskData();
-    await sb.from('tasks').delete().eq('owner_id', profile.id).eq('source_type', 'geburtstag');
-    if(profile.calendar_show_birthdays !== false){
-      const mmdd = today.slice(5);
-      const due = ownContactsForTasks.filter(c=> c.geburtsdatum && c.geburtsdatum.slice(5)===mmdd);
-      if(due.length){
-        const rows = due.map(c=>({
-          org_id: profile.org_id, owner_id: profile.id, contact_id: c.id,
-          title: `Geburtstag: ${c.name}`, due_date: today, source_type: 'geburtstag'
-        }));
-        const { error } = await sb.from('tasks').insert(rows);
-        if(error) logSilentError('Geburtstags-Aufgaben anlegen', error);
+    if(birthdayTaskSyncInFlight) return;
+    birthdayTaskSyncInFlight = true;
+    try{
+      await loadContactTaskData();
+      const { error: delError } = await sb.from('tasks').delete().eq('owner_id', profile.id).eq('source_type', 'geburtstag');
+      if(delError) logSilentError('Alte Geburtstags-Aufgaben entfernen', delError);
+      if(profile.calendar_show_birthdays !== false){
+        const mmdd = today.slice(5);
+        const due = ownContactsForTasks.filter(c=> c.geburtsdatum && c.geburtsdatum.slice(5)===mmdd);
+        if(due.length){
+          const rows = due.map(c=>({
+            org_id: profile.org_id, owner_id: profile.id, contact_id: c.id,
+            title: `Geburtstag: ${c.name}`, due_date: today, source_type: 'geburtstag'
+          }));
+          const { error } = await sb.from('tasks').insert(rows);
+          if(error) logSilentError('Geburtstags-Aufgaben anlegen', error);
+        }
       }
+      const { error: profErr } = await sb.from('profiles').update({ tasks_synced_date: today }).eq('id', profile.id);
+      if(profErr) logSilentError('Aufgaben-Sync-Datum speichern', profErr);
+      else profile.tasks_synced_date = today;
+    } finally {
+      birthdayTaskSyncInFlight = false;
     }
-    const { error: profErr } = await sb.from('profiles').update({ tasks_synced_date: today }).eq('id', profile.id);
-    if(profErr) logSilentError('Aufgaben-Sync-Datum speichern', profErr);
-    else profile.tasks_synced_date = today;
   }
 
   // Tageswechsel-Wächter: prüft regelmäßig UND sofort, wenn das Browser-Tab
   // wieder aktiv wird (nicht nur beim Login), ob sich das Kalenderdatum
   // geändert hat -- fängt genau den Fall "Laptop bleibt über Nacht an" ab.
   let lastKnownDayForTasks = null;
+  // taskDayRolloverWatcherStarted verhindert, dass ein erneuter enterApp()-
+  // Durchlauf (z.B. über den Admin-Debug-Knopf "🎭 Neu erschaffen") ein
+  // weiteres, paralleles setInterval + weitere visibilitychange/focus-
+  // Listener registriert - ohne diesen Schutz stapeln sich diese bei jedem
+  // Durchlauf und lösen einen echten Tageswechsel mehrfach hintereinander aus.
+  let taskDayRolloverWatcherStarted = false;
   function startTaskDayRolloverWatcher(){
+    if(taskDayRolloverWatcherStarted) return;
+    taskDayRolloverWatcherStarted = true;
     lastKnownDayForTasks = todayKey(new Date());
     async function checkForRollover(){
       const today = todayKey(new Date());
@@ -4285,8 +4310,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   function refreshDotForDate(dateStr){
     const el = document.querySelector(`.cal-day[data-date="${dateStr}"]`);
     if(!el) return; // Tag liegt evtl. nicht im aktuell angezeigten Monat
-    const existingDot = el.querySelector('.dot');
-    if(existingDot) existingDot.remove();
+    // dotMarkupForDate() kann mehrere .dot-Spans in EINEM gemeinsamen
+    // .cal-day-dots-Wrapper liefern (Tagebuch+Termin+Aufgabe gleichzeitig) -
+    // nur den ersten .dot zu entfernen ließ die übrigen als Karteileiche
+    // stehen, während gleich ein zweiter, kompletter Wrapper danebengesetzt
+    // wurde (sichtbar doppelte/verwaiste Punkte an Tagen mit mehreren Typen).
+    const existingWrap = el.querySelector('.cal-day-dots');
+    if(existingWrap) existingWrap.remove();
     el.insertAdjacentHTML('beforeend', dotMarkupForDate(dateStr));
   }
 
