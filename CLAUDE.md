@@ -4362,15 +4362,19 @@ Wert an), Speichern schreibt direkt auf `profiles.timezone` (kein
 Registry-Pending-Save-Mechanismus, gleiches Vorgehen wie beim
 Arbeitszeiten-Widget).
 
-**Bewusst NICHT Teil dieser Änderung, klar abgegrenzt:** `fmtTime()`
+~~**Bewusst NICHT Teil dieser Änderung, klar abgegrenzt:** `fmtTime()`
 (die allgemeine Zeitstempel-Anzeige für XP-Log/Chronik/Fehlerprotokoll/
 Sicherheitswarnungen/Changelog App-weit, `d.toLocaleTimeString()` ohne
 `timeZone`-Option) und das `<input type="datetime-local">`-Feld beim
-Anruf/Email-Loggen (`contact_activities.occurred_at`) — beides eigene,
-von der Zeitraster-Engine (`termine`-Tabelle, Kalender-Wochen-/
-Tagesraster) unabhängige Anzeigepfade, nicht Teil der besprochenen
-"Termine geräteunabhängig anzeigen"-Anforderung. Bei Bedarf ein
-eigenes, separates Thema — nicht automatisch mitgemeint.
+Anruf/Email-Loggen (`contact_activities.occurred_at`)~~ — **noch am
+selben Tag auf Nutzerwunsch ebenfalls behoben** ("mach fertig, wenn es
+das beste für das system ist"), siehe eigener Abschnitt "Zeitzonen-Fix
+ausgeweitet" unten. `fmtTime()` nutzt jetzt `fullPartsInTZ()`/`tz()` für
+Datum UND Uhrzeit, `localDatetimeInputValue()`/der Speicher-Handler des
+Anruf/Email-Modals ebenso über `fullPartsInTZ()`/`zonedTimeToUtc()`.
+Damit ist die App-weite Zeitzonen-Vereinheitlichung vollständig
+abgeschlossen, kein bekannter Browser-lokaler Zeitstempel-Anzeigepfad
+mehr offen.
 
 **Verifikation, per Playwright gegen den echten Account:**
 - Einstellungen-Kachel zeigt 419 Zeitzonen-Optionen, Speichern
@@ -4393,6 +4397,46 @@ eigenes, separates Thema — nicht automatisch mitgemeint.
   Konsolenfehler.
 - Alle Testdaten (Testtermine, `profiles.timezone`-Override) danach
   vollständig entfernt, ESLint sauber.
+
+## Zeitzonen-Fix ausgeweitet: fmtTime() + Anruf/Email-Zeitfeld (2026-08-21)
+
+Direkte Fortsetzung der Zeitraster-Engine oben, noch am selben Tag — auf
+Nachfrage, was mit den zwei dort bewusst offen gelassenen Stellen sei,
+Nutzer-Antwort: "wenn es das beste für das system ist, dann mach
+fertig". Schließt damit die App-weite Zeitzonen-Vereinheitlichung
+vollständig ab.
+
+- **`fmtTime()`** (die eine Stelle, die App-weit "wann war das" anzeigt —
+  Kontakt-Chronik, Fehlerprotokoll, Sicherheitswarnungen, Changelog-
+  Popup): las Datum UND Uhrzeit bisher über `d.toLocaleTimeString()`/
+  `toLocaleDateString()` ohne `timeZone`-Option, damit Browser-lokal —
+  obwohl die "heute"-vs-Datum-Weiche selbst schon länger korrekt
+  `todayKey()` nutzte (siehe Abschnitt oben). Nutzt jetzt durchgängig
+  `fullPartsInTZ()`/`tz()`.
+- **Anruf/Email-Zeitfeld** (`contactActivityModal`, natives
+  `<input type="datetime-local">`) — dieser Feldtyp kennt von sich aus
+  keine Zeitzone, zeigt nur nackte Ziffern; welche Wandzeit sie
+  darstellen, hängt allein davon ab, wie befüllt/zurückgelesen wird.
+  `localDatetimeInputValue()` befüllt das Feld jetzt über
+  `fullPartsInTZ()` statt der vorherigen Browser-Offset-Verschiebung
+  (`d.getTimezoneOffset()`); der Speicher-Handler (`activitySaveBtn`)
+  parst die Eingabe jetzt manuell (Jahr/Monat/Tag/Stunde/Minute) und
+  konstruiert den UTC-Zeitstempel über `zonedTimeToUtc()`, statt den
+  Feld-Text naiv `new Date(zeitpunktVal)` zu übergeben (das ihn als
+  Browser-lokale Zeit interpretiert hätte).
+
+**Verifikation, beide Enden unabhängig voneinander bestätigt** (Nutzer-
+Zeitzone `Pacific/Honolulu`, Geräte-Zeitzone `Europe/Berlin`, fixe
+Systemzeit `2026-08-21T20:00:00Z` = 22:00 Berlin = 10:00 Honolulu):
+vorbefülltes Zeitpunkt-Feld zeigte korrekt `2026-08-21T10:00` (nicht
+22:00); die gespeicherte Zeile landete in der DB direkt nachgeprüft
+exakt bei `2026-08-21 20:00:00+00` (mathematisch korrekt für 10:00
+Honolulu); die Chronik zeigte anschließend "heute 10:00" (nicht 22:00) —
+kein zufälliger Round-Trip-Treffer, da Schreiben und Anzeigen getrennt
+verifiziert wurden. Zwei durch einen doppelten Testlauf entstandene
+Testzeilen (`contact_activities` + verknüpfte `action_log`-Einträge)
+danach vollständig entfernt, `profiles.timezone`-Override zurückgesetzt,
+ESLint sauber, keine Konsolenfehler.
 
 ## Bekannte, bewusst in Kauf genommene Lücken
 
