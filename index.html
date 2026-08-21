@@ -2852,7 +2852,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // hart auf 10 Zeichen gekappt ("Fachwissen" → "chwissen" etc.); der Nutzer
   // will die Wörter vollständig lesen können, das viewBox ist deshalb bewusst
   // großzügig bemessen statt möglichst knapp.
-  function drawSigil(skillXp, totalXp, skillsMap, svgId='sigil'){
+  function drawSigil(skillXp, skillsMap, svgId='sigil'){
     const svg = document.getElementById(svgId);
     const cx=160, cy=160, r=105;
     const keys = Object.keys(skillsMap);
@@ -2921,11 +2921,17 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     localStorage.setItem('phoneTally_'+profile.id, phoneTally);
     flashButton(btn);
     if(phoneTally>=5){
-      phoneTally=0;
-      localStorage.setItem('phoneTally_'+profile.id, 0);
+      // Zähler erst NACH erfolgreichem RPC-Aufruf zurücksetzen - schlägt er
+      // fehl (z.B. Netzwerkfehler), bleiben die 5 gesammelten Taps stehen
+      // statt stillschweigend verloren zu gehen; der nächste Tap versucht es
+      // dann automatisch erneut, statt dass von vorne gezählt werden müsste.
       const { data, error } = await sb.rpc('log_action_for_self', { p_action_key: key });
       if(error){ reportError('Aktion speichern', error); }
-      else{ log.push(data); await checkAndAwardRecurringQuests(); await checkAndAwardQuestTreeBonuses(); await checkAndAwardEpics(); }
+      else{
+        phoneTally=0;
+        localStorage.setItem('phoneTally_'+profile.id, 0);
+        log.push(data); await checkAndAwardRecurringQuests(); await checkAndAwardQuestTreeBonuses(); await checkAndAwardEpics();
+      }
     }
     render();
   }
@@ -3181,7 +3187,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   function lastQuestActivity(matchAction, matchLocationType){
-    const matching = log.filter(e=>e.action_key===matchAction && questMatchesLocationType(e, matchLocationType, locationTypeById));
+    // matchAction darf wie bei questActionMatches() ein einzelner Aktions-
+    // Schlüssel oder ein Array davon sein (z.B. anruf_erreicht/nicht_erreicht
+    // als Ratio-Nenner) - eine strikte ===-Prüfung würde für den Array-Fall
+    // nie treffen und die Kette faelschlich immer ans Ende der Schnellansicht
+    // sortieren, obwohl gerade aktiv geloggt wird.
+    const matching = log.filter(e=>questActionMatches(e.action_key, matchAction) && questMatchesLocationType(e, matchLocationType, locationTypeById));
     if(matching.length===0) return null;
     return matching.reduce((a,b)=> new Date(a.created_at)>new Date(b.created_at) ? a : b).created_at;
   }
@@ -3706,7 +3717,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     }
     lastKnownLevel = lvl.level;
 
-    drawSigil(skillXp, totalXp, config.skills);
+    drawSigil(skillXp, config.skills);
     document.getElementById('skillList').innerHTML = Object.keys(config.skills).map(k=>{
       const xp = skillXp[k]||0, slvl = Math.floor(xp/50)+1, into = xp%50, pct = Math.round(100*into/50);
       return `<div class="skill-row"><div class="skill-row-top"><span class="sname">${config.skills[k]}</span><span class="slvl">Lv.${slvl} · ${xp} XP</span></div><div class="skill-track"><div class="skill-fill" style="width:${pct}%"></div></div></div>`;
@@ -4498,12 +4509,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(error){ logSilentError('Skill-Summen laden', error); return; }
     const skillXp = {};
     Object.keys(config.skills).forEach(k=>skillXp[k]=0);
-    let totalXp = 0;
     (data||[]).forEach(row=>{
       if(row.skill_key in skillXp) skillXp[row.skill_key] = Number(row.xp_sum);
-      totalXp += Number(row.xp_sum);
     });
-    drawSigil(skillXp, totalXp, config.skills, 'friendSigilSvg');
+    drawSigil(skillXp, config.skills, 'friendSigilSvg');
   }
 
   document.getElementById('friendSigilCloseBtn').addEventListener('click', ()=>{
