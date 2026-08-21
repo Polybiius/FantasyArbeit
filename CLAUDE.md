@@ -241,28 +241,22 @@ sondern auf genau diese Auslöser warten:
   Performance-Limit). Nicht vorher spekulieren, sondern gegen das
   tatsächliche Supabase-Limit bauen, sobald es auftritt — nicht die ganze
   Liste auf einmal.
-- **Vollständige Zeitraster-Engine (Termin-Zeiten geräteunabhängig in der
-  Organisations-Zeitzone statt der Zeitzone des anzeigenden/erzeugenden
-  Geräts):** aufgeworfen bei der Zeitzonen-Vereinheitlichung vom
-  2026-08-21 (siehe eigener Abschnitt oben, `dateKeyLocal()` vs.
-  `todayKey()`) — dort wurde bewusst nur behoben, WELCHER Kalendertag ein
-  Termin zugeordnet wird (Org-Zeitzone), nicht WELCHE Uhrzeit er anzeigt
-  (Zeitraster-Positionierung, Drag&Drop, DB-Abfragegrenzen bleiben
-  Browser-lokal). Betrifft nur, wenn ein Teammitglied real in eine andere
-  Zeitzone reist (Laptop-Systemzeitzone wechselt automatisch mit) oder
-  dauerhaft aus einer anderen Zeitzone arbeitet — bei einem rein in
-  Europe/Berlin ansässigen Team (aktuell alle 7 Profile) ohne praktische
-  Auswirkung. **Auslöser:** ein echter (nicht hypothetischer) Fall genau
-  davon — nicht vorbeugend bauen. Aufwand bleibt vom Grundmuster her
-  vergleichbar mit der jetzigen Kalendertag-Fix (derselbe
-  `localPartsInTZ()`/`todayKey()`-Baustein, nur konsequent auch auf
-  Stunde/Minute statt nur auf den Tag angewendet) — wird aber mit jedem
-  weiteren Kalender-Feature, das in der Zwischenzeit dazukommt (wie schon
-  bei Serientermine/Tag-Reiter/Termin-Einladungen geschehen), tendenziell
-  etwas mehr Fundstellen zu prüfen haben, da der Kalender-Code stetig
-  wächst — beim Anstoßen also denselben "erst alle `new Date(...start_at)`-
-  artigen Stellen klassifizieren"-Ansatz wie am 2026-08-21 wiederholen,
-  nicht davon ausgehen, dass es exakt derselbe Umfang bleibt.
+- ~~**Vollständige Zeitraster-Engine (Termin-Zeiten geräteunabhängig statt
+  Browser-lokal)**~~ — **fertig gebaut, noch am selben Tag, 2026-08-21**,
+  siehe eigener Abschnitt "Vollständige geräteunabhängige Zeitraster-
+  Engine" unten. Ursprünglich hier als Zukunfts-Schwelle mit explizitem
+  Auslöser ("erst wenn ein Teammitglied real reist/aus einer anderen
+  Zeitzone arbeitet") vermerkt — der Nutzer hat sich nach kurzer
+  Rückfrage bewusst dagegen entschieden zu warten: die Zeitraster-Engine
+  wird laufend weiter ausgebaut (jedes neue Kalender-Feature vergrößert
+  den Umstellungs-Umfang), es gibt noch keine echten Produktions-Nutzer
+  (nur Tester, siehe Erinnerung `feedback_no_production_users_yet`), und
+  die Anforderung war durch die Salesforce-Nachfrage klar genug, um
+  direkt zu bauen statt zu spekulieren. **Lehre für ähnliche Fälle:**
+  eine dokumentierte "warten auf Auslöser"-Schwelle ist kein Dogma — wenn
+  sich die zugrundeliegenden Annahmen (hier: Produktionsrisiko) als
+  falsch herausstellen, lohnt sich ein zweites Nachfragen, keine stures
+  Festhalten an der ursprünglichen Einschätzung.
 
 Diese Liste ist absichtlich nicht abschließend — ein neues Thema verdient
 erst dann eine eigene Schwelle, wenn es wichtig genug wird, statt vage
@@ -4306,6 +4300,99 @@ Org-Kalendertag) — bewiesen echter Fix, kein Zufallstreffer. Zusätzlich
 mit zwei realen Zeitzonen (Europe/Berlin, Pacific/Honolulu) zur echten
 aktuellen Uhrzeit gegen Monats-/Wochen-/Tagesansicht plus "Heute"-Knopf
 getestet, keine Konsolenfehler, ESLint sauber. Commit `ca8d896`.
+
+## Vollständige geräteunabhängige Zeitraster-Engine (2026-08-21)
+
+Direkte Fortsetzung des Zeitzonen-Fixes oben, noch am selben Tag —
+ursprünglich als "erst bei echtem Auslöser" zurückgestellt (siehe
+gestrichener Eintrag bei "Technische Skalierungs-Schwellen" oben), dann
+nach kurzer Diskussion doch direkt gebaut: die Zeitraster-Engine wird
+laufend weiter ausgebaut (jedes neue Feature vergrößert später den
+Umstellungs-Umfang), es gibt noch keine echten Produktions-Nutzer (nur
+Tester, siehe Erinnerung `feedback_no_production_users_yet`), und auf
+die Frage "wie macht das Salesforce?" gab es eine klare Antwort statt
+einer offenen Anforderung.
+
+**Modell, 1:1 von Salesforce/Outlook/Google Calendar übernommen:** jeder
+Nutzer hat ein eigenes, optionales Zeitzone-Feld (`profiles.timezone`,
+Migration `20260821160000_profil_zeitzone.sql`), das vor der
+Organisations-Zeitzone (`organizations.timezone`) greift — Termine
+werden weiterhin als UTC-Zeitstempel gespeichert, aber jedem Nutzer in
+seiner eigenen aufgelösten Zeitzone angezeigt. `tz()` liest jetzt
+`profile.timezone` zuerst, das ändert automatisch auch die bereits
+bestehende Kalendertag-Logik (`todayKey()`/`dateKeyLocal()`-Kette, siehe
+Abschnitt oben) auf "pro Nutzer", ohne dass dort selbst etwas angefasst
+werden musste.
+
+**Zwei neue Helfer neben `todayKey()`/`localPartsInTZ()`:**
+- `fullPartsInTZ(d, tz)` — wie `localPartsInTZ()`, zusätzlich Stunde/
+  Minute (per `Intl.DateTimeFormat` mit `hourCycle:'h23'`).
+- `zonedTimeToUtc(y,m,d,hh,mm,tz)` — kehrt das um: aus Wandzeit-
+  Komponenten in einer beliebigen IANA-Zeitzone den korrekten UTC-
+  Zeitpunkt konstruieren. Standard-Näherungsverfahren (erste Näherung
+  naiv als UTC interpretieren, per Intl prüfen wie sie sich in der
+  Zielzone tatsächlich liest, Differenz zur gewünschten Wandzeit
+  draufaddieren, zweiter Durchlauf fängt den seltenen Fall ab, dass die
+  Korrektur selbst über eine DST-Umstellung hinausläuft) — dasselbe
+  Prinzip wie in Bibliotheken wie `date-fns-tz`, hier ohne zusätzliche
+  Abhängigkeit direkt mit Bordmitteln (`Intl`) umgesetzt.
+
+**Alle bisher geräte-lokalen Stellen umgestellt:**
+- `timeHHMM()`/`minutesSinceMidnight()` (Termin-Uhrzeit-Anzeige UND
+  Zeitraster-Positionierung/Drag&Drop) lesen jetzt über
+  `fullPartsInTZ()`/`tz()` statt `d.getHours()`/`d.getMinutes()`.
+- Termin-Erzeugung an allen fünf Stellen (Haupt-Speicherdialog
+  `termineEntrySaveBtn`, Kanban-Lead-Popup `insertTermineIfTimeGiven`,
+  Kanban-Termin-Popup `promptKanbanTermin`, Serientermine-Generierung
+  `topUpSeries`, "ganze Serie ändern"-Zweig im Haupt-Speicherdialog)
+  baut `start_at`/`end_at` jetzt über `zonedTimeToUtc()` statt naivem
+  `new Date(y,m,d,h,m)`.
+- DB-Abfragegrenzen für Monats-/Wochen-/Tagesansicht sowie die
+  "künftige Serientermine bei Serien-Änderung"-Abfrage nutzen jetzt
+  `zonedTimeToUtc(...,0,0,tz())` für Mitternacht in der aufgelösten
+  Zeitzone statt Browser-lokaler Mitternacht.
+
+**Neue Einstellungen-Kachel "Zeitzone"** (Gruppe Kalender, vor
+Arbeitszeiten einsortiert, gleiches Custom-Widget-Muster wie dort):
+Dropdown mit der vollen `Intl.supportedValuesOf('timeZone')`-Liste (419
+Einträge live getestet), Rückfall auf eine kuratierte Liste gängiger
+Geschäfts-Zeitzonen bei älteren Browsern ohne diese API. Leerauswahl =
+"Standard der Organisation verwenden" (Platzhalter zeigt den konkreten
+Wert an), Speichern schreibt direkt auf `profiles.timezone` (kein
+Registry-Pending-Save-Mechanismus, gleiches Vorgehen wie beim
+Arbeitszeiten-Widget).
+
+**Bewusst NICHT Teil dieser Änderung, klar abgegrenzt:** `fmtTime()`
+(die allgemeine Zeitstempel-Anzeige für XP-Log/Chronik/Fehlerprotokoll/
+Sicherheitswarnungen/Changelog App-weit, `d.toLocaleTimeString()` ohne
+`timeZone`-Option) und das `<input type="datetime-local">`-Feld beim
+Anruf/Email-Loggen (`contact_activities.occurred_at`) — beides eigene,
+von der Zeitraster-Engine (`termine`-Tabelle, Kalender-Wochen-/
+Tagesraster) unabhängige Anzeigepfade, nicht Teil der besprochenen
+"Termine geräteunabhängig anzeigen"-Anforderung. Bei Bedarf ein
+eigenes, separates Thema — nicht automatisch mitgemeint.
+
+**Verifikation, per Playwright gegen den echten Account:**
+- Einstellungen-Kachel zeigt 419 Zeitzonen-Optionen, Speichern
+  funktioniert (`profiles.timezone` live gesetzt/bestätigt).
+- **Kernbeweis:** Nutzer-Zeitzone auf `Pacific/Honolulu` gesetzt,
+  Geräte-Zeitzone bewusst auf `Europe/Berlin` belassen (Playwright
+  `timezoneId`), Systemzeit auf `2026-08-21T23:30:00Z` fixiert (per
+  `context.addInitScript()`, Muster wie beim Geburtstags-Test vom
+  2026-08-20) — Kalender zeigte korrekt den Honolulu-Tag (21.08.), NICHT
+  den Berlin-/Org-Tag (22.08.), obwohl das Gerät selbst Berlin ist —
+  beweist, dass `profile.timezone` tatsächlich Vorrang vor Organisations-
+  UND Geräte-Zeitzone hat.
+- Per Drag im Wochenraster ein Termin auf "14:00" (Honolulu-Anzeige)
+  gelegt, gespeichert, direkt in der DB nachgeprüft: `start_at` exakt
+  `2026-08-22T00:00:00Z` — mathematisch korrekt (14:00 UTC−10 = 00:00 UTC
+  am Folgetag), kein Zufallstreffer durch bloßes Round-Trip-Display.
+- Regressionstest im Normalfall (kein Override, echte Systemzeit, reale
+  Geräte-/Org-Zeitzone Berlin): Zeitzone-Feld korrekt leer nach Reset,
+  Wochenansicht/Terminanlage um ~10:00 round-trip-korrekt, 0
+  Konsolenfehler.
+- Alle Testdaten (Testtermine, `profiles.timezone`-Override) danach
+  vollständig entfernt, ESLint sauber.
 
 ## Bekannte, bewusst in Kauf genommene Lücken
 
