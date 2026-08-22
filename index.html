@@ -3945,6 +3945,16 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('journalBookName').textContent = def.name;
   }
   let journalEntryOpen = false;
+  // Guard gegen Listener-Stapelung: initJournal() läuft bei jedem
+  // enterApp()-Aufruf, erreichbar über den wiederholbaren Admin-Debug-Knopf
+  // "Neu erschaffen" (charRespawnBtn) -- ohne diesen Schutz hätte jeder
+  // Respawn drei weitere Klick-Handler auf calPrevBtn/calNextBtn/calTodayBtn
+  // sowie auf journalBookTile und die 5 Tagebuch-Eingabefelder angehängt
+  // (gleiche Bug-Klasse wie createSpriteRenderer()/initContactFormToggle()
+  // in früheren Häppchen). Der restliche Funktionsinhalt (Kalender-
+  // Grundzustand, Tagebuch laden, Rendern) muss dagegen bei jedem Aufruf
+  // weiterlaufen.
+  let journalListenersWired = false;
   function setJournalEntryOpen(open){
     journalEntryOpen = open;
     document.getElementById('journalEntryWrap').style.display = open ? 'block' : 'none';
@@ -3974,42 +3984,45 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     calWeekStart = mondayOfWeek(orgToday);
     calDayDate = new Date(orgToday);
     calFocusDate = new Date(orgToday);
-    document.getElementById('calPrevBtn').addEventListener('click', ()=>{
-      if(calViewMode==='tag') changeCalDay(-1);
-      else if(calViewMode==='woche') changeCalWeek(-1);
-      else changeCalMonth(-1);
-    });
-    document.getElementById('calNextBtn').addEventListener('click', ()=>{
-      if(calViewMode==='tag') changeCalDay(1);
-      else if(calViewMode==='woche') changeCalWeek(1);
-      else changeCalMonth(1);
-    });
-    document.getElementById('calTodayBtn').addEventListener('click', ()=>{
-      calFocusDate = orgLocalNoonDay(new Date());
-      if(calViewMode==='tag'){
-        calDayDate = orgLocalNoonDay(new Date());
-        renderDayView(true);
-      } else if(calViewMode==='woche'){
-        calWeekStart = mondayOfWeek(orgLocalNoonDay(new Date()));
-        renderWeekView(true);
-      } else {
-        const p2 = localPartsInTZ(new Date(), tz());
-        calViewYear=p2.year; calViewMonth=p2.month-1;
-        renderCalendar();
-      }
-      updateCalendarHash();
-    });
+    if(!journalListenersWired){
+      journalListenersWired = true;
+      document.getElementById('calPrevBtn').addEventListener('click', ()=>{
+        if(calViewMode==='tag') changeCalDay(-1);
+        else if(calViewMode==='woche') changeCalWeek(-1);
+        else changeCalMonth(-1);
+      });
+      document.getElementById('calNextBtn').addEventListener('click', ()=>{
+        if(calViewMode==='tag') changeCalDay(1);
+        else if(calViewMode==='woche') changeCalWeek(1);
+        else changeCalMonth(1);
+      });
+      document.getElementById('calTodayBtn').addEventListener('click', ()=>{
+        calFocusDate = orgLocalNoonDay(new Date());
+        if(calViewMode==='tag'){
+          calDayDate = orgLocalNoonDay(new Date());
+          renderDayView(true);
+        } else if(calViewMode==='woche'){
+          calWeekStart = mondayOfWeek(orgLocalNoonDay(new Date()));
+          renderWeekView(true);
+        } else {
+          const p2 = localPartsInTZ(new Date(), tz());
+          calViewYear=p2.year; calViewMonth=p2.month-1;
+          renderCalendar();
+        }
+        updateCalendarHash();
+      });
+      document.getElementById('journalBookTile').addEventListener('click', ()=> setJournalEntryOpen(!journalEntryOpen));
+      JOURNAL_FIELDS.forEach((f,i)=>{
+        document.getElementById(f).addEventListener('input', ()=> scheduleJournalSave(i+1));
+      });
+    }
 
     updateJournalBookTile();
-    document.getElementById('journalBookTile').addEventListener('click', ()=> setJournalEntryOpen(!journalEntryOpen));
     const today = todayKey(new Date());
     const { data, error } = await sb.from('journal_entries').select('*').eq('user_id', profile.id).eq('entry_date', today).maybeSingle();
     if(error) logSilentError('Tagebuch laden', error);
     JOURNAL_FIELDS.forEach((f,i)=>{
       document.getElementById(f).value = data ? (data['q'+(i+1)] || '') : '';
-    });
-    JOURNAL_FIELDS.forEach((f,i)=>{
-      document.getElementById(f).addEventListener('input', ()=> scheduleJournalSave(i+1));
     });
     // Mode-bewusst statt blind renderCalendar() -- restoreLastPage() in
     // enterApp() kann parallel schon per Hash auf 'woche'/'tag'
@@ -7210,11 +7223,20 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       const allBtn = document.getElementById('seriesScopeAllBtn');
       const closeBtn = document.getElementById('seriesScopeClose');
       modal.style.display = 'flex';
+      // Der globale Backdrop-Handler (ganz unten im Skript, gilt für alle
+      // .loc-modal) blendet das Modal bei Klick daneben zwar aus, kennt aber
+      // diese Promise nicht -- ohne eigenen Handler bliebe sie für immer
+      // unaufgelöst, ein wartender await termineEntrySaveBtn/-DeleteBtn
+      // würde nie fertig. Eigener, pro Aufruf frisch registrierter und in
+      // finish() wieder entfernter Listener schließt diese Lücke.
+      function backdropClick(e){ if(e.target===modal) finish(null); }
       function finish(result){
         modal.style.display = 'none';
         onlyBtn.onclick = null; allBtn.onclick = null; closeBtn.onclick = null;
+        modal.removeEventListener('click', backdropClick);
         resolve(result);
       }
+      modal.addEventListener('click', backdropClick);
       onlyBtn.onclick = ()=> finish('only');
       allBtn.onclick = ()=> finish('all');
       closeBtn.onclick = ()=> finish(null);
@@ -7367,7 +7389,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // über das Element unter dem Finger) — sonst ließe sich kein neuer Termin
   // mehr über einem bereits voll-breiten bestehenden Termin aufziehen.
   function attachDragHandlers(dayCol, dayDate){
-    let dragging = false, startMin = null, ghost = null, downTarget = null, downX = 0, downY = 0;
+    let dragging = false, activePointerId = null, startMin = null, ghost = null, downTarget = null, downX = 0, downY = 0;
     const pxPerMin = HALF_HOUR_PX/30;
 
     function minutesFromEvent(e){
@@ -7380,8 +7402,23 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       ghost.style.top = (fromMin*pxPerMin)+'px';
       ghost.style.height = ((toMin-fromMin)*pxPerMin)+'px';
     }
+    // Räumt den Ziehzustand auf, ohne einen Termin zu öffnen/anzulegen --
+    // gemeinsam von pointerup (nach der Klick-vs-Zieh-Entscheidung) und
+    // pointercancel genutzt.
+    function resetDragState(){
+      dragging = false;
+      activePointerId = null;
+      if(ghost){ ghost.remove(); ghost=null; }
+    }
     dayCol.addEventListener('pointerdown', (e)=>{
+      // Ein zweiter Finger/Pointer während einer laufenden Geste würde sonst
+      // dieselben (nicht nach pointerId unterschiedenen) Zustandsvariablen
+      // überschreiben -- der erste pointerup werten dann fälschlich Daten
+      // des zweiten Pointers aus. Solange bereits gezogen wird, wird ein
+      // weiterer pointerdown schlicht ignoriert.
+      if(dragging) return;
       dragging = true;
+      activePointerId = e.pointerId;
       downTarget = e.target.closest('.week-event');
       downX = e.clientX; downY = e.clientY;
       startMin = minutesFromEvent(e);
@@ -7392,33 +7429,55 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       dayCol.setPointerCapture(e.pointerId);
     });
     dayCol.addEventListener('pointermove', (e)=>{
-      if(!dragging) return;
+      if(!dragging || e.pointerId!==activePointerId) return;
       const curMin = minutesFromEvent(e);
       updateGhost(Math.min(startMin,curMin), Math.max(startMin,curMin)+30);
     });
     dayCol.addEventListener('pointerup', (e)=>{
-      if(!dragging) return;
-      dragging = false;
-      if(ghost){ ghost.remove(); ghost=null; }
+      if(!dragging || e.pointerId!==activePointerId) return;
       const moved = Math.hypot(e.clientX-downX, e.clientY-downY);
+      const curMin = minutesFromEvent(e);
+      resetDragState();
       if(moved <= 6 && downTarget){
         const row = weekTermine.find(t=>t.id===downTarget.dataset.eventId);
         if(row) openTermineEntryModal({editing: row});
         return;
       }
-      const curMin = minutesFromEvent(e);
       const from = Math.min(startMin,curMin), to = Math.max(startMin,curMin)+30;
       openTermineEntryModal({date:dayDate, startMin:from, endMin:to});
+    });
+    // Bricht der Browser die Zeiger-Geste ab (Touch-Scroll-Erkennung,
+    // System-Geste, Tab-/App-Wechsel während gehaltenem Finger), fehlt
+    // sonst jedes Aufräumen -- das Ghost-Element blieb bisher dauerhaft im
+    // DOM stehen und dragging hing auf true fest.
+    dayCol.addEventListener('pointercancel', (e)=>{
+      if(!dragging || e.pointerId!==activePointerId) return;
+      resetDragState();
     });
   }
 
   async function renderWeekView(scrollToDefault){
-    await loadContactTaskData();
     const allDays = [];
     for(let i=0;i<7;i++) allDays.push(new Date(calWeekStart.getFullYear(), calWeekStart.getMonth(), calWeekStart.getDate()+i));
     const hideWeekends = !!profile.calendar_hide_weekends;
     const days = hideWeekends ? allDays.filter(d=> d.getDay()!==0 && d.getDay()!==6) : allDays;
     const todayStr = todayKey(new Date());
+
+    // Zwei unabhängige Ladevorgänge (eigene Kontakte für die Aufgaben-Chips,
+    // Termine der Woche) -- parallel starten statt nacheinander abzuwarten,
+    // spart eine Netzwerk-Rundlaufzeit bei jedem Wochenwechsel (Vor/Zurück/
+    // Heute), nicht nur beim ersten Laden.
+    const weekStartUtc = zonedTimeToUtc(calWeekStart.getFullYear(), calWeekStart.getMonth()+1, calWeekStart.getDate(), 0, 0, tz());
+    const weekEndUtc = zonedTimeToUtc(calWeekStart.getFullYear(), calWeekStart.getMonth()+1, calWeekStart.getDate()+7, 0, 0, tz());
+    const [, termineRes] = await Promise.all([
+      loadContactTaskData(),
+      sb.from('termine')
+        .select('*, contact:contacts(id,name), location:locations(id,name), organizer:organizer_id(display_name,real_name)')
+        .eq('owner_id', profile.id)
+        .gte('start_at', weekStartUtc.toISOString()).lt('start_at', weekEndUtc.toISOString())
+    ]);
+    if(termineRes.error) logSilentError('Termine laden', termineRes.error);
+    weekTermine = termineRes.data || [];
 
     const headerRowEl = document.getElementById('weekHeaderRow');
     const tasksRowEl = document.getElementById('weekTasksRow');
@@ -7448,15 +7507,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const timeColEl = document.getElementById('weekTimeCol');
     timeColEl.innerHTML = timeHtml;
     timeColEl.style.height = totalHeight+'px';
-
-    const weekStartUtc = zonedTimeToUtc(calWeekStart.getFullYear(), calWeekStart.getMonth()+1, calWeekStart.getDate(), 0, 0, tz());
-    const weekEndUtc = zonedTimeToUtc(calWeekStart.getFullYear(), calWeekStart.getMonth()+1, calWeekStart.getDate()+7, 0, 0, tz());
-    const { data, error } = await sb.from('termine')
-      .select('*, contact:contacts(id,name), location:locations(id,name), organizer:organizer_id(display_name,real_name)')
-      .eq('owner_id', profile.id)
-      .gte('start_at', weekStartUtc.toISOString()).lt('start_at', weekEndUtc.toISOString());
-    if(error) logSilentError('Termine laden', error);
-    weekTermine = data || [];
 
     daysEl.innerHTML = '';
     days.forEach(d=>{

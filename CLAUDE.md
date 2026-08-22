@@ -4377,8 +4377,75 @@ diesem Durchgang sind live (auf ausdrücklichen Nutzerwunsch "mach alle
 aufgeschobenen sql dinge fertig", 2026-08-22 — betraf zu diesem
 Zeitpunkt nur diese eine Migration, die PMA-Migration aus Häppchen 6a
 war bereits am 2026-08-21 im selben Zug wie die Kranken-Sparten-Trennung
-angewendet worden). Nächstes Häppchen: 9 (Termin-Kalender: Wochenansicht
-+ Serientermine).
+angewendet worden).
+
+**Häppchen 9 (Termin-Kalender: Wochenansicht + Serientermine, Zeilen
+7050-7506) — 2026-08-22:** vier echte Bugs, alle rein clientseitig (kein
+SQL nötig): `attachDragHandlers()` (Zeitraster-Ziehen zum Termin-Anlegen)
+hatte keinen `pointercancel`-Handler — bricht der Browser eine laufende
+Zeiger-Geste ab (Touch-Scroll-Erkennung, System-Geste, Tab-Wechsel
+während gehaltenem Finger), blieb das `.week-drag-ghost`-Element
+dauerhaft im DOM stehen und `dragging` hing auf `true` fest, von zwei
+unabhängigen Agenten gefunden; derselbe Agent fand zusätzlich, dass die
+Ziehzustands-Variablen nicht nach `pointerId` unterschieden waren — ein
+zweiter Finger während einer laufenden Geste in derselben Tagesspalte
+konnte den Zustand des ersten überschreiben und zu einem falsch
+positionierten/geöffneten Termin führen. Beides behoben: `activePointerId`
+verfolgt den aktiven Zeiger (ein zweiter `pointerdown` während `dragging`
+wird jetzt ignoriert), `pointercancel` räumt Ghost+Zustand genauso auf wie
+`pointerup`, nur ohne einen Termin zu öffnen/anzulegen. `askSeriesScope()`
+(Serientermin-Ändern/Löschen-Auswahl "Nur diesen"/"Ganze Serie") ließ
+seine zurückgegebene Promise für immer unaufgelöst, wenn der Nutzer statt
+eines der drei Buttons auf die abgedunkelte Fläche daneben klickte — der
+bestehende globale Backdrop-Handler blendete das Modal zwar aus, kannte
+aber die Promise nicht. Ein wartender `await askSeriesScope(...)` in
+`termineEntrySaveBtn`/`termineEntryDeleteBtn` (strukturell schon im
+nächsten Häppchen, Tag-Reiter-Abschnitt) blieb dadurch für diesen Klick
+für immer hängen, ohne Fehlermeldung, ohne dass der Termin
+gespeichert/gelöscht wurde. Fix: ein pro Aufruf frisch registrierter,
+in `finish()` wieder entfernter Backdrop-Klick-Listener löst die Promise
+jetzt mit `null` auf — bestehende Aufrufer behandeln `null` bereits
+korrekt als Abbruch (`if(!scope) return`), keine Änderung an den
+Aufrufern nötig. Direkter Folgefund, außerhalb des Zeilenbereichs, aber
+unmittelbar die hier besprochene Kalender-Navigation betreffend:
+`initJournal()` (Tagebuch/Abenteuerlog-Abschnitt, bereits als Häppchen 4
+abgeschlossen dokumentiert) registrierte die Klick-Handler für
+`calPrevBtn`/`calNextBtn`/`calTodayBtn` sowie `journalBookTile` und die
+5 Tagebuch-Eingabefelder bei JEDEM Aufruf neu, ohne Guard — erreichbar
+über den wiederholbaren Admin-Debug-Knopf "Neu erschaffen"
+(`charRespawnBtn`, ruft am Ende erneut `enterApp()` → `initJournal()`
+auf), gleiche Bug-Klasse wie `createSpriteRenderer()`/
+`initContactFormToggle()` in früheren Häppchen. Neuer Guard
+`journalListenersWired` wrappt alle fünf Listener-Registrierungen, der
+Rest der Funktion (Kalender-Grundzustand, Tagebuch laden, Rendern) läuft
+weiterhin bei jedem Aufruf.
+
+Effizienzfund direkt mitgefixt: `renderWeekView()` lud eigene Kontakte
+(für die Aufgaben-Chips, `loadContactTaskData()`) und die Termine der
+Woche bisher sequenziell — beide Abfragen sind komplett unabhängig,
+laufen jetzt per `Promise.all` parallel, spart eine Netzwerk-
+Rundlaufzeit bei jedem Wochenwechsel (Vor/Zurück/Heute), nicht nur beim
+ersten Laden. Cross-File-Agent und Zeile-für-Zeile-Agent fanden keine
+weiteren echten Funde (u.a. explizit bestätigt: `dateKeyLocal()`/
+`todayKey()` werden in diesem Abschnitt überall korrekt verwendet, keine
+Vertauschung; alle RLS-Policies/Spalten für `termine`/`termin_series`
+stimmen mit dem Frontend überein).
+
+Per Playwright gegen den echten Account verifiziert: `calNextBtn` bewegt
+die Woche vor UND nach einem vollständigen Admin-Respawn-Durchlauf um
+exakt 7 Tage (kein Doppel-Fire); ein synthetischer `pointercancel` nach
+`pointerdown` entfernt das Ghost-Element zuverlässig, ohne fälschlich ein
+Termin-Modal zu öffnen, ein nachfolgender `pointerdown` funktioniert
+danach normal; ein echter, materialisierter Serientermin wurde angelegt,
+bearbeitet, beim Speichern erschien der Scope-Dialog, ein Klick auf die
+abgedunkelte Fläche schloss ihn OHNE jeden Schreibvorgang auf
+`termine`/`termin_series` (0 zusätzliche Requests) UND ohne hängenden
+Zustand (ein erneuter Speichern-Klick zeigte den Dialog korrekt wieder);
+`contacts`- und `termine`-Abfrage feuerten beim Wochenwechsel im Abstand
+von 2ms (Beweis für echte Parallelität). Testserie danach vollständig
+entfernt (0 Reste), 0 Konsolenfehler. Stand nach diesem Häppchen: 9 von
+12 fertig, 37 echte Bugs insgesamt, keine offenen SQL-Fixes. Nächstes
+Häppchen: 10 (Tag-Reiter: Tagesansicht + Aufgaben-UI).
 
 ## Zeitzonen-Inkonsistenz `dateKeyLocal()` vs. `todayKey()`, vollständig behoben (2026-08-21)
 
