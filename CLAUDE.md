@@ -2898,6 +2898,67 @@ eine kuratierte Liste gängiger Geschäfts-Zeitzonen bei älteren Browsern
 ohne diese API). Leerauswahl = "Standard der Organisation verwenden",
 Speichern schreibt direkt auf `profiles.timezone`.
 
+## Idempotenz-Härtung: Duplikatschutz gegen Netzwerk-Retries
+
+`withClickGuard()` (siehe "Bugfix-Konventionen" oben) schützt nur gegen
+einen Doppelklick im selben Tab — nicht gegen einen Netzwerk-Retry
+(Antwort geht verloren, Client denkt es sei fehlgeschlagen, Nutzer
+versucht es erneut), einen zweiten offenen Tab, oder eine verzögerte
+zweite Anfrage. Drei serverseitige Ergänzungen dazu (Migration
+`20260824120000_idempotenz_haertung.sql`):
+
+- **`grant_quest_bonus_to_self()`**: der Duplikat-Schutz war "erst
+  zählen, dann einfügen" (`SELECT COUNT(*) ... IF > 0 THEN RAISE`) —
+  kein echter Constraint dahinter, ein klassisches Race-Window. Jetzt
+  drei partielle Unique-Indizes (Quest+Zeitraum / Kette+Stufe /
+  Questbaum+Stufe+Jahr) + `INSERT ... ON CONFLICT ... DO NOTHING` —
+  atomar, zwei gleichzeitige Aufrufe können nicht mehr beide
+  durchkommen.
+- **`log_action_for_self()`**: hatte zuvor GAR KEINEN Duplikatschutz —
+  die Funktion hinter fast jeder XP-Aktion. Ein exakt identischer
+  Aufruf (gleicher Nutzer/Aktions-Schlüssel/context/location/contact/
+  meta) innerhalb der letzten 5 Sekunden gibt jetzt die bereits
+  geloggte Zeile zurück statt sie zu duplizieren. Bewusst ein
+  Zeitfenster statt eines harten Unique-Constraints — dieselbe Aktion
+  mehrfach am Tag zu loggen ist der Normalfall (z.B. mehrere
+  "Ansprache"-Einträge), 5 Sekunden sind lang genug für einen
+  realistischen Retry, kurz genug um eine echte, schnell
+  hintereinander eingegebene zweite Aktion praktisch nie fälschlich zu
+  blocken.
+- **`sales`**: neuer `BEFORE INSERT`-Trigger
+  (`prevent_duplicate_sale_submission()`) mit demselben
+  Zeitfenster-Prinzip — ein exakt identischer Verkauf (gleicher
+  Nutzer/Kontakt/Produkt/Status/Beitrag/Vertragsbeginn) innerhalb von
+  5 Sekunden wird still übersprungen (`RETURN NULL` storniert den
+  Insert ohne Fehler) statt einen zweiten Vertrag anzulegen — korrekte
+  Idempotenz-Semantik: der Client sieht keinen Fehler, weil der
+  gewünschte Zustand (der Verkauf existiert genau einmal) ja bereits
+  erreicht ist.
+
+**Bewusst NICHT umgesetzt:** der Mehrfach-Produkt-Verkauf
+(`recordWonSalesLoop()`/`addProduct()`) bleibt weiterhin ein
+sequenzieller Insert pro Produkt statt einer gebündelten Transaktion —
+das wäre der falsche Fix gewesen. Die Schritt-für-Schritt-Anzeige
+("✓ Produkt hinzugefügt") macht Fehler sichtbar statt sie zu
+verstecken; das eigentliche Risiko war derselbe Retry-Fall wie oben,
+nicht fehlende Atomarität, und der ist jetzt über den `sales`-Trigger
+abgedeckt.
+
+**Im selben Aufwasch behoben:** Path Traversal beim Datei-Upload
+(`contact-files`) — der Speicherpfad nutzte den rohen `file.name`
+unsanitisiert (`${contact_id}/${uuid}_${file.name}`). Jetzt nur noch
+UUID + geprüfte Dateiendung (`/\.[A-Za-z0-9]{1,10}$/`) — der
+Anzeigename lebt bereits separat in `contact_files.filename`.
+
+Migration per `begin`/`rollback`-Dry-Run mit 6 Assertions gegen die
+echte DB verifiziert (Dedup greift in allen drei Fällen, legitime
+unterschiedliche Aktionen/Verkäufe werden NICHT fälschlich blockiert),
+danach live gepusht und erneut bestätigt (Indizes/Trigger existieren,
+`schema_patches` Patch 52 eingetragen). Auslöser: eine vom Nutzer
+mitgebrachte generische Engineering-Checkliste, Cross-Check gegen den
+echten Code (nicht nur Plausibilität aus der Doku) bestätigte alle drei
+Lücken.
+
 ## Bekannte, bewusst in Kauf genommene Lücken
 
 - ~~"Zuletzt kontaktiert"/Kontakt-Chronik zeigen nur eigene Einträge~~ —
@@ -2917,6 +2978,14 @@ Speichern schreibt direkt auf `profiles.timezone`.
   "Technische Skalierungs-Schwellen" oben (mehrere Personen bearbeiten
   das Repo gleichzeitig) betrifft weiterhin nur Code-Bearbeitung, nicht
   App-Nutzung — bleibt also unverändert nicht ausgelöst.
+- Kein Konflikt-Schutz bei gleichzeitiger Bearbeitung desselben
+  geteilten Datensatzes durch zwei verschiedene Nutzer (z.B. zwei
+  Kolleg:innen speichern im selben Moment dieselbe Kontaktnotiz) — "wer
+  zuletzt speichert" gewinnt ohne Warnung. Zu unterscheiden von der
+  Idempotenz-Härtung oben (die schützt gegen denselben Nutzer/
+  denselben Request, nicht gegen zwei unterschiedliche echte
+  Bearbeitungen). Bei 7 Kolleg:innen real, aber sehr unwahrscheinlich —
+  auf der Beobachtungsliste, nicht von selbst bauen.
 
 ## Wie mit dem Nutzer arbeiten (Ton/Stil aus dem bisherigen Chat)
 
