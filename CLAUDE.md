@@ -1082,15 +1082,12 @@ admin-only `configEditor` (roher JSON) bleiben unbegrenzt.
 Supabase-Dashboard ist aus — reiner Klick, kein SQL, noch nicht
 aktiviert.
 
-## Abenteuerlog-Seite (Kalender/Tagebuch/Foto), seit 2026-08-04 neu sortiert
+## Abenteuerlog-Seite (Kalender/Tagebuch/Foto)
 
-Reihenfolge auf `#page-tagebuch` ist jetzt bewusst: **Kalender oben →
-Tagebuch-Serie → die 5 Tagebuch-Fragen → Foto ganz unten** (vorher:
-Tagebuch-Fragen → Foto → Kalender). Reiner Layout-Wunsch des Nutzers, keine
-Datenbank-/Logik-Änderung — alle IDs, RLS, `journal_entries`/`journal_photos`
-unverändert.
+Reihenfolge auf `#page-tagebuch` ist bewusst: **Kalender oben →
+Tagebuch-Serie → die 5 Tagebuch-Fragen → Foto ganz unten**.
 
-**Tagebuch-Serie** (neue Kachel zwischen Kalender und Tagebuch-Fragen,
+**Tagebuch-Serie** (Kachel zwischen Kalender und Tagebuch-Fragen,
 `journalStreakTag`/`journalStreakHint` in `index.html`): zeigt "X Tage in
 Folge Tagebuch geführt", nach demselben Muster wie XP/Level — **wird nie
 gespeichert**, sondern bei jedem Aufruf frisch aus `journal_entries`
@@ -1106,27 +1103,21 @@ noch nicht eingetragen, bleibt die bis gestern gezählte Serie "am Leben"
 die Serie auf 0. Aktualisiert sich live nach jedem Auto-Save
 (`scheduleJournalSave()`), kein Neuladen der Seite nötig.
 
-**Bugfix 2026-08-04, wichtiger Stolperstein:** "hat einen Eintrag" darf NICHT
-heißen "eine `journal_entries`-Zeile für den Tag existiert" — ein `upsert`
-beim Leeren aller 5 Felder überschreibt die Zeile nur mit leeren Strings,
-löscht sie aber nicht. Ein bewusst nicht-löschbares Löschen ist hier auch gar
-nicht möglich: `journal_entry_mentions` hat einen Fremdschlüssel auf
-`journal_entries(user_id, entry_date)` **mit `on delete cascade`**
-(`patch16_tagebuch_mentions.sql`) — ein echtes Löschen der leeren Zeile würde
-also still auch @mention-Markierungen mitreißen, die laut CLAUDE.md bewusst
-NICHT löschbar sein sollen. Deshalb prüft `journalRowHasContent(row)`
-(neben `JOURNAL_FIELDS`) jetzt an allen drei Stellen, die "Tag hat einen
-Eintrag" auswerten (`renderCalendar()`, `loadJournalStreak()`,
-`scheduleJournalSave()`), ob mindestens eines der 5 Felder noch echten Text
-enthält, statt nur auf Zeilen-Existenz zu prüfen. Bei jeder künftigen
-Änderung an dieser Logik dasselbe Prinzip weiterverwenden, nicht auf
-Zeilen-Existenz zurückfallen.
+**Wichtiges Prinzip:** "hat einen Eintrag" heißt NICHT "eine
+`journal_entries`-Zeile für den Tag existiert" (ein `upsert` beim Leeren
+aller 5 Felder überschreibt die Zeile nur mit leeren Strings, löscht sie
+aber nicht — und ein echtes Löschen ist wegen `journal_entry_mentions`
+`on delete cascade` ohnehin nicht die richtige Lösung, @mention-
+Markierungen sollen bewusst NICHT löschbar sein). `journalRowHasContent(row)`
+prüft deshalb an allen Stellen, die "Tag hat einen Eintrag" auswerten
+(`renderCalendar()`, `loadJournalStreak()`, `scheduleJournalSave()`), ob
+mindestens eines der 5 Felder noch echten Text enthält, statt auf
+Zeilen-Existenz zu prüfen — bei jeder künftigen Änderung an dieser Logik
+dasselbe Prinzip weiterverwenden (Entstehung: HISTORY.md).
 
-**Echter Termin-Kalender (Wochenansicht, Outlook-Stil), seit 2026-08-05
-live** — Phase 1 der am 2026-08-04 nur als Vision notierten Idee, nach
-ausführlicher Absprache gebaut (siehe Muster "erst durchsprechen" oben).
-Der Kalender bleibt in der Monatsansicht ein reiner Tagebuch-Rückblick,
-bekommt aber eine neue, umschaltbare **Wochenansicht** dazu (`calViewMode`
+**Echter Termin-Kalender (Wochenansicht, Outlook-Stil):** der Kalender
+bleibt in der Monatsansicht ein reiner Tagebuch-Rückblick, bekommt aber
+eine umschaltbare **Wochenansicht** dazu (`calViewMode`
 'monat'/'woche', Umschalter über das bestehende `.view-switch`-Muster wie
 bei Kontakte "Nach Dungeon/Alle Kontakte"). Monatsansicht hat jetzt zusätzlich
 eine Mo–So-Kopfzeile (`.cal-weekday-header`, fehlte vorher komplett) und
@@ -1153,79 +1144,56 @@ lassen sich weiterhin überall eintragen, nichts wird technisch gesperrt.
 
 **Bedienung Wochenansicht:** Zeitraster im Halbe-Stunde-Takt
 (`HALF_HOUR_PX=32`), Ziehen über eine Zeitspanne (Pointer Events, nicht
-native HTML5-Drag&Drop — gleicher Grund wie beim Kanban-↕-Menü: funktioniert
-zuverlässig auch auf Touch) öffnet ein Popup (Titel, Start/Ende, optional
-Kontakt-/Betrieb-Suche über eine neue generische `initGenericAutocomplete()`-
-Hilfsfunktion, die den bestehenden `contactLocationSearch`-Stil wiederverwendet).
-**Wichtiger Stolperstein, gelöst:** ob ein Klick einen bestehenden Termin
-öffnet oder einen neuen erzeugt, entscheidet sich über die **Ziehstrecke**
-(>6px Bewegung = neuer Termin), nicht über das Element unter dem Finger —
-sonst ließe sich kein zweiter, überschneidender Termin mehr über einem
-bereits voll-breiten bestehenden Termin aufziehen (der erste Versuch hat
-das per `e.target.closest('.week-event')`-Abbruch im `pointerdown` blockiert
-und musste korrigiert werden). Zeitachse bleibt beim seitlichen Scrollen auf
-schmalen Bildschirmen sticky stehen (`.week-time-col{position:sticky;
-left:0}`) — **derselbe Bug wie bei der Kontakt-Tabelle zuvor** (siehe
-Abenteuerlog/Kontakte-Fix weiter oben) ist hier auch aufgetaucht: der erste
-Wurf hatte `overflow-x:hidden` auf `.week-view-wrap` gesetzt, wodurch
-Samstag/Sonntag auf dem Handy einfach unsichtbar abgeschnitten waren statt
-scrollbar zu sein — auf `overflow-x:auto` korrigiert, gegen die echte,
-eingeloggte App auf 390px-Breite verifiziert.
+native HTML5-Drag&Drop — funktioniert zuverlässig auch auf Touch) öffnet
+ein Popup (Titel, Start/Ende, optional Kontakt-/Betrieb-Suche über
+`initGenericAutocomplete()`, wiederverwendet den `contactLocationSearch`-
+Stil). Ob ein Klick einen bestehenden Termin öffnet oder einen neuen
+erzeugt, entscheidet die **Ziehstrecke** (>6px Bewegung = neuer Termin),
+nicht das Element unter dem Finger — sonst ließe sich kein zweiter,
+überschneidender Termin über einem bereits voll-breiten bestehenden
+Termin aufziehen. Zeitachse bleibt beim seitlichen Scrollen sticky
+(`.week-time-col{position:sticky;left:0}`), Wochenansicht nutzt
+`overflow-x:auto` (nicht `hidden` — sonst wären Samstag/Sonntag auf
+schmalen Bildschirmen unsichtbar abgeschnitten statt scrollbar,
+Entstehung dieses Stolpersteins: HISTORY.md).
 
 **Kanban-Integration:** die Kanban-Übergänge "Ersttermin vereinbart" und
-"Zweittermin" fragen jetzt beide (überspringbar, kein Zwang, `promptKanbanTermin()`)
-nach Datum+Uhrzeit und legen bei Eingabe einen echten Kalendertermin an —
-und zwar an **beiden** Auslösern: dem bestehenden Dungeon-Button
-(`terminLeadModal`, jetzt um Start/Ende-Zeitfelder ergänzt) UND beim Ziehen
-einer bereits bestehenden Karte im Board (vorher dort komplett ohne
-Datumsabfrage). **"Angebot versendet" bekommt bewusst KEIN Termin-Popup**
-— teilte sich vorher denselben Code-Pfad wie Zweittermin (beide loggen die
-Aktion `pitch`), wurde dafür entkoppelt: ein Angebot verschicken ist kein
-Treffen. Derselbe `promptKanbanTermin()`-Baustein sitzt zusätzlich als
-"Termin eintragen"-Button im Kontaktformular (`cdTerminBtn`) — bequemer
-Nachtrag, falls beim Verschieben übersprungen wurde, ausdrücklicher
-Nutzerwunsch ("das hat was Bequemliches"). **Seit 2026-08-09 abends:**
-steht die Karte gerade auf Gewonnen/Verloren, holt derselbe Button sie
-jetzt zusätzlich auf Ersttermin zurück (gleiche `kundenausbau`-Aktion wie
-beim Ziehen im Kanban, kein neuer Kontakt) — vorher passierte das nur beim
-Ziehen im Board, nicht über diesen Button, was der Nutzer als Bug meldete.
-**Geklärt am 2026-08-10, weiterhin bewusst NICHT gebaut:** ein Rücksprung
-Gewonnen/Verloren → Ersttermin (Kundenausbau) soll im Hintergrund
-mitzählen, der wievielte Termin es der Reihe nach für den Kontakt ist —
-eine einzige durchlaufende Nummer pro Kontakt (Ersttermin+Zweittermin vor
-dem ersten Gewinn = 1./2., jeder spätere Kundenausbau-Rücksprung zählt
-fortlaufend weiter, 3./4./5. …). **Bewusst nirgends in der UI anzeigen**
-(ausdrücklicher Nutzerwunsch, "das muss nirgends erscheinen … der Kanban
-ist einfach praktisch") — die Chronik zeigt die Kontaktintensität für
+"Zweittermin" fragen beide (überspringbar, `promptKanbanTermin()`) nach
+Datum+Uhrzeit und legen bei Eingabe einen echten Kalendertermin an — an
+**beiden** Auslösern: dem Dungeon-Button (`terminLeadModal`) UND beim
+Ziehen einer bestehenden Karte im Board. **"Angebot versendet" bekommt
+bewusst KEIN Termin-Popup** (teilt sich zwar die Aktion `pitch` mit
+Zweittermin, ist aber bewusst entkoppelt — ein Angebot verschicken ist
+kein Treffen). Derselbe `promptKanbanTermin()`-Baustein sitzt zusätzlich
+als "Termin eintragen"-Button im Kontaktformular (`cdTerminBtn`) —
+holt eine auf Gewonnen/Verloren stehende Karte dabei zusätzlich auf
+Ersttermin zurück (gleiche `kundenausbau`-Aktion wie beim Ziehen im
+Kanban, kein neuer Kontakt, Entstehung: HISTORY.md).
+
+**Bewusst NICHT gebaut, Konzept für einen künftigen Quest-Typ:** ein
+Rücksprung Gewonnen/Verloren → Ersttermin (Kundenausbau) soll im
+Hintergrund mitzählen können, der wievielte Termin es der Reihe nach
+für den Kontakt ist (eine durchlaufende Nummer pro Kontakt) — **bewusst
+nirgends in der UI anzeigen**, die Chronik zeigt Kontaktintensität für
 Menschen schon ausreichend über Datum/Art jeder Zeile. Zweck ist rein,
 dass ein künftiger Kundenausbau-Quest-Typ (Kategorie "Advance", siehe
-Questbaum-Notiz) diese Zahl als Schwellenwert nutzen kann. Da noch keine
-Quest das braucht, absichtlich noch nicht gecodet (Rule of Three) — wenn
-gebaut wird, dann live aus `action_log` abgeleitet
-(`termin_vereinbart`/Zweittermin-Kanban-Übergänge desselben Kontakts
-zählen), kein neues Speicherfeld nötig, gleiches Prinzip wie
-`computeJournalStreak()`.
+Questbaum-Notiz) diese Zahl als Schwellenwert nutzen kann. Solange keine
+Quest das braucht, absichtlich nicht gecodet (Rule of Three) — bei
+Bedarf live aus `action_log` ableiten (kein neues Speicherfeld nötig,
+gleiches Prinzip wie `computeJournalStreak()`).
 
 **Bewusst noch nicht gebaut (Phase 2, siehe "Bewusst aufgeschobene Ideen"-
 Prinzip):** wiederkehrende Termine, Erinnerungen, Tagesansicht. Nicht von
 selbst anfangen, nur auf expliziten Anstoß.
 
-**Nachbesserung Patch 34 (`sql/patch34_wochenende_ausblenden.sql`,
-2026-08-05), noch am selben Tag:** Bugfix + neue Einstellung, ausgelöst
-durch echtes Nutzer-Feedback ("ich hab meine Arbeitszeit nun von Montag bis
-Freitag gelegt, der Kalender zeigt immer noch Samstag und Sonntag"). Zwei
-Dinge:
-1. **Bugfix:** ein Wochentag ganz ohne Arbeitszeiten-Eintrag (z.B. ein nicht
-   konfiguriertes Wochenende) galt fälschlich als ungegraut statt komplett
-   arbeitsfrei — jetzt wird ein Tag ohne Eintrag in der Wochenansicht
-   ganztägig abgedunkelt (`week-nonwork-overlay` über die volle Höhe).
-2. **Neue Einstellung** `profiles.calendar_hide_weekends` (boolean,
-   Default false) — Checkbox in Einstellungen → Kalender → Arbeitszeiten:
-   Samstag/Sonntag lassen sich statt nur grau auch **komplett ausblenden**
-   (wie Outlooks "Arbeitswoche"-Ansicht). Das Wochenraster passt seine
-   Spaltenzahl/-breite dafür jetzt dynamisch an (`grid-template-columns`
-   wird pro `renderWeekView()`-Aufruf per JS gesetzt), statt fest auf 7
-   Spalten zu bestehen.
+**Arbeitsfreie Tage:** ein Wochentag ganz ohne Arbeitszeiten-Eintrag gilt
+als komplett arbeitsfrei, in der Wochenansicht ganztägig abgedunkelt
+(`week-nonwork-overlay`, Entstehungs-Bugfix: HISTORY.md). Einstellung
+`profiles.calendar_hide_weekends` (boolean, Default false) blendet
+Samstag/Sonntag statt nur grau auch **komplett aus** (wie Outlooks
+"Arbeitswoche"-Ansicht) — das Wochenraster passt seine Spaltenzahl/
+-breite dafür dynamisch an (`grid-template-columns` pro
+`renderWeekView()`-Aufruf per JS gesetzt).
 
 **Kalender-Aufgaben (Geburtstage + Wiedervorlage), seit 2026-08-06 live
 (Patch 35, `sql/patch35_kalender_aufgaben.sql`) — Phase 2 des Termin-
@@ -1312,103 +1280,37 @@ Playwright-Test entdeckt und korrigiert) immer "Nur diesen Termin" oder
   erhalten, nur die Uhrzeit ändert sich) — vergangene Termine bleiben
   unangetastet, wie mit dem Nutzer abgesprochen.
 
-End-to-end gegen die echte Datenbank verifiziert (Playwright: Serie
-anlegen → 4 wöchentliche Termine korrekt materialisiert → "ganze Serie"
-verschoben, vergangener Termin nachweislich unverändert, alle künftigen
-korrekt aktualisiert → "ganze Serie" gelöscht, danach nichts mehr in
-`termine`/`termin_series` — kein Testdaten-Rückstand).
-
 **Bewusst weiterhin offen:** echte Erinnerungen (Push/E-Mail o.ä.), bewusst
 unentschieden gelassen, keine Eile.
 
-## UI-Audit über alle Seiten (2026-08-06/07)
+## UI-Konventionen: Sigil-Größe, Scroll-Fade, Buch-/Rollen-Kachel
 
-Auf ausdrücklichen Nutzerwunsch ("kontrolliere die vollständige UI ...
-achte auf Mobile UND Desktop") wurde die gesamte App einmal systematisch
-geprüft: alle 12 Nav-Seiten, je bei 390px (Mobile) und 1440px (Desktop),
-per Playwright mit echtem Login — automatisierter Overflow-Check
-(`scrollWidth` vs. `clientWidth`) plus visuelle Screenshot-Sichtung. Dabei
-zwei echte, bis dahin unbemerkte Bugs gefunden und behoben (beide
-betrafen Mobile UND Desktop gleichermaßen, keine reinen
-Responsive-Probleme):
+**Sigil (Fähigkeiten-Radar):** großzügiges SVG-viewBox (530×530),
+richtungsabhängiges `text-anchor` (Labels rechts vom Zentrum wachsen
+nach rechts, links nach links, oben/unten zentriert) statt überall
+`middle` — verhindert abgeschnittene lange Achsenbeschriftungen.
+Responsiv per CSS (`width:100%;max-width:530px;height:auto`).
 
-1. **Fähigkeiten-Radar (Sigil) schnitt lange Achsenbeschriftungen am
-   Rand ab** ("Fachwissen" erschien als "chwissen") — das SVG-viewBox war
-   exakt so groß wie der Radar selbst, `text-anchor="middle"` ließ lange
-   Labels über den sichtbaren Bereich hinausragen. Behoben durch
-   großzügigeres viewBox.
-2. **Chronik (Handlungen-Seite) zeigte beim Öffnen nicht die neuesten
-   Einträge** — `.log` nutzt `flex-direction:column-reverse` (neuester
-   Eintrag oben, ohne das Array in JS umzudrehen), aber der Browser
-   initialisiert die Scrollposition dabei mit `scrollTop:0`, was hier
-   einen Ausschnitt aus der Mitte der Historie zeigte statt der neuesten
-   Einträge. Behoben durch explizites `scrollTop = -scrollHeight`, sowohl
-   beim Rendern als auch beim tatsächlichen Anzeigen der Seite (die Seite
-   war beim ersten Rendern noch unsichtbar, `scrollHeight` dort also 0 —
-   deshalb zwei Stellen nötig, `render()` UND `showPage()`).
+**Scroll-Fade an seitlich scrollbaren Leisten:** wiederverwendbarer
+Helfer `initScrollFade(el)`/`updateScrollFade(el)` (per `mask-image`,
+unabhängig von der Panel-Hintergrundfarbe) — blendet sich automatisch
+an der Seite aus, an der nichts mehr zu scrollen ist. **Bei künftigen
+neuen horizontal scrollenden Bereichen diesen Helfer wiederverwenden**
+statt eine eigene Lösung zu bauen (Entstehung/Audit-Funde: HISTORY.md).
 
-**Direkter Folgeauftrag, noch am 2026-08-07 umgesetzt** (zwei von drei
-Politur-Vorschlägen aus dem Audit-Bericht, vom Nutzer freigegeben):
-
-- **Sigil deutlich vergrößert, volle Skillnamen statt 10-Zeichen-Kürzung**
-  ("ich würde die Wörter schon gerne lesen können"). `drawSigil()` in
-  `index.html`: viewBox von 260×260 auf 530×530 (mit Versatz) vergrößert,
-  `text-anchor` jetzt richtungsabhängig (Labels rechts vom Zentrum wachsen
-  nach rechts, links vom Zentrum nach links, oben/unten bleiben zentriert)
-  statt überall `middle` — dadurch passen auch "Gesprächsführung" und
-  "Beziehungspflege" komplett ins Bild. `#sigil` per CSS responsiv
-  (`width:100%;max-width:530px;height:auto`), skaliert auf schmalen
-  Bildschirmen mit, ohne zu überlaufen.
-- **Scroll-Fade an seitlich scrollbaren Leisten** (Sidebar-Nav auf Mobile,
-  Feldzug-Route, Monats-Reiter Trophäenkammer) — vorher kein Hinweis, dass
-  dort noch mehr kommt. Neuer, wiederverwendbarer Helfer `initScrollFade(el)`
-  / `updateScrollFade(el)` in `index.html` (per `mask-image`, nicht per
-  Hintergrundverlauf, damit es unabhängig von der jeweiligen
-  Panel-Hintergrundfarbe funktioniert) — blendet sich automatisch an der
-  Seite aus, an der gerade nichts mehr zu scrollen ist. **Bei künftigen
-  neuen horizontal scrollenden Bereichen diesen Helfer wiederverwenden**
-  statt eine eigene Lösung zu bauen.
-- Dritter Vorschlag (Emoji-Rendering in Testscreenshots) war nur ein
-  Hinweis zu meiner Testumgebung, kein App-Bug — keine Änderung nötig,
-  vom Nutzer bestätigt ("keine Probleme mit den Emojis").
-
-Methodik-Erkenntnis aus derselben Session: ein vom Nutzer gemeldetes
-"Geburtsdatum wird nicht angezeigt" stellte sich bei einer direkten
-Live-Prüfung (Supabase-REST + Playwright) als kein Bug heraus — der Nutzer
-hatte einen Test-Kontakt in der Jägerchronik gemeint, nicht sein eigenes
-Profil. Vor dem Bauen einer "Behebung" für ein gemeldetes Problem lohnt
-sich ein kurzer Live-Check, bevor man dem Bug-Report unbesehen glaubt.
-
-**Buch-/Rollen-Kachel: seit 2026-08-04 live gebaut** (setzt die oben
-ursprünglich nur als Zukunftsidee notierte Umbenennung um, mit leicht
-anderen finalen Namen als zuerst angedacht): unter dem Kalender ersetzt
-jetzt eine einzelne, klassenabhängige Kachel (`.journal-book-tile` in
-`index.html`) die vorher immer sichtbaren 5 Tagebuch-Fragen — **Zauberbuch**
-(Zauberer), **Kriegsbuch** (Krieger), **Schützenrolle** (Schütze, bewusst
-eine Pergamentrolle statt eines Buchs). Klick auf die Kachel klappt einen
-Wrapper (`#journalEntryWrap`) mit den 5 Fragen + dem Foto-Feld darunter
-auf/zu (`setJournalEntryOpen()`) — **kein Modal**, ausdrücklicher
-Nutzerwunsch: der Kalender soll beim Schreiben sichtbar bleiben, anders als
-die bestehenden Popups im Programm (Verkaufsabschluss etc.). Die
-Tagebuch-Serie (`journalStreakTag`/`journalStreakHint`, siehe oben) sitzt
-weiterhin an derselben Stelle/mit denselben IDs, nur räumlich auf der Kachel
-statt in einer eigenen Karte — `loadJournalStreak()`/`renderJournalStreak()`
-unverändert. Klassenzuordnung über `CLASS_JOURNAL` + `updateJournalBookTile()`,
-aufgerufen in `initJournal()` und im Admin-Klassenschalter (gleiches Muster
-wie `updateContactLabels()`/`updateStatistikLabels()`).
-
-Die drei Icons sind handgezeichnete Pixel-Art (kein GandalfHardcore-Asset —
-Bücher/Rollen kommen im Paket nicht vor), zweite Überarbeitung nach
-Vorlage von vier vom Nutzer geschickten Referenz-Screenshots (runde Ecken,
-Rücken-Farbstreifen, Titel-Plakette, Seitenkante unten, Lesezeichen-Fahne,
-klassentypisches Emblem — Stern fürs Zauberbuch, Schwert fürs Kriegsbuch).
-Liegen unter `img/characters/creator/journal_{zauberer,krieger,schuetze}.png`
-(96×96, wie die übrigen `item_*`-Icons dort). Erzeugt über ein Python/Pillow-
-Skript (Pixel-für-Pixel auf einem 24×24-Raster, per Nearest-Neighbor auf
-96×96 hochskaliert) statt gezeichneter SVGs — die erste Fassung ohne
-Referenzbilder wirkte laut Nutzer "nicht ganz rund", danach erst die vier
-Screenshots angefordert und die Formensprache (nicht die Bilder selbst)
-übernommen.
+**Buch-/Rollen-Kachel:** unter dem Kalender ersetzt eine einzelne,
+klassenabhängige Kachel (`.journal-book-tile`) die 5 Tagebuch-Fragen —
+**Zauberbuch** (Zauberer), **Kriegsbuch** (Krieger), **Schützenrolle**
+(Schütze, bewusst eine Pergamentrolle statt eines Buchs). Klick klappt
+einen Wrapper (`#journalEntryWrap`) mit den 5 Fragen + Foto-Feld auf/zu
+(`setJournalEntryOpen()`) — **kein Modal**, der Kalender soll beim
+Schreiben sichtbar bleiben. Klassenzuordnung über `CLASS_JOURNAL` +
+`updateJournalBookTile()`, aufgerufen in `initJournal()` und im
+Admin-Klassenschalter. Die drei Icons sind handgezeichnete Pixel-Art
+(kein GandalfHardcore-Asset), liegen unter
+`img/characters/creator/journal_{zauberer,krieger,schuetze}.png`
+(96×96, wie die übrigen `item_*`-Icons — Entstehung/Asset-Pipeline:
+HISTORY.md).
 
 ## Changelog-Popup für angewendete SQL-Patches (Patch 32, 2026-08-04)
 

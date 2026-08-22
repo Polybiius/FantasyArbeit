@@ -378,3 +378,124 @@ haben"):
   RLS-Policies pro Tabelle, 54× `auth.uid()` statt
   `(select auth.uid())`) — **später tatsächlich behoben**, siehe
   "RLS-Performance-Härtung" weiter unten in CLAUDE.md (2026-08-17).
+
+## 2026-08-04 bis 2026-08-07: Kalender-Aufbau + UI-Audit, Entstehung
+
+**Häppchen 5 (Abenteuerlog-Seite bis UI-Audit, ursprünglich CLAUDE.md-
+Zeile 1085–1412), fertig 2026-08-22.** Größter/dichtester Häppchen
+bisher inhaltlich, aber auch der technisch wichtigste — die
+Kalender-/Termin-Architektur (Wochenansicht, Serientermine,
+Kalender-Aufgaben) wird an vielen späteren Stellen in CLAUDE.md
+vorausgesetzt, deshalb bewusst NICHT so aggressiv gekürzt wie Häppchen
+4 (reine Business-/Technik-Fakten bleiben fast komplett in CLAUDE.md,
+nur die Bau-/Debugging-Erzählung wandert hierher).
+
+**Reihenfolge-Layout-Wunsch, 2026-08-04:** Kalender oben → Tagebuch-
+Serie → 5 Fragen → Foto ganz unten (vorher umgekehrt) — reiner
+Layout-Wunsch, keine Logik-Änderung.
+
+**Bugfix 2026-08-04, "hat einen Eintrag"-Stolperstein:** ein `upsert`
+beim Leeren aller 5 Tagebuch-Felder überschreibt die
+`journal_entries`-Zeile nur mit leeren Strings, löscht sie aber nicht
+— und ein echtes Löschen wäre wegen `journal_entry_mentions`
+`on delete cascade` (@mention-Markierungen sollen bewusst NICHT
+löschbar sein) ohnehin nicht die richtige Lösung gewesen. Das aktuell
+gültige Prinzip (`journalRowHasContent(row)` statt reiner
+Zeilen-Existenz-Prüfung) steht in CLAUDE.md.
+
+**Termin-Kalender Wochenansicht, Entstehung (Patch 33, seit 2026-08-05
+live):** Phase 1 der am 2026-08-04 nur als Vision notierten Idee, nach
+ausführlicher Absprache gebaut. Zwei Stolpersteine dabei gefunden und
+gelöst:
+- Ob ein Klick einen bestehenden Termin öffnet oder einen neuen
+  erzeugt, wurde zunächst über `e.target.closest('.week-event')` im
+  `pointerdown` entschieden — dadurch ließ sich kein zweiter,
+  überschneidender Termin mehr über einem bereits voll-breiten
+  bestehenden Termin aufziehen. Korrigiert auf Ziehstrecke (>6px
+  Bewegung = neuer Termin), aktuell gültiges Verhalten: CLAUDE.md.
+- Dieselbe Sticky-Zeitachsen-Bug-Klasse wie vorher schon bei der
+  Kontakt-Tabelle: der erste Wurf hatte `overflow-x:hidden` auf
+  `.week-view-wrap` gesetzt, wodurch Samstag/Sonntag auf dem Handy
+  unsichtbar abgeschnitten waren statt scrollbar zu sein — auf
+  `overflow-x:auto` korrigiert, gegen die echte App auf 390px
+  verifiziert.
+
+**Kanban-Integration, wie es entstand:** die Kanban-Übergänge
+"Ersttermin vereinbart"/"Zweittermin" fragen seit diesem Patch nach
+Datum+Uhrzeit (`promptKanbanTermin()`), sowohl am Dungeon-Button als
+auch beim Ziehen einer bestehenden Karte (vorher dort komplett ohne
+Datumsabfrage). Der "Termin eintragen"-Button im Kontaktformular
+(`cdTerminBtn`) nutzt denselben Baustein — Nutzerwunsch, "das hat was
+Bequemliches". **Seit 2026-08-09 abends** holt derselbe Button eine auf
+Gewonnen/Verloren stehende Karte zusätzlich auf Ersttermin zurück
+(vorher passierte das nur beim Ziehen im Board, was der Nutzer als Bug
+meldete — seitdem konsistent).
+
+**Nachbesserung Patch 34 (`sql/patch34_wochenende_ausblenden.sql`,
+2026-08-05), noch am selben Tag, ausgelöst durch echtes Nutzer-Feedback**
+("ich hab meine Arbeitszeit nun von Montag bis Freitag gelegt, der
+Kalender zeigt immer noch Samstag und Sonntag"): ein Wochentag ganz ohne
+Arbeitszeiten-Eintrag galt fälschlich als ungegraut statt komplett
+arbeitsfrei — behoben. Gleichzeitig `calendar_hide_weekends` als neue
+Einstellung ergänzt (aktueller Stand: CLAUDE.md).
+
+**Serientermine, End-to-End-Verifikation (Patch 36, 2026-08-06):** per
+Playwright gegen die echte Datenbank bestätigt — Serie anlegen → 4
+wöchentliche Termine korrekt materialisiert → "ganze Serie" verschoben,
+vergangener Termin nachweislich unverändert, alle künftigen korrekt
+aktualisiert → "ganze Serie" gelöscht, danach nichts mehr in
+`termine`/`termin_series`, kein Testdaten-Rückstand. Das
+`askSeriesScope()`-Popup brauchte dabei einen eigenen `z-index:1001`
+(über einem bereits offenen `.loc-modal`) — ohne die Anhebung fing das
+darunterliegende Termin-Popup die Klicks ab, per Playwright-Test
+entdeckt.
+
+## 2026-08-06/07: UI-Audit über alle Seiten + Buch-/Rollen-Kachel
+
+Auf ausdrücklichen Nutzerwunsch ("kontrolliere die vollständige UI ...
+achte auf Mobile UND Desktop") wurde die gesamte App einmal systematisch
+geprüft: alle 12 Nav-Seiten, je bei 390px (Mobile) und 1440px (Desktop),
+per Playwright mit echtem Login — automatisierter Overflow-Check plus
+visuelle Screenshot-Sichtung. Zwei echte, bis dahin unbemerkte Bugs
+gefunden und behoben:
+1. Fähigkeiten-Radar (Sigil) schnitt lange Achsenbeschriftungen am Rand
+   ab ("Fachwissen" erschien als "chwissen") — das SVG-viewBox war
+   exakt so groß wie der Radar selbst, `text-anchor="middle"` ließ
+   lange Labels über den sichtbaren Bereich hinausragen.
+2. Chronik (Handlungen-Seite) zeigte beim Öffnen nicht die neuesten
+   Einträge — `.log` nutzt `flex-direction:column-reverse`, aber der
+   Browser initialisiert die Scrollposition mit `scrollTop:0`. Behoben
+   durch explizites `scrollTop = -scrollHeight`, an zwei Stellen nötig
+   (`render()` UND `showPage()`, da die Seite beim ersten Rendern noch
+   unsichtbar war und `scrollHeight` dort 0 ergab).
+
+**Direkter Folgeauftrag, noch am 2026-08-07 umgesetzt** (zwei von drei
+Politur-Vorschlägen aus dem Audit-Bericht, vom Nutzer freigegeben):
+Sigil deutlich vergrößert (viewBox 260×260→530×530, richtungsabhängiges
+`text-anchor` statt überall `middle` — "ich würde die Wörter schon
+gerne lesen können"); neuer, wiederverwendbarer Helfer
+`initScrollFade(el)`/`updateScrollFade(el)` für seitlich scrollbare
+Leisten (Sidebar-Nav Mobile, Feldzug-Route, Monats-Reiter
+Trophäenkammer) — **bei künftigen neuen horizontal scrollenden
+Bereichen weiterverwenden statt eine eigene Lösung zu bauen** (aktuell
+gültige Regel, auch in CLAUDE.md). Dritter Vorschlag (Emoji-Rendering
+in Testscreenshots) war nur ein Hinweis zur Testumgebung, keine
+Änderung nötig.
+
+**Methodik-Erkenntnis aus derselben Session** (generelle Lehre lebt
+dauerhaft in Claudes Erinnerung, `feedback_verify_live_before_acting`):
+ein vom Nutzer gemeldetes "Geburtsdatum wird nicht angezeigt" stellte
+sich bei einer direkten Live-Prüfung als kein Bug heraus — der Nutzer
+hatte einen Test-Kontakt gemeint, nicht sein eigenes Profil.
+
+**Buch-/Rollen-Kachel, Asset-Entstehung (seit 2026-08-04 live):** die
+drei Icons (Zauberbuch/Kriegsbuch/Schützenrolle) sind handgezeichnete
+Pixel-Art (kein GandalfHardcore-Asset — Bücher/Rollen kommen im Paket
+nicht vor), zweite Überarbeitung nach Vorlage von vier vom Nutzer
+geschickten Referenz-Screenshots (runde Ecken, Rücken-Farbstreifen,
+Titel-Plakette, Seitenkante unten, Lesezeichen-Fahne, klassentypisches
+Emblem). Erzeugt über ein Python/Pillow-Skript (Pixel-für-Pixel auf
+einem 24×24-Raster, per Nearest-Neighbor auf 96×96 hochskaliert) statt
+gezeichneter SVGs — die erste Fassung ohne Referenzbilder wirkte laut
+Nutzer "nicht ganz rund", danach erst die vier Screenshots angefordert
+und die Formensprache (nicht die Bilder selbst) übernommen.
