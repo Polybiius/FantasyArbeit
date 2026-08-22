@@ -517,15 +517,10 @@ Farbthema ist NICHT nur ein Akzent, sondern durchdringt die ganze Optik
 Regelwerk ist über alle Klassen hinweg **identisch** (nur Optik/Begriffe
 unterscheiden sich) — bewusste Design-Entscheidung, keine Einschränkung.
 
-**Umbenannt von "Hexer" zu "Zauberer" (Patch 29, 2026-08-03):** es gibt keine
-"Hexerin" — die einzige echte weibliche Form wäre "Hexe", und die ist negativ
-konnotiert. Deshalb komplett auf Zauberer/Zauberin umbenannt, nicht nur der
-Anzeige-Text, sondern auch der interne Schlüssel (`profiles.character_class`,
-Item-Keys `hexer_stab`/`hexer_cape` → `zauberer_stab`/`zauberer_cape` samt
-Bilddateien) — siehe `sql/patch29_zauberer_umbenennung.sql`. Historische
-Verweise auf den alten Namen (z.B. längst gelöschte Dateien wie
-`hexer_m.png`) weiter unten in diesem Dokument sind bewusst unverändert
-gelassen, sie beschreiben, wie etwas zum jeweiligen Zeitpunkt hieß.
+**Hinweis zur Terminologie:** die Klasse heißt "Zauberer"/"Zauberin", NICHT
+"Hexer" — bewusst so gewählt (die einzige weibliche Form wäre "Hexe", negativ
+konnotiert), betrifft auch interne Schlüssel (`profiles.character_class`,
+Item-Keys `zauberer_stab`/`zauberer_cape`). Entstehung/Umbenennung: HISTORY.md.
 
 Klassenabhängige Begriffe für dieselbe Funktion:
 | Funktion | Zauberer | Krieger | Schütze |
@@ -536,15 +531,13 @@ Klassenabhängige Begriffe für dieselbe Funktion:
 | Kanban | Questpfad | Gildenbrett | Feldzug |
 | Verkaufsstatistik | Arkanes Kompendium | Kriegskasse | Trophäenkammer |
 
-**Verkaufsstatistik-Seite (`#page-statistik`, Nav-Reiter "Kompendium"/
-"Kriegskasse"/"Trophäenkammer" je Klasse), seit 2026-08-03:** bisher nur ein
-leerer Seiten-Rahmen (`updateStatistikLabels()` in `index.html`, gleiches
-Muster wie `updateKanbanLabels()`/`updateContactLabels()` — Nav-Button-Text
-UND Seiten-Überschrift ändern sich mit der Klasse). In der Navigation direkt
-unter "Abenteuerlog" einsortiert — für ein normales Mitglied damit der
-letzte sichtbare Reiter, bei einem Admin kommen wie gehabt noch "Produkte"
-und "Fehlerprotokoll" danach. Die eigentlichen Verkaufsstatistiken (Inhalt)
-sind ein separater, noch offener Bauschritt.
+**Verkaufsstatistik-Seite** (`#page-statistik`, Nav-Reiter "Kompendium"/
+"Kriegskasse"/"Trophäenkammer" je Klasse, `updateStatistikLabels()` in
+`index.html`, gleiches Muster wie `updateKanbanLabels()`/
+`updateContactLabels()` — Nav-Button-Text UND Seiten-Überschrift ändern
+sich mit der Klasse). In der Navigation direkt unter "Abenteuerlog"
+einsortiert. Vollständig gebaut inkl. KPI-Kacheln/Diagrammen — siehe
+Abschnitt "Bewusst aufgeschobene Ideen" → BWS-Verrechnung weiter unten.
 
 ## Profil-Onboarding, seit Patch 24 (2026-08-02)
 
@@ -593,12 +586,12 @@ sein soll, ist das ein separater, noch nicht gebauter Schritt.
 **"Charakter erschaffen"-Button** (`charCreateBtn`, Klassenwahl-Screen)
 funktioniert nach demselben Muster: gedimmt via `.btn-disabled` bis eine
 Klasse gewählt ist, wackelnde Klassenkarten (nicht der Button selbst) bei
-einem Klick ohne Auswahl. Der eigentliche `profiles`-Insert passiert weiterhin
-erst hier, ganz am Ende (ein einziger atomarer Insert mit allen sechs
-Feldern: `display_name`, `character_class`, `real_name`, `gender`, `company`,
-plus `id`/`org_id`/`role` wie bisher) — die Werte aus dem Profil-Screen werden
-dafür einfach erneut aus den (nur visuell versteckten, nicht entfernten)
-Input-Feldern gelesen.
+einem Klick ohne Auswahl. Löst **keinen** `profiles`-Insert aus — blättert
+nur weiter zum Aussehen-Screen, der eigentliche atomare Insert (alle Felder
+inkl. `skin_tone`/`hair_style`) passiert dort ganz am Ende, siehe
+"Aussehen-Screen" unten. Die Werte aus dem Profil-/Klassenwahl-Screen
+werden dafür beim finalen Insert aus den (nur visuell versteckten, nicht
+entfernten) Input-Feldern gelesen.
 
 **`.btn-disabled` statt natives `disabled`-Attribut, bewusst so** (bei
 `profileNextBtn` UND `charCreateBtn`): ein echtes `disabled`-Attribut
@@ -608,49 +601,29 @@ sorgt dafür, dass beide Zustände (natives Attribut UND die neue Klasse)
 gleich aussehen (gedimmt, kein Leucht-Gradient) — betrifft auch den
 `authSubmitBtn`, falls der je ein `disabled`-Attribut bekommen sollte.
 
-**Entstehungsweg**: Diese ganze Änderung wurde zuerst in einer separaten,
-nicht versionierten Datei `dummy-anmeldung.html` (Projekt-Root, lokal, nicht
-committed) durchgespielt und optisch geprüft, bevor sie hierher übertragen
-wurde. Grund ist NICHT Risiko-Minimierung, sondern schlicht Sichtbarkeit: der
-Nutzer hat längst ein eigenes Profil und kann Anmelde-/Charaktererstellungs-
-Bildschirme im echten Programm gar nicht mehr erreichen, um Änderungen daran
-zu begutachten — ohne Dummy hätte er sie schlicht nicht sehen können. Dieses
-Muster lohnt sich deshalb gezielt für Bildschirme, die nur einmalig VOR einem
-bestimmten Zustand erscheinen (Erstanmeldung, Ersteinrichtung) — nicht
-pauschal für jede riskante Änderung an normal erreichbaren Seiten, die sich
-der Nutzer direkt in der echten Anwendung ansehen kann. Playwright/Chromium
-(siehe oben) dient dabei der automatisierten
-Kontrolle beider Versionen.
-
-**`dummy-anmeldung.html` seit 2026-08-03 gelöscht:** der Admin-Knopf "🎭 Neu
-erschaffen" (siehe Kanban-Abschnitt weiter unten bzw. Git-Commit
-`0a27220`) springt für Admins zurück auf `profileScreen` →
+**Admin-Debug-Zugang zu diesen Screens:** der Admin-Knopf "🎭 Neu
+erschaffen" springt für Admins zurück auf `profileScreen` →
 `charCreateScreen` → `appearanceScreen` und aktualisiert am Ende das
-bestehende Profil statt eines neuen anzulegen. Damit ist die ursprüngliche
-Sichtbarkeits-Lücke, die die Dummy-Datei überhaupt nötig gemacht hatte,
-strukturell geschlossen — der Nutzer kann sich jede künftige Änderung an
-diesen drei Screens direkt im echten, laufenden Programm ansehen. Alle
-Code-Stellen unten, die noch von `dummy-anmeldung.html` sprechen, sind
-historisch gemeint (beschreiben, wo etwas ursprünglich gebaut/geprüft
-wurde) — aktuell lebt der gesamte Rendering-Code nur noch in `index.html`.
-**Lehre fürs nächste Mal:** bevor eine neue Dummy-Datei für ein
-"unerreichbar gewordenes" Onboarding-artiges Bildschirm gebaut wird, erst
-prüfen, ob ein kleiner, dauerhafter Admin-Debug-Zugang (wie dieser Knopf)
-die Sichtbarkeits-Lücke nicht direkter und dauerhaft schließt, statt eine
-Wegwerf-Kopie zu pflegen.
+bestehende Profil statt ein neues anzulegen — damit lassen sich diese
+drei Onboarding-Screens (die ein normaler Account nur einmalig
+durchläuft) jederzeit im echten, laufenden Programm ansehen/testen,
+ohne Dummy-Datei. Entstehung/Hintergrund: HISTORY.md, sowie Claudes
+Erinnerung `feedback_dummy_first_prototyping` für die generelle Lehre.
+**Achtung, wiederholt gefundene Bug-Klasse:** dieser Knopf ruft am Ende
+erneut `enterApp()` auf — Init-Funktionen, die Listener ohne Guard-Flag
+neu registrieren, häufen bei jedem Klick weitere Listener/Timer an
+(mehrfach in Bugfix-Häppchen gefunden und gefixt, siehe
+`project_full_bugfix_sweep`). Neue Init-Funktionen entsprechend mit
+einem Guard-Flag gegen Mehrfachaufruf absichern.
 
-## Aussehen-Screen (Hautfarbe/Frisur), seit Patch 25 (2026-08-02)
+## Aussehen-Screen (Hautfarbe/Frisur)
 
 Vierter Onboarding-Schritt, direkt nach der Klassenwahl, vor dem Sprung ins
 Programm: `authScreen` → `profileScreen` → `charCreateScreen` → **`appearanceScreen`**
-→ App. Zuerst im Dummy (`dummy-anmeldung.html`) gebaut und geprüft, seit
-2026-08-03 auch ins echte `index.html` übertragen (siehe "Entstehungsweg"
-oben zum generellen Muster) — der eigentliche `profiles`-Insert (inkl.
-`character_class`/`real_name`/`gender`/`company`, seit diesem Umbau auch
-`skin_tone`/`hair_style`) passiert jetzt ganz am Ende, im Klick-Handler von
-`appearanceDoneBtn` statt wie vorher in `charCreateBtn` — die Klassenwahl
-selbst löst keinen Insert mehr aus, sondern blättert nur weiter zum
-Aussehen-Screen.
+→ App. Der eigentliche `profiles`-Insert (inkl. `character_class`/
+`real_name`/`gender`/`company`/`skin_tone`/`hair_style`) passiert ganz am
+Ende, im Klick-Handler von `appearanceDoneBtn` — die Klassenwahl selbst
+löst keinen Insert aus, sondern blättert nur weiter zum Aussehen-Screen.
 
 Zwei Auswahlen, wie in einem RPG-Charaktereditor:
 - **Hautfarbe**: 5 vorgefertigte Töne je Geschlecht (`Male Skin1-5`/`Female
@@ -672,18 +645,12 @@ Zwei Auswahlen, wie in einem RPG-Charaktereditor:
   einfach die `color`-Zuordnung im `HAIR_CATALOG`-Array von Hand korrigieren,
   keine strukturelle Änderung nötig.
 
-**Live-Vorschau: animiert, dynamisch aus Ebenen zusammengesetzt (seit
-2026-08-03, zweite Überarbeitung)** — nicht mehr `<img>`-Ebenen
-übereinandergelegt, sondern ein `<canvas>`, das jeden Frame per
-`drawImage()` aus den einzelnen Ebenen-Sheets neu zusammensetzt. Grund für
-den Wechsel: der Nutzer wollte explizit **keine statischen Einzelbilder**
-("wir wollten ja ein dynamisches Charakterscreen") und dass der Charakter
-sichtbar **auf der Stelle läuft** statt (wie bei einem ersten,
-verworfenen CSS-`steps()`-Versuch) unsauber zu wirken.
+**Live-Vorschau: animiert, dynamisch aus Ebenen zusammengesetzt** — ein
+`<canvas>`, das jeden Frame per `drawImage()` aus den einzelnen
+Ebenen-Sheets neu zusammensetzt (kein statisches `<img>`-Übereinanderlegen
+— generelle Lehre dazu: Erinnerung `feedback_dynamic_over_static_rendering`).
 
-Technik (`createSpriteRenderer(canvas, scale)`, heute nur noch in
-`index.html` — ursprünglich zuerst in `dummy-anmeldung.html` gebaut, siehe
-"Entstehungsweg" oben):
+Technik (`createSpriteRenderer(canvas, scale)`):
 - Jede Ebene (Haut, Kleidung, Handschuhe, Frisur, Waffe, Rücken-Item) ist
   ein volles, unbeschnittenes Sprite-Sheet (`img/characters/sheets/`,
   siehe unten) — **kein zugeschnittenes Vorschaubild**, sondern dieselbe
@@ -736,42 +703,23 @@ nicht das Einbauen (auch unveränderter) Einzel-Sheets ins eigene Produkt.
 Die kleinen, eng zugeschnittenen Vorschaubilder unter
 `img/characters/creator/` (`Design/export_creator_assets.py`) bleiben
 weiterhin bestehen, aber nur noch für die **Auswahl-Kacheln** (Hautton-
-Buttons, Frisuren-Raster) — nicht mehr für die Vorschau selbst. Die
-frühere Zwischenstufe (`export_outfit_layers.py`, eng zugeschnittene
-Basis-Kleidung/Klassenitem-Bilder unter `creator/outfit_*`) ist mit
-diesem Umbau überflüssig geworden — sowohl die erzeugten Bilder als auch
-das Skript selbst wurden entfernt, ebenso die sechs statischen
-`img/characters/{hexer,krieger,schuetze}_{m,w}.png` von der ersten
-Klassenwahl-Bildschirm-Version — beides durch die Canvas-Animation
-ersetzt.
+Buttons, Frisuren-Raster) — nicht mehr für die Vorschau selbst (die läuft
+über die vollen Sheets, siehe oben).
 
-**Datenbank (Patch 25, `sql/patch25_aussehen.sql`, bereits ausgeführt):** zwei
-neue nullable Spalten `profiles.skin_tone`/`hair_style` — reine Schlüssel in
-den fest im Frontend hinterlegten Katalog (`SKIN_CATALOG`/`HAIR_CATALOG`,
-heute nur noch in `index.html` gepflegt, siehe "Entstehungsweg" oben),
-keine eigene Farbspalte nötig (siehe oben, Farbe steckt schon in der
-gewählten Frisur).
-Seit 2026-08-03 schreibt das echte Programm auch tatsächlich hinein (siehe
-`appearanceDoneBtn`-Handler oben).
+**Datenbank:** `profiles.skin_tone`/`hair_style` (nullable) — reine
+Schlüssel in den fest im Frontend hinterlegten Katalog (`SKIN_CATALOG`/
+`HAIR_CATALOG`, nur in `index.html` gepflegt), keine eigene Farbspalte
+nötig (Farbe steckt schon in der gewählten Frisur).
 
-**`Design/`-Sandkasten seit 2026-08-03 aufgeräumt:** alle Wegwerf-
-Vorschau-/Entscheidungswerkzeuge aus der Bau-Phase (`gallery.html` +
-`thumbs/` [Asset-Katalog], `concept.html` + `concept/` [Klassen-Outfit-
-Composites], `anim_demo.html` + `anim/` [erster, verworfener CSS-Animations-
-Versuch], `hair_review.html` + `hair_thumbs/` [Frisuren-Farbsichtung],
-`canvas_test.html` [Debug beim Animations-Bug], `creator_catalog.json`,
-sowie die Erzeuger-Skripte `compose_concept.py`/`export_outfit_layers.py`/
-`export_walk_anim.py`/`make_thumbs.py`) sind gelöscht, nachdem ihre
-Ergebnisse ins echte Produkt übernommen waren — sie hatten ihren Zweck
-erfüllt (Entscheidungen treffen, Technik austesten), ihre Ausgaben leben
-jetzt als Code/Assets im Produkt weiter. **Übrig in `Design/` (alle
-gitignored) bleiben bewusst:** die rohen GandalfHardcore-Zips + `extracted/`
-(Quellmaterial, falls später weitere Assets gebraucht werden, z.B. für die
-Schützen-Fernkampfwaffe) sowie die zwei weiterhin aktiv gebrauchten
-Erzeuger-Skripte `export_creator_assets.py` und `export_full_sheets.py`
-(erzeugen die tatsächlich im Produkt verwendeten `img/characters/creator/`-
-und `img/characters/sheets/`-Bilder — bei Bedarf erneut ausführbar, z.B.
-nach Ergänzung neuer Assets).
+**`Design/`-Ordner (gitignored) enthält bewusst nur noch:** die rohen
+GandalfHardcore-Zips + `extracted/` (Quellmaterial für künftige Assets)
+sowie die zwei aktiv gebrauchten Erzeuger-Skripte
+`export_creator_assets.py` und `export_full_sheets.py` (erzeugen die im
+Produkt verwendeten `img/characters/creator/`- und
+`img/characters/sheets/`-Bilder — bei Bedarf erneut ausführbar). Alle
+früheren Wegwerf-Vorschau-/Entscheidungswerkzeuge aus der Bau-Phase
+wurden nach Übernahme ihrer Ergebnisse gelöscht (Liste/Details:
+HISTORY.md).
 
 ## Kanban (Questpfad / Gildenbrett / Feldzug), seit Patch 18
 

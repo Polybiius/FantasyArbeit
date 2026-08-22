@@ -170,3 +170,79 @@ Referenz). Konkrete Funde/Verschiebungen hierher:
   (Einstiegsstufe ~9-10/10, Top-Stufe ~1-2/10), diese erwarteten
   Lebenszeit-Summen wurden zur Gesamt-Zielsumme addiert, dann `levelBase`
   neu gelöst.
+
+**Häppchen 2 (Charakterklassen bis Kanban, ursprünglich CLAUDE.md-Zeile
+510–869), fertig 2026-08-22.** Deutlich mehr Trennarbeit als Häppchen 1
+— besonders "Profil-Onboarding" und "Aussehen-Screen" bestanden zu
+einem großen Teil aus reinen "Entstehungsweg"-Erzählungen.
+
+- **Umbenennung "Hexer" → "Zauberer" (Patch 29, 2026-08-03):** es gibt
+  keine "Hexerin" — die einzige echte weibliche Form wäre "Hexe", und
+  die ist negativ konnotiert. Deshalb komplett auf Zauberer/Zauberin
+  umbenannt, nicht nur der Anzeige-Text, sondern auch der interne
+  Schlüssel (`profiles.character_class`, Item-Keys `hexer_stab`/
+  `hexer_cape` → `zauberer_stab`/`zauberer_cape` samt Bilddateien) —
+  siehe `sql/patch29_zauberer_umbenennung.sql`. Historische Verweise auf
+  den alten Namen in älteren Abschnitten dieses Dokuments (z.B. längst
+  gelöschte Dateien wie `hexer_m.png`) sind bewusst unverändert
+  gelassen, sie beschreiben, wie etwas zum jeweiligen Zeitpunkt hieß.
+- **Verkaufsstatistik-Seite, Status am 2026-08-03:** damals noch ein
+  leerer Seiten-Rahmen, "die eigentlichen Verkaufsstatistiken sind ein
+  separater, noch offener Bauschritt" — **inzwischen überholt** (der
+  Stale-Fund wurde beim Migrieren bemerkt und in CLAUDE.md korrigiert):
+  das Dashboard wurde am selben Tag noch fertig gebaut (KPI-Kacheln mit
+  Fortschrittsringen, Kategorie-Balkendiagramm, Sparklines — siehe
+  CLAUDE.md, Abschnitt "Bewusst aufgeschobene Ideen" → BWS-Verrechnung),
+  die alte "noch offen"-Formulierung stand nur versehentlich seitdem
+  unverändert im Charakterklassen-Abschnitt.
+- **Profil-Onboarding, Entstehungsweg:** die komplette Änderung
+  (Profil-Screen mit echtem Name/Geschlecht/Unternehmen/Charaktername)
+  wurde zuerst in einer separaten, nicht versionierten Datei
+  `dummy-anmeldung.html` (Projekt-Root, lokal, nicht committed)
+  durchgespielt und optisch geprüft, bevor sie ins echte `index.html`
+  übertragen wurde. Grund war NICHT Risiko-Minimierung, sondern
+  Sichtbarkeit: der Nutzer hatte längst ein eigenes Profil und konnte
+  Anmelde-/Charaktererstellungs-Bildschirme im echten Programm gar
+  nicht mehr erreichen, um Änderungen zu begutachten. Dieses Muster
+  lohnt sich gezielt für Bildschirme, die nur einmalig VOR einem
+  bestimmten Zustand erscheinen (Erstanmeldung, Ersteinrichtung) — nicht
+  pauschal für jede riskante Änderung an normal erreichbaren Seiten
+  (die Lehre daraus lebt dauerhaft in Claudes Erinnerung,
+  `feedback_dummy_first_prototyping`, nicht nur hier).
+  `dummy-anmeldung.html` wurde seit 2026-08-03 wieder gelöscht: der
+  Admin-Knopf "🎭 Neu erschaffen" (Commit `0a27220`) schließt seitdem
+  dieselbe Sichtbarkeits-Lücke strukturell und dauerhaft (springt für
+  Admins zurück auf `profileScreen` → `charCreateScreen` →
+  `appearanceScreen`, aktualisiert am Ende das bestehende Profil statt
+  ein neues anzulegen) — der Nutzer kann sich seitdem jede künftige
+  Änderung an diesen drei Screens direkt im echten, laufenden Programm
+  ansehen. **Lehre:** bevor eine neue Dummy-Datei für ein "unerreichbar
+  gewordenes" Onboarding-Bildschirm gebaut wird, erst prüfen, ob ein
+  kleiner, dauerhafter Admin-Debug-Zugang (wie dieser Knopf) die
+  Sichtbarkeits-Lücke nicht direkter und dauerhaft schließt.
+- **Aussehen-Screen, Entstehung der Canvas-Animation:** ursprünglich
+  `<img>`-Ebenen übereinandergelegt, dann (2026-08-03, zweite
+  Überarbeitung) durch ein `<canvas>` ersetzt, das jeden Frame per
+  `drawImage()` aus den Ebenen-Sheets neu zusammensetzt — der Nutzer
+  wollte explizit keine statischen Einzelbilder ("wir wollten ja ein
+  dynamisches Charakterscreen") und dass der Charakter sichtbar auf der
+  Stelle läuft statt (wie bei einem ersten, verworfenen CSS-`steps()`-
+  Versuch) unsauber zu wirken (generelle Lehre dazu lebt in
+  `feedback_dynamic_over_static_rendering`).
+- **`Design/`-Sandkasten, Aufräumen am 2026-08-03:** alle Wegwerf-
+  Vorschau-/Entscheidungswerkzeuge aus der Bau-Phase gelöscht, nachdem
+  ihre Ergebnisse ins echte Produkt übernommen waren — `gallery.html` +
+  `thumbs/` (Asset-Katalog), `concept.html` + `concept/` (Klassen-
+  Outfit-Composites), `anim_demo.html` + `anim/` (erster, verworfener
+  CSS-Animationsversuch), `hair_review.html` + `hair_thumbs/`
+  (Frisuren-Farbsichtung), `canvas_test.html` (Debug beim Animations-
+  Bug), `creator_catalog.json`, sowie die Erzeuger-Skripte
+  `compose_concept.py`/`export_outfit_layers.py`/`export_walk_anim.py`/
+  `make_thumbs.py`. Ebenfalls entfernt: die frühere Zwischenstufe
+  `export_outfit_layers.py` (eng zugeschnittene Basis-Kleidung/
+  Klassenitem-Bilder unter `creator/outfit_*`), mit dem Canvas-Umbau
+  überflüssig geworden, sowie die sechs statischen
+  `img/characters/{hexer,krieger,schuetze}_{m,w}.png` von der ersten
+  Klassenwahl-Bildschirm-Version — beides durch die Canvas-Animation
+  ersetzt. Aktueller Stand von `Design/` (was übrig bleibt/warum): siehe
+  CLAUDE.md.
