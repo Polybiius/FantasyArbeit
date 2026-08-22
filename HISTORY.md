@@ -645,3 +645,85 @@ Aufruf simuliert, ohne echten Login/Playwright-Lauf) — positiver
 Zugriff liefert korrekt Kontakt+Dungeon der Zielperson UND schreibt den
 Audit-Log-Eintrag, Aufruf durch Nicht-Admin wird abgewiesen, leerer
 Grund wird abgewiesen. Testdaten danach vollständig aufgeräumt.
+
+## 2026-08-10: Vertragsnummer, Datei-Upload, Chronik-Sichtbarkeit, Kontakt-Seite
+
+**Häppchen 8 (Vertragsnummer-Feld bis Kontakt-Seite statt Popup,
+ursprünglich CLAUDE.md-Zeile 2076–2349), fertig 2026-08-22.** Der
+Kontakt-Seite-statt-Popup-Umbau ist die aktiv am meisten referenzierte
+Architektur-Entscheidung in diesem Bereich (Vorbild für spätere
+"echte Seite statt Modal"-Entscheidungen, siehe
+`feedback_real_pages_over_modals_for_records`) — bewusst konservativ
+gekürzt, nur Design-Prozess/Verifikation/Bugstorys wandern hierher.
+
+**Datei-Upload, Bugfix Patch 44 (noch am selben Tag):** jeder Upload
+schlug live mit "new row violates row-level security policy" fehl —
+Bugreport direkt nach Ausprobieren ("hab eine Datei hochgeladen.
+einfach verschwunden"). Zwei Ursachen:
+1. Sichtbarkeits-Bug im Frontend: `renderContactFilesTab()` löschte den
+   Status-Text unbedingt, bevor der Tab komplett neu gerendert wurde —
+   jede Fehlermeldung war technisch kurz da, aber nie sichtbar.
+2. Der eigentliche Bug, den diese Korrektur erst aufdeckte — echte
+   Namenskollision in SQL: die Storage-Policies aus Patch 42 benutzten
+   `(storage.foldername(name))[1]`, aber `name` war dort mehrdeutig —
+   `storage.objects` UND das in der EXISTS-Subquery korrelierte
+   `public.contacts` haben BEIDE eine Spalte `name`. Postgres löste
+   `name` auf `contacts.name` (den Kunden-Anzeigenamen) statt auf den
+   Datei-Pfad auf — die Prüfung schlug deshalb für JEDE Datei fehl,
+   unabhängig von Berechtigung. Per direkter SQL-Diagnose bestätigt,
+   Fix: `objects.name` statt unqualifiziertem `name`. Die daraus
+   gezogene generelle Lehre (bei RLS-Policies mit Subquery immer auf
+   Spaltennamen-Kollisionen prüfen) steht kompakt in CLAUDE.md. Per
+   Playwright end-to-end erneut verifiziert.
+
+**Nav-Highlight-Bugfix, noch am selben Tag:** `openContactPage()`
+setzte anders als `showPage()` nie `.nav-btn.active` — beim Neuladen
+direkt auf `#kontakt/<id>` blieb der im HTML hart hinterlegte Default
+("🧙 Charakter") als aktiv markiert stehen, obwohl inhaltlich die
+Kontakt-Seite angezeigt wurde. Fix (aktuelles Verhalten: CLAUDE.md) per
+Playwright verifiziert: kompletter Seiten-Reload direkt auf eine
+`#kontakt/...`-URL markiert exakt einen Button korrekt.
+
+**Chronik-Sichtbarkeit, Frontend-Korrektur:** `renderContactChronikTab()`
+fragte `termine`/`contact_activities` vorher explizit mit
+`.eq('owner_id', profile.id)`/`.eq('user_id', profile.id)` ab — eine im
+Frontend zusätzlich gesetzte Einschränkung, die selbst nach dem RLS-Fix
+weiterhin nur eigene Zeilen geliefert hätte. Beide Filter entfernt.
+**Verifiziert nicht nur mit dem eigenen Admin-Zugang**, sondern mit
+zwei echten Kollegen-Accounts über eine temporäre Gilden-
+Testmitgliedschaft: mit Lesezugriff sah der Kollege alle 25
+`action_log`- und 7 `contact_activities`-Einträge eines echten
+Kontakts korrekt, ohne Mitgliedschaft exakt 0.
+
+**Kontakt-Seite statt Popup, Auslöser:** Nutzer-Frust über ein früher
+genutztes CRM im sozialen Bereich, das Kontakte nicht per Rechtsklick
+in einem neuen Tab öffnen ließ ("richtig schlecht gelöst ... hätte
+viele Arbeitsschritte gespart"). Das bisherige `contactDetailModal`-
+Popup hatte exakt dieses Problem strukturell eingebaut.
+
+**Design-Prozess:** drei Zonen-Layout-Vorschläge (Kompakt / Seitenleiste
+/ Gestapelte Record-Seite) erst als Skizze im Chat, dann auf
+Nutzerwunsch als reine Grau-Wireframes ("wirklich nur die Zonen") per
+Artifact gezeigt. Nutzer wählte "Kompakt" als Grundstruktur, dann in
+einer zweiten Artifact-Runde drei konkrete Ausführungen davon (Kompakt
+/ Kennzahlen-Leiste / Kartenliste) — gewählt wurde **Kennzahlen-Leiste**
+("die Übersicht mit den Kennzahlen find ich cool, auch das mit dem
+Zuletzt kontaktiert!").
+
+**Verifikation:** per Playwright gegen den echten Account — echter `<a
+href="#kontakt/...">` navigiert korrekt, Kennzahlen-Leiste füllt sich,
+Verträge-Zone ohne Tab-Klick sichtbar, Deep-Link per komplettem
+Seiten-Reload liefert denselben Kontakt (der eigentliche Rechtsklick-
+neuer-Tab-Beweis), Kanban-Karten-Link funktioniert ebenfalls. Kein
+horizontales Overflow auf 390px, keine Konsolenfehler.
+
+**Nachbesserung, noch am selben Tag:** die neue Seite stand beim ersten
+Wurf an der alten Modal-Position im HTML — technisch ein `.page`-
+Element, aber strukturell außerhalb des Sidebar-Layouts. Ergebnis: die
+Kontaktkarte rutschte auf Desktop unter die komplette Navigationsleiste
+statt daneben zu sitzen ("Anordnung gerade noch grauenhaft", Nutzer-
+Feedback nach dem ersten Screenshot). Fix: den ganzen Block innerhalb
+von `.content` platziert, direkt neben den anderen `.page`-Geschwistern.
+Die daraus gezogene Lehre (eine neue `.page` muss strukturell im
+selben Container wie bestehende Seiten stehen, sonst greift das
+Sidebar-Layout nicht) steht kompakt in CLAUDE.md.

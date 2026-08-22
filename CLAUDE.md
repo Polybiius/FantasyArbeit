@@ -2073,28 +2073,19 @@ Verifikations-Verlauf: HISTORY.md.
 **Damit ist das gesamte Gilden-Sichtbarkeits-Projekt (Phase 1+2+3)
 fertig**, kein bekannter offener Punkt mehr in diesem Strang.
 
-## Vertragsnummer-Feld an `sales` (Patch 41, 2026-08-10)
+## Vertragsnummer-Feld an `sales`
 
-Migration `supabase/migrations/20260810184939_vertragsnummer.sql`,
-**live seit 2026-08-10** (nach Go gepusht). Löst die am 2026-07-31
-angekündigte B2B-Vorkehrung ein: nullable `sales.vertragsnummer` (text),
-pro Verkaufszeile statt pro Abschluss — ein Abschluss kann mehrere
-Produkte/Zeilen erzeugen (`recordWonSalesLoop()`), jede Police hat
-üblicherweise ihre eigene Nummer. **Frontend seit demselben Tag
-angebunden** (im Zuge des Kontakt-Seiten-Umbaus, siehe eigener Abschnitt
-unten): optionales Textfeld `saleEntryVertragsnummer` im
-Verkaufs-Popup, Anzeige direkt neben dem Produktnamen in der
-Verträge-Zone der Kontakt-Seite (`renderContactSalesTab()`).
+Nullable `sales.vertragsnummer` (text), pro Verkaufszeile statt pro
+Abschluss — ein Abschluss kann mehrere Produkte/Zeilen erzeugen
+(`recordWonSalesLoop()`), jede Police hat üblicherweise ihre eigene
+Nummer. Optionales Textfeld `saleEntryVertragsnummer` im Verkaufs-Popup,
+Anzeige direkt neben dem Produktnamen in der Verträge-Zone der
+Kontakt-Seite (`renderContactSalesTab()`).
 
-## Datei-Upload bei Kontakten (Patch 42, 2026-08-10)
+## Datei-Upload bei Kontakten
 
-Migration `supabase/migrations/20260810185923_contact_files.sql` +
-Frontend in `index.html`, **live seit 2026-08-10** (nach Go gepusht).
-
-**Kurz durchgesprochen, dann gebaut** (kein separates SQL-Vorab-Review,
-siehe Kernstruktur-Regel unten): Reiter "Dateien" am Kontakt
-(`renderContactFilesTab()`), gleiches `.view-switch`-Tab-Muster wie
-Übersicht/Chronik/Tagebucheintrag.
+Reiter "Dateien" am Kontakt (`renderContactFilesTab()`), gleiches
+`.view-switch`-Tab-Muster wie Übersicht/Chronik/Tagebucheintrag.
 
 - **Rechte:** kein drittes Freigabe-Level erfunden — nutzt exakt das
   bestehende Gilden-Freigabepaar für Kontakte
@@ -2130,80 +2121,37 @@ siehe Kernstruktur-Regel unten): Reiter "Dateien" am Kontakt
   Gilden-Schreibrechte am Kontakt beheben (betrifft dann mehrere Stellen
   auf einmal, nicht nur Dateien).
 
-**Bugfix, noch am selben Tag (Patch 44, `supabase/migrations/
-20260810194843_fix_contact_files_storage_rls.sql`):** jeder Upload schlug
-live mit "new row violates row-level security policy" fehl — Bugreport
-direkt nach Ausprobieren ("hab eine Datei hochgeladen. einfach
-verschwunden"). Zwei Ursachen, beide behoben:
-1. **Sichtbarkeits-Bug im Frontend:** `renderContactFilesTab()` löschte
-   `cdFileStatus.textContent` unbedingt, bevor der Tab komplett neu
-   gerendert wurde — dadurch war JEDE Fehlermeldung (und auch der letzte
-   Erfolgs-Status) technisch kurz da, aber nie sichtbar, das Feld wurde
-   sofort wieder leergemacht und dann ohnehin durch `wrap.innerHTML`
-   ersetzt. Fix: Fehlermeldung wird nach dem Neuzeichnen auf das frische
-   `cdFileStatus`-Element erneut gesetzt, statt sie vorher zu löschen.
-2. **Der eigentliche Bug, den diese Sichtbarkeits-Korrektur erst
-   aufgedeckt hat — echte Namenskollision in SQL:** die drei
-   Storage-Policies aus Patch 42 (`contact_files_storage_select/insert/
-   delete`) benutzten `(storage.foldername(name))[1]`, aber `name` ist
-   dort mehrdeutig — `storage.objects` UND das in der EXISTS-Subquery
-   korrelierte `public.contacts` haben BEIDE eine Spalte `name`. Postgres
-   löste `name` auf das näherliegende `contacts.name` auf (den
-   Kunden-Anzeigenamen, z.B. "Jrui Laev") statt auf den Datei-Pfad —
-   `foldername()` eines Namens ohne "/" ergibt nie die erwartete
-   Kontakt-ID, die Prüfung schlug deshalb für JEDE Datei fehl, unabhängig
-   von Berechtigung. Per direkter SQL-Diagnose (`supabase db query
-   --linked` + `set_config`) bestätigt: dieselbe Logik mit einem
-   Literal-String statt der echten Spalte ergab korrekt `true` — die
-   Berechtigungslogik selbst (`guild_contact_permission()` etc.) war nie
-   das Problem. Fix: `objects.name` statt `name` — der bloße Tabellenname
-   dient als eindeutige Korrelationsvariable der eigenen Zeile innerhalb
-   einer RLS-Policy, unabhängig davon, was die Subquery sonst im FROM hat.
-   **Lehre fürs nächste Mal:** bei RLS-Policies mit einer Subquery auf
-   eine andere Tabelle immer prüfen, ob Spaltennamen kollidieren
-   (`name`/`id`/`status` sind in diesem Projekt an mehreren Tabellen
-   vergeben) — im Zweifel die eigene Tabelle in der Policy explizit
-   qualifizieren, nicht auf unqualifizierte Referenzen verlassen.
+**RLS-Lehre aus einem echten Bugfix** (Debugging-Verlauf: HISTORY.md):
+bei RLS-Policies mit einer Subquery auf eine andere Tabelle immer
+prüfen, ob Spaltennamen kollidieren (`name`/`id`/`status` sind in
+diesem Projekt an mehreren Tabellen vergeben) — im Zweifel die eigene
+Tabelle in der Policy explizit qualifizieren (`objects.name` statt
+unqualifiziertem `name`), nicht auf unqualifizierte Referenzen
+verlassen. Der bloße Tabellenname dient als eindeutige
+Korrelationsvariable der eigenen Zeile innerhalb einer RLS-Policy,
+unabhängig davon, was die Subquery sonst im FROM hat.
 
-Per Playwright end-to-end erneut verifiziert (echter Upload landet in der
-Liste, Löschen räumt Storage + Tabellenzeile wieder auf, keine
-Konsolenfehler).
+**Datei-Vorschau statt nur Download:** Klick auf den **Dateinamen**
+(`.cd-file-name`) öffnet `filePreviewModal` mit PDF im `<iframe>` bzw.
+Bild im `<img>` — alle vier erlaubten Typen stellt der Browser nativ
+inline dar. **Bewusst kein dritter Button** ("Ansehen") — Nutzer wollte
+"Herunterladen"/"Löschen" unverändert lassen. `createSignedUrl(...,
+{download: f.filename})` erzwingt den echten Dateinamen beim Speichern
+statt des internen UUID-Pfads.
 
-**Direkter Folgeauftrag, noch am selben Tag: Datei-Vorschau statt nur
-Download.** Klick auf den **Dateinamen** (jetzt ein Link, `.cd-file-name`)
-öffnet `filePreviewModal` mit PDF im `<iframe>` bzw. Bild im `<img>` —
-alle vier erlaubten Typen (PDF/JPEG/PNG/WEBP) stellt der Browser nativ
-inline dar, kein Viewer-Skript nötig. **Bewusst kein dritter Button**
-("Ansehen") — Nutzer wollte "Herunterladen"/"Löschen" unverändert lassen,
-erste Fassung mit extra Button wurde direkt wieder verworfen. Download
-bekam dabei nebenbei eine Verbesserung: `createSignedUrl(..., {download:
-f.filename})` erzwingt jetzt den echten Dateinamen beim Speichern statt
-des internen UUID-Pfads.
+**Nav-Highlight bei Direktaufruf/Reload einer Kontakt-Seite:**
+`openContactPage()` markiert wie `showPage('kontakte')` den Kontakte-
+Button (`data-page="kontakte"`) als aktiv — sonst blieb beim Neuladen
+direkt auf `#kontakt/<id>` der im HTML hart hinterlegte Default
+("🧙 Charakter") aktiv markiert, obwohl inhaltlich die Kontakt-Seite
+angezeigt wurde (Bugfix-Verlauf: HISTORY.md).
 
-**Bugfix, noch am selben Tag: Nav-Highlight bei Direktaufruf/Reload
-einer Kontakt-Seite.** `openContactPage()` setzte anders als `showPage()`
-nie `.nav-btn.active` — beim Neuladen direkt auf `#kontakt/<id>` (z.B.
-weil der Nutzer während eines laufenden Deploys neu lädt) blieb deshalb
-der im HTML hart hinterlegte Default ("🧙 Charakter") als aktiv markiert
-stehen, obwohl inhaltlich die Kontakt-Seite angezeigt wurde — Navigation
-und Seiteninhalt liefen auseinander. Fix: `openContactPage()` markiert
-jetzt genauso wie `showPage('kontakte')` den Kontakte-Button
-(`data-page="kontakte"`) als aktiv — automatisch mit dem richtigen
-Klassenlabel, da das nur die Textbeschriftung ändert
-(Register/Arkanes Register/Kriegsarchiv/Jägerchronik), nicht den
-`data-page`-Wert selbst. Per Playwright verifiziert: kompletter
-Seiten-Reload direkt auf eine `#kontakt/...`-URL markiert exakt einen
-Button korrekt, kein Nachziehen mehr nötig.
+## Chronik-Sichtbarkeit folgt der Kontakt-Freigabe
 
-## Chronik-Sichtbarkeit folgt der Kontakt-Freigabe (Patch 45, 2026-08-10)
+Nutzerentscheidung, klar und ohne Umweg: "keine eigene Einstellung.
+automatisch. wenn man die Kontakte sehen kann, gehört die Chronik dazu."
 
-Löst die oben mehrfach als offen dokumentierte Lücke — Nutzerentscheidung,
-klar und ohne Umweg: "keine eigene Einstellung. automatisch. wenn man
-die Kontakte sehen kann, gehört die Chronik dazu." Migration
-`supabase/migrations/20260810201954_chronik_gilden_sichtbarkeit.sql`,
-live.
-
-**Vier Tabellen betroffen**, keine davon kannte bis dahin die
+**Vier Tabellen betroffen**, keine davon kannte vorher die
 Gilden-Freigabe:
 - `action_log`/`sales` hatten schon eine "geteilter Kontakt"-Sonderregel,
   aber nur auf Basis der alten organisationsweiten
@@ -2233,34 +2181,17 @@ kam schon vorher ohne Eigentümer-Filter aus `loadContactsBundle()`.
 **„Zuletzt kontaktiert (von dir)" bleibt unverändert** — explizit als
 "von dir" gekennzeichnet, nicht Teil dieser Änderung.
 
-**Verifiziert nicht nur mit dem eigenen Admin-Zugang** (der ohnehin
-alles sieht), sondern mit zwei echten Kollegen-Accounts über eine
-temporäre Gilden-Testmitgliedschaft (`supabase db query --linked` +
-`set_config`, danach vollständig entfernt): mit Lesezugriff sah der
-Kollege alle 25 `action_log`- und 7 `contact_activities`-Einträge eines
-echten Kontakts korrekt, ohne Mitgliedschaft exakt 0 — inklusive des
-Kontakts selbst. `guild_contact_permission(..., true)` (Schreibrecht)
-lieferte für den reinen Lese-Zugriff korrekt `false`.
+Verifikations-Verlauf (echte Kollegen-Accounts, nicht nur Admin):
+HISTORY.md.
 
-## Kontakt-Seite statt Popup (Patch 43, 2026-08-10)
+## Kontakt-Seite statt Popup
 
-**Auslöser:** Nutzer-Frust über ein früher genutztes CRM im sozialen
-Bereich, das Kontakte nicht per Rechtsklick in einem neuen Tab öffnen
-ließ ("richtig schlecht gelöst ... hätte viele Arbeitsschritte gespart").
-Das bisherige `contactDetailModal`-Popup hatte exakt dieses Problem
-strukturell eingebaut — keine echte URL, nur ein per JS ein-/ausgeblendetes
-Overlay. Komplett ersetzt durch eine echte Unterseite mit eigenem
-Hash-Pfad.
-
-**Design-Prozess:** drei Zonen-Layout-Vorschläge (Kompakt / Seitenleiste /
-Gestapelte Record-Seite) erst als Skizze im Chat, dann auf Nutzerwunsch
-als reine Grau-Wireframes (keine Farben, "wirklich nur die Zonen") per
-Artifact gezeigt. Nutzer wählte "Kompakt" (Kundendaten oben, Verträge
-immer sichtbar in der Mitte, Reiter darunter) als Grundstruktur, dann in
-einer zweiten Artifact-Runde drei konkrete Ausführungen davon (Kompakt /
-Kennzahlen-Leiste / Kartenliste) — gewählt wurde **Kennzahlen-Leiste**
-("die Übersicht mit den Kennzahlen find ich cool, auch das mit dem
-Zuletzt kontaktiert!").
+**Prinzip:** Kontakte brauchen echte URLs (Rechtsklick/neuer Tab muss
+funktionieren) — kein JS-Popup mehr (`contactDetailModal` entfernt),
+sondern eine echte Unterseite mit eigenem Hash-Pfad. Generelles Prinzip
+dahinter lebt dauerhaft in Claudes Erinnerung,
+`feedback_real_pages_over_modals_for_records` (Auslöser/Design-Prozess:
+HISTORY.md).
 
 **Routing:** zweites Hash-Format neben den einfachen Seitennamen
 (`VALID_PAGES`) — `#kontakt/<uuid>`, ausgewertet in `routeToHash()`
@@ -2320,32 +2251,13 @@ Datei-Upload-Punkt oben, jetzt an einer Stelle sichtbar für ALLE
 Aktions-Buttons):** `canEdit` berücksichtigt weiterhin kein
 `guild_contact_permission('write')`.
 
-Per Playwright gegen den echten Account verifiziert: echter `<a
-href="#kontakt/...">` mit Ziel-UUID, Klick navigiert korrekt (Hash ändert
-sich, alte Seite verschwindet, neue erscheint), Kennzahlen-Leiste füllt
-sich, Verträge-Zone ohne Tab-Klick sichtbar, alter
-Verkaufshistorie-Reiter weg, Dateien-Reiter funktioniert, **Deep-Link per
-komplettem Seiten-Reload liefert denselben Kontakt** (das ist der
-eigentliche Rechtsklick-neuer-Tab-Beweis), Zurück-Button führt korrekt
-zu Kontakte, Kanban-Karten-Link ebenfalls ein echter Link und
-funktioniert. Kein horizontales Overflow auf 390px Mobile-Breite, keine
-Konsolen-/Seitenfehler in beiden Durchläufen.
+Verifikations-Verlauf: HISTORY.md.
 
-**Nachbesserung, noch am selben Tag:** die neue Seite stand beim ersten
-Wurf an der alten Modal-Position im HTML (nach `</div></div></div>` des
-`.content`/Sidebar-Wrappers, zwischen den übrigen `.loc-modal`-Popups) —
-technisch ein `.page`-Element, aber strukturell außerhalb des
-Sidebar-Layouts. Ergebnis: die Kontaktkarte rutschte auf Desktop unter
-die komplette Navigationsleiste statt daneben zu sitzen ("Anordnung
-gerade noch grauenhaft", Nutzer-Feedback nach dem ersten Screenshot).
-Fix: den ganzen `#page-kontakt-detail`-Block innerhalb von `.content`
-platziert, direkt neben den anderen `.page`-Geschwistern (nach
-`#page-notfallzugriff`) — sitzt seitdem korrekt neben der Sidebar, wie
-jede andere Seite auch. **Lehre:** eine neue `.page` muss strukturell
-(nicht nur per Klassenname) im selben Container wie die bestehenden
-Seiten stehen, sonst greift das Sidebar-Layout nicht — beim nächsten Mal
-vor dem ersten Screenshot direkt gegenprüfen, nicht erst nach
-Nutzer-Beschwerde.
+**Lehre, aus einer echten Layout-Nachbesserung:** eine neue `.page` muss
+strukturell (nicht nur per Klassenname) im selben Container wie die
+bestehenden Seiten stehen (`.content`-Wrapper), sonst greift das
+Sidebar-Layout nicht — vor dem ersten Screenshot direkt gegenprüfen,
+nicht erst nach Nutzer-Beschwerde (Bug-Verlauf: HISTORY.md).
 
 ## Serverseitige Schreib-Härtung: user_inventory / action_log / sales / locations (2026-08-15 abends)
 
