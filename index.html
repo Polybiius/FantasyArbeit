@@ -2107,6 +2107,31 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     }
   }
 
+  // Verhindert doppelte Schreibvorgänge durch schnellen Doppelklick: umhüllt
+  // einen Klick-Handler so, dass der Button synchron VOR dem Ausführen
+  // deaktiviert und danach garantiert wieder aktiviert wird (auch bei
+  // Fehler/Exception, dank finally) -- ersetzt das bisher an über 20
+  // Stellen im Projekt von Hand wiederholte "btn.disabled=true; ...await...;
+  // btn.disabled=false"-Muster (siehe CLAUDE.md, systematischer
+  // Bugfix-Durchgang 2026-08-21/22 -- dieselbe Bug-Klasse tauchte in
+  // praktisch jedem Häppchen erneut auf). Nimmt bewusst die Button-ID statt
+  // eines Element-Verweises entgegen (bei jedem Klick frisch aufgelöst),
+  // damit derselbe Aufruf sowohl bei addEventListener('click', ...) als
+  // auch bei btn.onclick=... funktioniert (z.B. bei pro Modal-Öffnung neu
+  // zugewiesenen Handlern), ohne vorher eine eigene lokale Variable fürs
+  // Element anzulegen. Verbindlich für jeden NEUEN Button, der eine
+  // Datenbank-Schreiboperation auslöst -- bestehende, bereits einzeln
+  // gefixte Stellen werden nicht automatisch mitgezogen, siehe CLAUDE.md.
+  function withClickGuard(btnId, handler){
+    return async (e)=>{
+      const btn = document.getElementById(btnId);
+      if(!btn || btn.disabled) return;
+      btn.disabled = true;
+      try{ await handler(e); }
+      finally{ btn.disabled = false; }
+    };
+  }
+
   // ---- Zeit / Zeitzone (kommt aus der Organisation, Vorkehrung für Skalierung) ----
   function localPartsInTZ(d, tz){
     const fmt = new Intl.DateTimeFormat('en-CA', {timeZone:tz, year:'numeric', month:'2-digit', day:'2-digit'});
@@ -7123,6 +7148,38 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   wireKanalSwitch('termineEntryKanalSwitch', v=>termineEntryKanal=v);
 
   function escHtml(s){ return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+
+  // Escaping-sicheres Template-Literal: jeder interpolierte Wert wird
+  // automatisch escHtml()-behandelt, außer er ist bereits als sicheres HTML
+  // markiert -- entweder über raw(str) (für bewusst vertraute, fest im Code
+  // stehende Fragmente wie style-Attribute/Emoji) oder als Ergebnis eines
+  // verschachtelten html`...`-Aufrufs. Arrays werden Element für Element
+  // behandelt und verkettet, damit sich das verbreitete
+  // ${liste.map(x=>html`...`)}-Muster direkt interpolieren lässt --
+  // WICHTIG: die einzelnen Elemente NICHT vorher selbst per .join('') zu
+  // einem rohen String verketten und DEN dann interpolieren, sonst greift
+  // die Auto-Escaping-Prüfung nicht mehr richtig (ein bereits verketteter
+  // String wird wie normaler, ungeprüfter Text behandelt) -- das Array
+  // direkt interpolieren, html() übernimmt das Verketten selbst.
+  // Ersetzt rohe Template-Literals + innerHTML für NEUEN Rendering-Code,
+  // der Datenbank-Text einfügt (siehe CLAUDE.md, systematischer
+  // Bugfix-Durchgang 2026-08-21/22 -- escHtml() wurde bei neuem
+  // Rendering-Code wiederholt an einzelnen Stellen vergessen, dieser
+  // Helfer macht das strukturell statt per Erinnerung sicher). Bestehende
+  // Stellen werden nicht automatisch mitgezogen, siehe CLAUDE.md.
+  class SafeHtml { constructor(s){ this.s = s; } toString(){ return this.s; } }
+  function raw(s){ return new SafeHtml(s); }
+  function escVal(v){
+    if(v===null || v===undefined) return '';
+    if(v instanceof SafeHtml) return v.s;
+    if(Array.isArray(v)) return v.map(escVal).join('');
+    return escHtml(String(v));
+  }
+  function html(strings, ...values){
+    let out = strings[0];
+    for(let i=0;i<values.length;i++) out += escVal(values[i]) + strings[i+1];
+    return new SafeHtml(out);
+  }
   function mondayOfWeek(d){
     const x = new Date(d.getFullYear(), d.getMonth(), d.getDate());
     const wd = (x.getDay()+6)%7; // Montag=0
@@ -8897,18 +8954,18 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       if(!groups[g]) groups[g]=[];
       groups[g].push(p);
     });
-    listEl.innerHTML = Object.keys(groups).sort().map(g=>`
+    listEl.innerHTML = html`${Object.keys(groups).sort().map(g=>html`
       <div style="margin-bottom:14px;">
-        <span class="cdl" style="display:block;margin-bottom:6px;">${escHtml(g)}</span>
+        <span class="cdl" style="display:block;margin-bottom:6px;">${g}</span>
         <div class="dungeon-tile-grid">
-          ${groups[g].map(p=>`
-            <div class="dungeon-tile" data-prodtile="${p.id}" style="${p.active ? '' : 'opacity:0.5;'}">
-              <span class="dt-icon">${p.active ? '📦' : '🚫'}</span>
-              <span class="dt-name">${escHtml(p.name)}</span>
+          ${groups[g].map(p=>html`
+            <div class="dungeon-tile" data-prodtile="${p.id}" style="${raw(p.active ? '' : 'opacity:0.5;')}">
+              <span class="dt-icon">${raw(p.active ? '📦' : '🚫')}</span>
+              <span class="dt-name">${p.name}</span>
               <span class="dt-count">${PRODUCT_ART_CONFIG[p.art]?.label || p.art || '?'}</span>
-            </div>`).join('')}
+            </div>`)}
         </div>
-      </div>`).join('');
+      </div>`)}`;
     listEl.querySelectorAll('[data-prodtile]').forEach(tile=>{
       tile.addEventListener('click', ()=> openProductDetailModal(productById(tile.dataset.prodtile)));
     });
@@ -8916,7 +8973,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   function openProductDetailModal(p){
     const modalEl = document.getElementById('productDetailModal');
-    const saveBtn = document.getElementById('productDetailSaveBtn');
     document.getElementById('productDetailName').textContent = p.name;
     const artCfg = PRODUCT_ART_CONFIG[p.art];
     document.getElementById('productDetailArtInfo').textContent = artCfg
@@ -8928,29 +8984,25 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('productDetailRecontactUnitInput').value = p.recontact_unit || 'monate';
     statusEl.textContent = '';
     toggleBtn.textContent = p.active ? 'Deaktivieren' : 'Reaktivieren';
-    saveBtn.disabled = false;
-    toggleBtn.disabled = false;
 
-    saveBtn.onclick = async ()=>{
+    document.getElementById('productDetailSaveBtn').onclick = withClickGuard('productDetailSaveBtn', async ()=>{
       const recontactAmountVal = document.getElementById('productDetailRecontactAmountInput').value;
-      saveBtn.disabled = true;
       const { error } = await sb.from('products').update({
         recontact_amount: recontactAmountVal ? parseInt(recontactAmountVal, 10) : null,
         recontact_unit: recontactAmountVal ? document.getElementById('productDetailRecontactUnitInput').value : null
       }).eq('id', p.id);
-      if(error){ saveBtn.disabled = false; reportError('Produkt-Einstellungen speichern', error, statusEl); return; }
+      if(error){ reportError('Produkt-Einstellungen speichern', error, statusEl); return; }
       await loadProducts();
       await renderProductsPage();
       modalEl.style.display = 'none';
-    };
-    toggleBtn.onclick = async ()=>{
-      toggleBtn.disabled = true;
+    });
+    toggleBtn.onclick = withClickGuard('productDetailToggleBtn', async ()=>{
       const { error } = await sb.from('products').update({ active: !p.active }).eq('id', p.id);
-      if(error){ toggleBtn.disabled = false; reportError('Produkt-Status ändern', error, statusEl); return; }
+      if(error){ reportError('Produkt-Status ändern', error, statusEl); return; }
       await loadProducts();
       await renderProductsPage();
       modalEl.style.display = 'none';
-    };
+    });
     modalEl.style.display = 'flex';
   }
   document.getElementById('productDetailClose').addEventListener('click', ()=>{
@@ -8977,20 +9029,17 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     });
   });
 
-  document.getElementById('prodAddBtn').addEventListener('click', async ()=>{
-    const btn = document.getElementById('prodAddBtn');
+  document.getElementById('prodAddBtn').addEventListener('click', withClickGuard('prodAddBtn', async ()=>{
     const name = document.getElementById('prodNameInput').value.trim();
     const statusEl = document.getElementById('prodAddStatus');
     const artCfg = PRODUCT_ART_CONFIG[selectedProdArt];
     const subcategory = document.getElementById('prodSubcategoryInput').value.trim();
     if(!name || !artCfg){ statusEl.textContent = 'Bitte mindestens Name und Art eingeben.'; return; }
-    btn.disabled = true;
     const { error } = await sb.from('products').insert({
       org_id: profile.org_id, key: slugifyProductKey(name) || name, name,
       art: selectedProdArt, category: artCfg.category, subcategory: subcategory || null,
       provision_mode: artCfg.provision_mode, provision_faktor: artCfg.provision_faktor, bwp_faktor: artCfg.bwp_faktor
     });
-    btn.disabled = false;
     if(error){ reportError('Produkt anlegen', error, statusEl); return; }
     document.getElementById('prodNameInput').value = '';
     document.getElementById('prodSubcategoryInput').value = '';
@@ -8999,7 +9048,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     statusEl.textContent = '';
     await loadProducts();
     await renderProductsPage();
-  });
+  }));
 
   // ---- Einstellungen: registry-getriebenes Fundament (seit 2026-08-07) ----
   // Jede Einstellung ist EIN Eintrag hier statt Handarbeit an vier Stellen
@@ -9116,18 +9165,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     sel.innerHTML = [`<option value="">– Standard der Organisation (${escHtml(orgTz)}) –</option>`]
       .concat(allTimezones().map(z=>`<option value="${escHtml(z)}">${escHtml(z)}</option>`)).join('');
     sel.value = profile.timezone || '';
-    document.getElementById('tzSaveBtn').addEventListener('click', async ()=>{
-      const btn = document.getElementById('tzSaveBtn');
+    document.getElementById('tzSaveBtn').addEventListener('click', withClickGuard('tzSaveBtn', async ()=>{
       const statusEl = document.getElementById('tzStatus');
       const val = sel.value || null;
-      btn.disabled = true;
       const { error } = await sb.from('profiles').update({ timezone: val }).eq('id', profile.id);
-      btn.disabled = false;
       if(error){ reportError('Zeitzone speichern', error, statusEl); return; }
       profile.timezone = val;
       statusEl.textContent = 'Gespeichert.';
       renderCalTasksNow();
-    });
+    }));
   }
 
   function arbeitszeitenCustomHtml(){
@@ -9334,8 +9380,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         endeEl.value = ende;
       });
     });
-    document.getElementById('azSaveBtn').addEventListener('click', async ()=>{
-      const btn = document.getElementById('azSaveBtn');
+    document.getElementById('azSaveBtn').addEventListener('click', withClickGuard('azSaveBtn', async ()=>{
       const statusEl = document.getElementById('azStatus');
       const obj = {};
       WEEKDAY_KEYS.forEach(k=>{
@@ -9344,14 +9389,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         const ende = document.getElementById('azEnde_'+k).value;
         if(start && ende) obj[k] = {start, end:ende};
       });
-      btn.disabled = true;
       const { error } = await sb.from('profiles').update({ arbeitszeiten: obj }).eq('id', profile.id);
-      btn.disabled = false;
       if(error){ reportError('Arbeitszeiten speichern', error, statusEl); return; }
       profile.arbeitszeiten = obj;
       statusEl.textContent = 'Gespeichert.';
       renderCalTasksNow();
-    });
+    }));
   }
 
   const WEEKDAY_LABELS_FULL = ['Montag','Dienstag','Mittwoch','Donnerstag','Freitag','Samstag','Sonntag'];
@@ -9611,16 +9654,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     renderEmergencyAccessPage();
   });
 
-  document.getElementById('eaRequestBtn').addEventListener('click', async ()=>{
-    const btn = document.getElementById('eaRequestBtn');
+  document.getElementById('eaRequestBtn').addEventListener('click', withClickGuard('eaRequestBtn', async ()=>{
     const reason = document.getElementById('eaReasonInput').value.trim();
     const statusEl = document.getElementById('eaRequestStatus');
     if(!reason){ statusEl.textContent = 'Bitte einen Grund angeben.'; return; }
     if(!eaSelectedMemberId){ statusEl.textContent = 'Bitte zuerst eine Person auswählen.'; return; }
     statusEl.textContent = 'Lädt …';
-    btn.disabled = true;
     const { data, error } = await sb.rpc('admin_emergency_access', { p_target_user: eaSelectedMemberId, p_reason: reason });
-    btn.disabled = false;
     if(error){ reportError('Notfallzugriff auslösen', error, statusEl); return; }
     statusEl.textContent = 'Zugriff protokolliert.';
     const contacts = (data && data.contacts) || [];
@@ -9643,7 +9683,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         </div>`).join('')}
     `;
     renderEmergencyAuditLog();
-  });
+  }));
 
   async function renderEmergencyAuditLog(){
     const listEl = document.getElementById('eaAuditLogList');

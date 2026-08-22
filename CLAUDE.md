@@ -4658,6 +4658,73 @@ Gesamtbilanz: 57 echte Bugs gefunden und behoben, alle SQL-Fixes live,
 kein offenes Häppchen mehr. Details siehe Claudes Erinnerung
 `project_full_bugfix_sweep`.
 
+**Fazit-Gespräch direkt im Anschluss, 2026-08-22: die 57 Bugs sind kein
+Zufall, sondern fallen fast alle in eine Handvoll wiederkehrender
+Klassen** — mit Abstand am häufigsten fehlender Doppelklick-Schutz bei
+Buttons, die eine Datenbank-Schreiboperation auslösen (~20+
+Fundstellen über praktisch jedes Häppchen verteilt), dazu vergessenes
+`escHtml()` bei neuem Rendering-Code (Stored-XSS, ~7 Fundstellen NACH
+der bereits großen Sicherheits-Sweep vom 2026-08-07), Async-Race-
+Conditions ohne Staleness-Guard (~4 Fundstellen) und Listener-Stacking
+bei wiederholtem Init (~5 Fundstellen, nur über den Admin-Debug-Knopf
+"Neu erschaffen" erreichbar, geringes Praxisrisiko). Grund: das
+"Rezept" für einen neuen Button/eine neue Render-Funktion hatte den
+Schutz nie strukturell eingebaut, sondern verließ sich jedes Mal aufs
+Erinnern — bei den ersten beiden Klassen weit über die im Projekt
+selbst verwendete Rule-of-Three-Schwelle hinaus wiederholt.
+
+**Zwei neue, verbindliche Helfer, direkt gebaut statt nur dokumentiert
+("mach"):**
+- **`withClickGuard(btnId, handler)`** (neben `reportError`/
+  `logSilentError`, Zeile ~2110): umhüllt einen Klick-Handler so, dass
+  der Button synchron vor dem Ausführen deaktiviert und danach
+  garantiert (auch bei Exception, `finally`) wieder aktiviert wird.
+  Nimmt bewusst die Button-ID statt eines Element-Verweises entgegen
+  (bei jedem Klick frisch aufgelöst), damit derselbe Aufruf sowohl bei
+  `addEventListener('click', ...)` als auch bei `btn.onclick=...`
+  funktioniert (z.B. bei pro Modal-Öffnung neu zugewiesenen Handlern).
+- **`html`/`raw()`** (neben `escHtml()`, Zeile ~7150): escaping-
+  sicheres Tagged-Template — jeder interpolierte Wert wird automatisch
+  `escHtml()`-behandelt, außer er ist über `raw(str)` (bewusst
+  vertraute, fest im Code stehende Fragmente wie Emoji/style-Attribute)
+  oder als Ergebnis eines verschachtelten `html\`...\``-Aufrufs bereits
+  als sicher markiert. Arrays (z.B. `${liste.map(x=>html\`...\`)}`)
+  werden Element für Element behandelt und korrekt verkettet — **wichtig:
+  die einzelnen Elemente nicht selbst per `.join('')` zu einem rohen
+  String verketten und DEN interpolieren**, sonst greift die
+  Auto-Escaping-Prüfung nicht mehr richtig.
+
+**Live angewendet statt nur deklariert** (damit die Helfer sofort
+echten, getesteten Code betreffen statt unbenutzt zu bleiben — sonst
+hätte ESLint sie ohnehin als unused geflaggt): alle 6 Doppelklick-Fixes
+aus Häppchen 12 (`prodAddBtn`, `productDetailSaveBtn`/`toggleBtn`,
+`tzSaveBtn`, `azSaveBtn`, `eaRequestBtn`) auf `withClickGuard`
+umgestellt, `renderProductsPage()` auf den `html`-Tag umgestellt (löst
+dieselbe XSS-Stelle bei `products.subcategory`/`p.name` jetzt
+strukturell statt durch manuelles `escHtml()`). Per Playwright
+verifiziert: dreifacher simultaner Klick auf `prodAddBtn` legt weiterhin
+nur 1 Produkt an, XSS-Payload bleibt escaped, `raw()` liefert korrekt
+das leere/gefüllte `style`-Attribut ohne Doppel-Escaping, ein
+synthetischer Doppelklick auf `productDetailToggleBtn` (per
+`dispatchEvent`, da Playwrights `page.click()` bei einem sich
+schließenden Modal in einen eigenen Retry-Deadlock läuft) kippt den
+Status nur einmal (per direkter DB-Abfrage bestätigt: `false→true`,
+kein Zurückspringen), Einstellungen-Zeitzone/Arbeitszeiten speichern
+weiterhin normal, 0 Konsolenfehler. Testprodukt danach vollständig
+gelöscht, Zeitzone auf Ausgangszustand zurückgesetzt.
+
+**Verbindliche Regel ab sofort:** jeder NEUE Button, der eine
+Datenbank-Schreiboperation auslöst, wird mit `withClickGuard()`
+verdrahtet; jeder NEUE Rendering-Code, der Datenbank-Text per
+`innerHTML` einfügt, nutzt den `html`-Tag statt roher Template-Literale
++ einzelner `escHtml()`-Aufrufe. **Bestehende, bereits einzeln gefixte
+Stellen werden NICHT automatisch mitgezogen** — ein Massenumbau der
+~100+ bestehenden `innerHTML`-Stellen bzw. der übrigen ~15 bereits
+korrekt manuell gefixten Doppelklick-Stellen wäre ein eigenes, riskantes
+Vorhaben ohne zusätzlichen Bugfix-Nutzen (die sind ja schon korrekt) —
+bei Gelegenheit (nächster Umbau in der Nähe einer bestehenden Stelle)
+kann sie mitgezogen werden, kein eigener Rückbau-Häppchen dafür.
+
 ## Zeitzonen-Inkonsistenz `dateKeyLocal()` vs. `todayKey()`, vollständig behoben (2026-08-21)
 
 Löst den seit dem Code-Review-Durchgang vom 2026-08-20 bekannten, damals
