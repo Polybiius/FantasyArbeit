@@ -4182,9 +4182,9 @@ Netzwerk-Rundlaufzeiten bei jedem Login.
    dafür vorbereitet ist. Migration
    `supabase/migrations/20260821140000_products_provision_mode_pma_check_fix.sql`
    liegt bereit (erweitert die Erlaubnisliste um die beiden fehlenden
-   Werte, per `begin`/`rollback`-Dry-Run inkl. Testinsert verifiziert),
-   **wartet auf Nutzer-Go, noch nicht gepusht** (SQL-Änderungen sind
-   nicht durch den Commit/Push-Blankoscheck gedeckt).
+   Werte, per `begin`/`rollback`-Dry-Run inkl. Testinsert verifiziert) —
+   **seit demselben Tag live**, siehe Nachtrag am Ende dieses Abschnitts
+   ("Kranken als eigene Sparte").
 2. Der Korrektheits-Agent fand eine echte Business-Logik-Frage: der KPI
    "Bewertungsbeitrag sonstige" (`aggregateStats()`, summiert JEDE
    nicht-Leben-Sparte: Kranken+Sach/Hausrat+Kfz+Rechtsschutz+pmaSUH+
@@ -4334,7 +4334,7 @@ gefundenen doppelten `locations`-Abruf behebt (`renderAccountPool()`
 bekommt die von `loadAndRenderLocations()` ohnehin schon geladenen Zeilen
 übergeben, statt sie ein zweites Mal zu holen).
 
-**Siebter Fund, SQL-seitig, wartet auf Nutzer-Go:** der Cross-File-Agent
+**Siebter Fund, SQL-seitig, seit 2026-08-22 live:** der Cross-File-Agent
 fand eine seit 2026-08-08 bestehende, bisher nicht dokumentierte
 RLS-Lücke bei `locations.owner_id` — die konsolidierte
 `locations_update_visible`-Policy (RLS-Performance-Härtung,
@@ -4358,7 +4358,8 @@ Mitglied/Dungeon-Eigentümer) gegen die echte DB verifiziert: Kaperversuch
 wird zuverlässig zurückgesetzt UND protokolliert (auch kombiniert mit
 einer legitimen Namensänderung im selben Update — die geht durch, nur
 `owner_id` bleibt geschützt), Admin-Umverteilung bleibt unverändert
-erlaubt. **Noch nicht gepusht, wartet auf Nutzer-Go.**
+erlaubt. Nach dem Push per direkter Trigger-Abfrage gegen die echte DB
+bestätigt: `trg_protect_location_owner` steht live auf `locations`.
 
 Fünf parallele Review-Agenten (Korrektheit/Effizienz/Cross-File-JS↔SQL/
 Zeile-für-Zeile/totes Verhalten), jeder Fund selbst verifiziert (u.a.
@@ -4371,8 +4372,13 @@ ungültige Zeitspanne wird jetzt korrekt gemeldet UND blockiert die
 Kontaktanlage, gültiges Speichern trotz Doppelklick funktioniert normal
 und schließt das Modal, 0 Konsolenfehler, Testkontakt danach entfernt.
 Stand nach diesem Durchgang: 8 von 12 Häppchen fertig, 33 echte Bugs
-insgesamt gefunden und behoben (plus 1 SQL-Fix, der auf Go wartet).
-Nächstes Häppchen: 9 (Termin-Kalender: Wochenansicht + Serientermine).
+insgesamt gefunden und behoben, alle bisher aufgelaufenen SQL-Fixes aus
+diesem Durchgang sind live (auf ausdrücklichen Nutzerwunsch "mach alle
+aufgeschobenen sql dinge fertig", 2026-08-22 — betraf zu diesem
+Zeitpunkt nur diese eine Migration, die PMA-Migration aus Häppchen 6a
+war bereits am 2026-08-21 im selben Zug wie die Kranken-Sparten-Trennung
+angewendet worden). Nächstes Häppchen: 9 (Termin-Kalender: Wochenansicht
++ Serientermine).
 
 ## Zeitzonen-Inkonsistenz `dateKeyLocal()` vs. `todayKey()`, vollständig behoben (2026-08-21)
 
