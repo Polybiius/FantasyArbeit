@@ -4347,8 +4347,8 @@ selbst) — obwohl "Umverteilen bleibt Admin-exklusiv" (Patch 14,
 verhindern sollte. Die Lücke steckte bereits in der ursprünglichen
 `locations_update_guild_admission`-Policy vom 2026-08-08, die
 Performance-Härtung hat sie nur unverändert mit übernommen. Migration
-`supabase/migrations/20260822120000_locations_owner_tamper_schutz.sql`
-liegt bereit — gleiches "korrigieren statt ablehnen"-Muster wie
+`supabase/migrations/20260822120000_locations_owner_tamper_schutz.sql`,
+gleiches "korrigieren statt ablehnen"-Muster wie
 `protect_privileged_profile_fields()` (Patch 38/47): ein
 BEFORE-UPDATE-Trigger setzt `owner_id` bei Nicht-Admins still auf den
 alten Wert zurück und protokolliert den Versuch über
