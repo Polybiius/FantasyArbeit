@@ -4447,6 +4447,58 @@ entfernt (0 Reste), 0 Konsolenfehler. Stand nach diesem Häppchen: 9 von
 12 fertig, 37 echte Bugs insgesamt, keine offenen SQL-Fixes. Nächstes
 Häppchen: 10 (Tag-Reiter: Tagesansicht + Aufgaben-UI).
 
+**Häppchen 10 (Tag-Reiter: Tagesansicht + Aufgaben-UI + Termin-Popup,
+Zeilen 7557-7961) — 2026-08-22:** **wichtigster Fund:** `singleTerminUpdated`
+(das Flag hinter der "Update an Eingeladene senden?"-Nachfrage aus dem
+Termin-Einladungen-Feature vom 2026-08-18) wurde nur im Nicht-Serien-Zweig
+des Speichern-Handlers gesetzt — sowohl "Nur diesen Termin ändern" als auch
+"Ganze Serie ändern" bei einem Serientermin ließen die Nachfrage seither
+dauerhaft ausfallen, unabhängig davon, ob eine angenommene Einladung
+existierte. Fix: das Flag wurde durch ein Array `updatedTerminIds` ersetzt,
+das in allen drei Update-Pfaden (Einzeltermin, "nur diesen" bei einer
+Serie, "ganze Serie") korrekt befüllt wird; die Prüfung läuft jetzt über
+`.in('termin_id', updatedTerminIds)` statt eines einzelnen `termin_id`.
+**Live verifiziert** (Playwright + `supabase db query --linked`, echte
+per SQL eingeschleuste `angenommen`-Einladung an einer vergangenen UND
+einer künftigen Serien-Instanz): beide Szenarien lösten danach korrekt den
+Bestätigungsdialog aus, vorher keines von beiden.
+
+Vier weitere echte Bugs: eine wöchentliche Serie mit 0 ausgewählten
+Wochentagen wurde lautlos angelegt, ohne je einen Folgetermin zu erzeugen
+(`generated_until` rückt trotzdem auf den vollen Horizont vor, kein
+späterer Nachhol-Lauf hilft) — jetzt eine Validierung vor dem Speichern
+("Bitte mindestens einen Wochentag ... auswählen"), live verifiziert;
+`taskAddBtn`/`termineEntrySaveBtn`/`termineEntryDeleteBtn` hatten keinen
+Doppelklick-Schutz (Live-verifiziert: ein simultaner Doppelklick erzeugt
+danach nur noch 1 Aufgabe bzw. 1 Termin statt 2); ein totes Code-Fragment
+(eine Delete-Button-Sichtbarkeits-Zeile, die eine Zeile später unbedingt
+überschrieben wurde) entfernt; `invitationStatusLinesHtml()` hatte keinen
+Staleness-Guard (Race Condition beim schnellen Wechsel zwischen zwei
+Termin-Popups, gleiche Bug-Klasse wie `openContactPage()` in Häppchen
+6b-1) — derselbe Fix-Ansatz übernommen (Termin-ID beim Anfragen merken,
+beim Auflösen gegen den dann aktuellen Bearbeitungszustand prüfen).
+
+Effizienzfunde direkt mitgefixt: `renderDayView()` lud Kontakte+Termine
+sequenziell, obwohl `renderWeekView()` (Häppchen 9) genau das schon per
+`Promise.all` parallelisiert hatte — der Fix war hier nicht nachgezogen
+worden, jetzt nachgeholt; `renderTaskColumn()` lud nach jedem Abhaken/
+Neuanlegen einer Aufgabe unnötig die komplette Liste neu von der DB, obwohl
+der lokale Cache bereits aktuell war — in `renderTaskColumn()` (mit Reload)
+und `renderTaskColumnDom()` (reines Rendern aus dem Cache) aufgeteilt,
+Checkbox- und Anlege-Handler nutzen jetzt Letzteres; fehlende
+Fehlerbehandlung in der `Promise.all`-Zeilen-Update-Schleife beim
+Serien-Ändern ergänzt (ein einzelner fehlgeschlagener Zeilen-Update blieb
+vorher unbemerkt). Ein von einem Agenten gemeldeter Scroll-Unterschied
+zwischen Tag- und Wochen-Navigation (`renderDayView(false)` vs.
+`renderWeekView(true)`) wurde geprüft und NICHT als Bug gewertet — nur 1
+von 5 Agenten fand ihn, plausibel absichtlich (Tage-Blättern behält die
+Scrollposition, weil man vermutlich dieselbe Tageszeit vergleicht;
+Wochen-Wechsel ist ein größerer Sprung, der neu zur Standardzeit springt).
+
+Kein SQL nötig, alle Fixes rein clientseitig, Commit `30f4dc3`. Stand
+nach diesem Häppchen: 10 von 12 fertig, 42 echte Bugs insgesamt, keine
+offenen SQL-Fixes. Nächstes Häppchen: 11 (Kanban).
+
 ## Zeitzonen-Inkonsistenz `dateKeyLocal()` vs. `todayKey()`, vollständig behoben (2026-08-21)
 
 Löst den seit dem Code-Review-Durchgang vom 2026-08-20 bekannten, damals
