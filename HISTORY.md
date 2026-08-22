@@ -880,3 +880,179 @@ konfigurierter Wegwerf-Testnutzer). Nach dem `supabase db push` per
 erneutem Advisor-Lauf bestätigt: 0 verbleibende `auth_rls_initplan`/
 `multiple_permissive_policies`-Funde (vorher 52/60), `migration list
 --linked` zeigt local==remote.
+
+## 2026-08-18: Kanban-Kurzvorschau, Termin-Einladungen, Gilden-Einladungen
+
+**Kanban-Kurzvorschau + Termin-Einladungen, Entstehung:** zwei
+zusammenhängende Bausteine, in derselben Session entstanden, direkt
+nach dem Termin-Datumsgrenzen-Vorfall desselben Tages (Listener-
+Stacking-Bug, siehe Häppchen-9-Eintrag des Bugfix-Durchgangs in
+CLAUDE.md, Abschnitt "Kanban"). Migration
+`20260818210000_termin_einladungen.sql`. Backend end-to-end mit
+Wegwerf-Testaccounts verifiziert (Einladung, Annahme, Update-
+Weitergabe inkl. Status-Reset, Ablehnung inkl. Kopien-Löschung,
+Sicherheitsgrenze bei Fremden ohne gemeinsame Gilde, Lösch-Kaskade bei
+Original-Löschung — alle Prüfungen bestanden), Frontend zusätzlich per
+Playwright gegen den echten Account getestet (Vorschau-Popup,
+Einladen-Picker, Einladungs-Karte, Annehmen, schreibgeschützte
+Wochenansicht-Darstellung, erneute Bestätigungs-Anfrage nach
+Verschieben).
+
+**Stolperstein beim Bauen:** ein Versuch, die Migration vorab in einer
+`begin`/`rollback`-Transaktion zu testen, führte stattdessen (falscher
+CLI-Aufruf) zu einer echten, direkten Anwendung auf die Live-Datenbank,
+bevor das Nutzer-Go dafür eingeholt war — im Nachhinein per `supabase
+migration repair` sauber ins Migrations-Tracking eingetragen (die
+Migration selbst war inhaltlich korrekt und harmlos, reine
+Schema-Ergänzung ohne Auswirkung auf bestehende Daten). Die daraus
+gezogene Lehre (`begin`/`rollback` muss Teil der SQL-Datei selbst
+sein) steht jetzt dauerhaft im Abschnitt "Supabase-CLI-
+Migrationstoolchain" in CLAUDE.md.
+
+**Nachtrag, noch am selben Abend — Absage-Benachrichtigung +
+Statusanzeige (Nutzerkorrektur der ersten Fassung):** die erste
+Fassung ließ eine Absage still verschwinden und zeigte dem Organisator
+nirgends, ob/wie geantwortet wurde — beides vom Nutzer explizit
+nachgefordert, beides noch am selben Abend nachgebaut (Details/
+aktueller Stand: CLAUDE.md). Technisch brauchte das zwei kleine
+Folgemigrationen (erst Titel/Zeit/Kanal, dann separat noch
+`organizer_id` nachgetragen, weil sonst nicht mehr feststellbar
+gewesen wäre, WER abgesagt hat) — beide zuerst per `begin`/`rollback`-
+Wrapper innerhalb der SQL-Datei syntaktisch geprüft, dann regulär per
+`supabase db push` angewendet. End-to-end mit Wegwerf-Testaccounts
+verifiziert (Annehmen → Absage → Eingeladener sieht Absage mit
+korrektem Titel/Zeit trotz gelöschtem Original → Ausblenden;
+Organisator sieht Status nach Einladen und nach Ablehnung), Frontend
+zusätzlich per Playwright gegen den echten Account getestet.
+
+**Gilden-Einladung, Auslöser:** Nutzer-Bugreport, noch am selben Tag —
+der Gildengründer konnte über den Mitglied-Picker bisher jedes
+Org-Mitglied direkt und ohne dessen Zustimmung in `guild_members`
+eintragen. Migration
+`supabase/migrations/20260818230000_gilden_einladungen.sql`, vorab per
+`begin`/`rollback`-Wrapper mit 8 Assertions gegen Wegwerf-Testaccounts
+verifiziert (Nicht-Gründer darf nicht einladen, Annehmen erzeugt
+korrekte Minimalrechte, direktes Fremdeinfügen jetzt RLS-blockiert,
+Ablehnen/Zurückziehen/Doppel-Mitgliedschaft-Schutz — alle 8 bestanden),
+danach per Nutzer-Go gepusht. **Nebenbei mitbehoben:** die
+Kandidatenfilterung prüfte bisher nur Mitgliedschaft in der aktuellen
+Gilde, nicht org-weit — latenter Bug (ein Nutzer kann nie in zwei
+Gilden gleichzeitig sein), jetzt korrekt org-weit gefiltert.
+
+**Zwei kleinere, gleichzeitig gemeldete Design-Bugs mitbehoben:** das
+Namens-Suchfeld im Gilden-Picker (`#guildPickerSearch`) hatte gar keine
+CSS-Regel (erschien als weißes Browser-Standardfeld statt im dunklen
+App-Theme, neue `.guild-picker input`-Regel behebt das); der
+"+ Gildenmitglied einladen"-Button in der Kanban-Kurzvorschau wurde
+bisher roh per `terminRow.after(inviteBtn)` mitten in die Feldliste
+eingehängt (zwischen "Nächster Termin" und "Telefon"/"E-Mail") —
+Nutzerkritik "klobig mitten drin", seitdem im eigenen
+`#kanbanPreviewInviteZone`-Platzhalter am Ende der Feldliste (aktueller
+Stand: CLAUDE.md).
+
+Frontend zusätzlich per Playwright gegen den echten Account verifiziert
+(Input-Styling, Feld-Reihenfolge in der Kanban-Vorschau, Einladungskarte
+bleibt korrekt verborgen ohne offene Einladung).
+
+## 2026-08-19: Kanban strikt persönlich + Gildenleben-Fundament
+
+**Kanban-Leck, Fund und Fix:** echter, live beobachteter Bug, gefunden
+beim Durchsprechen der geplanten Termin-Einladung↔Kanban-Verknüpfung.
+`renderKanbanBoard()` nutzte dieselbe ungefilterte
+`loadContactsBundle()`-Abfrage wie die Kontakte-Seite — dort richtig
+(gilden-geteilte Kundendatenbank ist gewollt), fürs Kanban-Board
+fehlte aber seit jeher die Eigentümer-Einschränkung. Per direkter
+SQL-Abfrage gegen die echte DB bestätigt: ein eigener Kontakt mit
+gesetzter `kanban_stage` UND `write`-Gildenfreigabe tauchte dadurch
+bereits echt auf dem Kanban-Board eines Gilden-Kollegen mit auf,
+inklusive Zieh-/Verschieben-Möglichkeit im UI (serverseitig hätte
+`contacts_update_visible` nur bei `write`-Freigabe erlaubt
+geschrieben zu werden — bei `read`-Freigabe wäre der Versuch
+RLS-blockiert, aber als wortloser Fehlschlag sichtbar gewesen). Fix
+rein im Frontend, keine RLS-Änderung nötig (aktueller Stand:
+CLAUDE.md). Per Playwright gegen den echten Admin-Account verifiziert
+(kein Testaccount für die Gegenprobe "Kollege sieht die fremde Karte
+jetzt nicht mehr" verfügbar — dafür reicht die direkte SQL-Bestätigung
+des vorherigen Lecks plus die triviale Filterbedingung).
+
+**Kanban-Spiegelung, Denkweg:** der Fix warf die Frage auf, wie die
+ursprünglich angedachte Termin-Einladung↔Kanban-Verknüpfung (Eingelade-
+ner sieht/bearbeitet eine schreibgeschützte Kanban-Karte, kann von dort
+absagen) jetzt funktionieren soll, da eine Einladung nicht mehr "for
+free" über die bestehende Gilden-Kontaktfreigabe sichtbar sein kann —
+noch am selben Tag als gezielte Ausnahme gebaut (Migration
+`20260819150000_termin_einladung_kanban_spiegel.sql`, aktueller Stand:
+CLAUDE.md). Per Testlauf mit einer reinen Freundschaft ohne
+Gildenfreigabe bestätigt: kein Zugriff, keine Karte.
+
+**Dabei ein echter, vorbestehender Bug gefunden und behoben** (Migration
+`20260819160000_termin_einladung_absage_nach_annahme_fix.sql`):
+`respond_to_termin_invitation()` erlaubte eine Antwort nur noch,
+solange `status='offen'` war — das blockierte nicht nur den neuen
+"Termin absagen"-Knopf, sondern denselben, schon länger bestehenden
+"Aus meinem Kalender entfernen"-Weg im Kalender selbst (beide rufen
+die Funktion mit `p_accept=false` auf einer bereits `status=
+'angenommen'`-Einladung auf) — vermutlich nie mit einer wirklich schon
+angenommenen Einladung durchgetestet. Fix: Annehmen bleibt nur aus
+`'offen'` möglich, Ablehnen jetzt sowohl aus `'offen'` als auch
+nachträglich aus `'angenommen'` (aktueller Stand, implizit in der
+"Termin-Einladungen"-Beschreibung in CLAUDE.md).
+
+Beide Migrationen vorab per `begin`/`rollback`-Wrapper mit echten
+Nicht-Admin-Testprofilen verifiziert, danach per Nutzer-Go gepusht.
+Zusätzlich ein echter Ende-zu-Ende-Test mit Playwright gegen den echten
+Account (testweise reale Einladung zwischen zwei echten Profilen
+aufgebaut, danach vollständig wieder entfernt): Spiegelkarte erscheint
+korrekt mit Organisator-Namen, nicht ziehbar, "Termin absagen" entfernt
+Kalendereintrag UND Karte im selben Zug, keine Konsolenfehler, 0
+Testdaten-Reste danach bestätigt.
+
+**Gildenleben-Fundament, Entstehung:** löst den seit 2026-08-17 als
+nächsten Einstieg bestätigten "Gildenleben"-Quest-Typ — nach
+ausführlicher Konzept-Diskussion mit dem Nutzer (Langfassung: Claudes
+Erinnerung `project_gildenleben_konzept`), in vier Schritten gebaut,
+alle noch am selben Abend fertig: Schritt 1 (Datenbank-Fundament,
+Migration `20260819180000_gildenleben_teamziele_fundament.sql`) vorab
+per `begin`/`rollback`-Wrapper mit echten Profilen getestet
+(Summenbildung über einen echten Testverkauf bestätigt, Duplikat-
+Schutz bestätigt, ein gildenfremdes Profil sowohl von der
+Summenabfrage als auch von der Vergabe zuverlässig ausgeschlossen),
+danach per Nutzer-Go gepusht. Schritt 2 (Migration
+`20260819200000_gildenleben_teamziele_beispiele.sql`): die zwei
+Beispiel-Team-Ziele sind **explizit als Testwerte markiert, kein
+echtes Geschäftsziel** — es gab beim Schreiben noch keine einzige
+eingetragene individuelle Planung (`profiles.planung_*` komplett leer,
+vorher geprüft), daher keine "×10"-Ableitung aus echten Werten
+möglich, nur runde Platzhalter. Schritt 3: die zwei neuen Frontend-
+Funktionen. Schritt 4: der Gilde-Seiten-Umbau — **wichtige
+Randbedingung, vom Nutzer bestätigt:** "die Seite kann so bleiben wie
+heute" für alle, die noch in keiner Gilde sind (5 von 7 echten
+Profilen zu dem Zeitpunkt).
+
+**Reihenfolge-Bug beim ersten Testlauf gefunden und behoben:** die
+Gebäude-Anzeige wurde vor der Team-Ziele-Auswertung gerendert — bei
+genau der Erfüllungs-Runde eines Ziels zeigte das Gebäude deshalb noch
+den alten Stand (der neue Protokoll-Eintrag existierte zu dem
+Zeitpunkt noch nicht). Reihenfolge in `loadGuildState()` korrigiert:
+erst `renderGuildTeamQuests()` (prüft/vergibt), dann erst
+`renderGuildBuilding()` (liest den ggf. gerade neuen Stand).
+
+End-to-end per Playwright gegen den echten Account verifiziert:
+Gebäude-/Reiter-/Team-Ziele-Anzeige korrekt, Reiter-Umschaltung
+funktioniert, Freunde-Karte landet korrekt im Reiter. Danach ein
+echter, großer Test-Verkauf eingefügt (Lebensversicherung, 600.000 €
+BWS) — Team-Ziel schaltete korrekt auf ✅, Gebäude sprang korrekt auf
+"Kleine Hütte", wiederholtes Neuladen erzeugte keinen zweiten
+Protokoll-Eintrag (Duplikat-Schutz bestätigt). Test-Verkauf, -Kontakt,
+-Produkt und der dadurch entstandene Protokoll-Eintrag danach
+vollständig entfernt, Seite zeigt wieder exakt den Ausgangszustand.
+
+**Aktionsleiste-Politur, noch am 2026-08-20:** die "+ hinzufügen"/
+"Gilde verlassen"-Aktionsleiste saß vorher OBERHALB des Mitglieder/
+Freunde-Reiters, wirkte für beide Reiter gleichermaßen gültig —
+verwirrend, weil "hinzufügen" im Mitglieder-Kontext (nur
+Gildenführer) etwas anderes meint als "hinzufügen" im Freunde-Kontext
+(das dort schon existierende Freunde-Suchfeld, für jeden sichtbar).
+Reine HTML-Verschiebung, keine neue Logik (aktueller Stand: CLAUDE.md)
+— per Playwright gegen den echten Account (Gründer-Rolle) verifiziert,
+Desktop + Mobile, keine Konsolenfehler.

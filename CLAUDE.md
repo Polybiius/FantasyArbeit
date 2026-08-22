@@ -452,6 +452,16 @@ destruktiven Operationen (`DROP`, `DELETE`) explizit warnen, siehe
 allgemeine Regel weiter unten. `supabase/.temp/` ist gitignored (rein
 lokaler Verbindungs-Cache, keine Geheimnisse drin, aber maschinenspezifisch).
 
+**Vor jedem Push Dry-Run gegen die echte DB, mit `begin`/`rollback`
+als Teil der SQL-Datei selbst:** `supabase db query -f <datei>` führt
+IMMER direkt aus, unabhängig vom Dateiinhalt — ein `begin`/`rollback`
+muss explizit TEIL der SQL-Datei sein (Entstehung dieser Lehre: ein
+Versuch, das über einen externen Wrapper-Aufruf zu erzwingen, wandte
+eine Migration versehentlich direkt auf die Live-DB an, siehe
+HISTORY.md), kann nicht durch den Aufruf selbst erzwungen werden. Bei
+inhaltlich riskanteren Migrationen zusätzlich Assertions/Testfälle
+gegen echte Wegwerf-Testprofile in denselben Dry-Run einbauen.
+
 ## Sicherheitsmodell (RLS), zum Verständnis
 
 Fast jede Tabelle hat `org_id` und eine RLS-Policy, die auf eine Hilfsfunktion
@@ -2523,464 +2533,227 @@ gleich):
 **Bei jeder neuen Policy/Hilfsfunktion beide Muster von Anfang an
 anwenden**, nicht erst nachträglich optimieren.
 
-## Kanban-Kurzvorschau + Termin-Einladungen für Gildenmitglieder (2026-08-18)
-
-Zwei zusammenhängende Bausteine, in derselben Session entstanden, direkt
-nach dem Termin-Datumsgrenzen-Vorfall desselben Tages (siehe Abschnitt
-"Kanban" oben — dort ist auch der zugrundeliegende, bei dieser Gelegenheit
-gefundene und behobene Listener-Stacking-Bug beschrieben).
+## Kanban-Kurzvorschau + Termin-Einladungen für Gildenmitglieder
 
 **Kanban-Kurzvorschau** (`#kanbanPreviewModal`, `openKanbanPreview()`):
-Klick auf einen Kontakt im Kanban (egal wo auf der Karte, nicht nur exakt
-auf den Namen) öffnet jetzt zuerst ein kompaktes Vorschau-Popup statt
-direkt zur Kontakt-Seite zu springen — Status, aktuelle Kanban-Stufe,
-Berufsstatus/Betrieb, nächster Termin (inkl. Kanal, erst beim Öffnen
-nachgeladen, kein Batch-Query für alle Karten), Telefon/E-Mail,
-Wiedervorlage (nur bei gewonnen/verloren/dauerbrenner sichtbar — während
-aktiver Kanban-Bearbeitung redundant zum Termin selbst), zuletzt
-kontaktiert. "Zum Profil →"-Link führt zur vollen Seite. **Widerspricht
-nicht** der Grundregel "echte Seiten statt Modals für Datensätze" (siehe
-Erinnerung `feedback_real_pages_over_modals_for_records`) — die echte
-Seite bleibt ein Klick entfernt, und Strg/Cmd/Shift-Klick auf den
-Namen-Link selbst öffnet weiterhin einen neuen Tab über den echten
-`href`, unangetastet von der Vorschau.
+Klick auf einen Kontakt im Kanban (egal wo auf der Karte) öffnet ein
+kompaktes Vorschau-Popup statt direkt zur Kontakt-Seite zu springen —
+Status, aktuelle Kanban-Stufe, Berufsstatus/Betrieb, nächster Termin
+(inkl. Kanal, erst beim Öffnen nachgeladen), Telefon/E-Mail,
+Wiedervorlage (nur bei gewonnen/verloren/dauerbrenner sichtbar),
+zuletzt kontaktiert. "Zum Profil →"-Link führt zur vollen Seite.
+**Widerspricht nicht** der Grundregel "echte Seiten statt Modals für
+Datensätze" (Erinnerung `feedback_real_pages_over_modals_for_records`)
+— die echte Seite bleibt ein Klick entfernt, Strg/Cmd/Shift-Klick auf
+den Namen-Link öffnet weiterhin einen neuen Tab über den echten `href`.
 
-**Termin-Einladungen** (`termin_invitations`, Migration
-`20260818210000_termin_einladungen.sql`): aus der Kanban-Vorschau heraus
-lässt sich ein Gildenmitglied zu einem bestehenden Termin einladen —
-ausdrückliches Nutzer-Vorbild war Outlooks Einladungs-/Update-Mechanik.
-Bewusst zweistufig, nicht wie Outlook sofort "vorläufig" im Kalender:
+**Termin-Einladungen** (`termin_invitations`): aus der Kanban-Vorschau
+heraus lässt sich ein Gildenmitglied zu einem bestehenden Termin
+einladen (Vorbild: Outlooks Einladungs-/Update-Mechanik). Bewusst
+zweistufig, nicht wie Outlook sofort "vorläufig" im Kalender:
 
 1. **Einladen** (`invite_to_termin()` RPC) — Einladung erscheint beim
-   Eingeladenen zunächst nur als offene Anfrage auf einer neuen Karte
-   "📨 Termin-Einladungen" (Abenteuerlog-Seite, ganz oben, nur sichtbar
-   wenn wirklich etwas offen ist). **Noch kein Kalendereintrag.**
+   Eingeladenen zunächst nur als offene Anfrage auf einer Karte
+   "📨 Termin-Einladungen" (Abenteuerlog-Seite, nur sichtbar wenn
+   wirklich etwas offen ist). **Noch kein Kalendereintrag.**
 2. **Annehmen** (`respond_to_termin_invitation()` RPC) — erst jetzt
    entsteht eine eigene `termine`-Zeile beim Eingeladenen (`owner_id` =
    er selbst, `organizer_id` = ursprünglicher Organisator). In der
-   Wochenansicht deutlich als "👥 prim. Termin von X" markiert
-   (`.week-event-delegated`, gestrichelter Rahmen) und **schreibgeschützt**
+   Wochenansicht als "👥 prim. Termin von X" markiert
+   (`.week-event-delegated`) und **schreibgeschützt**
    (`openTermineEntryModal()` deaktiviert Titel/Zeit-Felder und den
    Speichern-Button bei gesetztem `organizer_id`) — die Zeit wird
-   ausschließlich vom Original gepflegt, sonst würde die Kopie
-   abdriften. Der "Löschen"-Button wird für diesen Fall zu "Aus meinem
-   Kalender entfernen" umbenannt und läuft über denselben Antwort-RPC
-   (Ablehnen), nicht über ein direktes Löschen.
+   ausschließlich vom Original gepflegt. Der "Löschen"-Button heißt
+   für diesen Fall "Aus meinem Kalender entfernen" und läuft über den
+   Antwort-RPC (Ablehnen), nicht über direktes Löschen.
 3. **Verschieben mit Update-Weitergabe** — verschiebt der Organisator
-   danach den Termin über die normale Wochenansicht, fragt die App (bei
-   vorhandenen angenommenen Einladungen) "Update an Eingeladene senden?"
-   (natives `confirm()`, wie an mehreren Stellen im Projekt üblich). Bei
-   Ja (`notify_termin_update()` RPC): alle angenommenen Kopien werden auf
-   den neuen Stand gezogen, UND ihr Einladungs-Status springt zurück auf
-   "offen" — der Eingeladene sieht die Karte erneut und muss die neue
-   Zeit bestätigen oder ablehnen, exakt wie Outlooks "Update senden?".
-4. **Löscht** der Organisator den Original-Termin komplett, räumt ein
+   danach den Termin, fragt die App bei vorhandenen angenommenen
+   Einladungen "Update an Eingeladene senden?" (`confirm()`). Bei Ja
+   (`notify_termin_update()` RPC): alle angenommenen Kopien werden auf
+   den neuen Stand gezogen, ihr Einladungs-Status springt zurück auf
+   "offen" — der Eingeladene muss die neue Zeit erneut bestätigen.
+4. **Löscht** der Organisator den Original-Termin, räumt ein
    `BEFORE DELETE`-Trigger (`cleanup_termin_invitee_copies()`) eine
-   bestehende angenommene Kopie automatisch mit ab — sonst bliebe sie als
-   verwaiste, nie mehr aktualisierbare Karteileiche im fremden Kalender
-   stehen. Bewusst **still**, keine eigene "abgesagt"-Benachrichtigung
-   (siehe "Bewusste Vereinfachungen" unten).
+   bestehende angenommene Kopie automatisch mit ab. Der Eingeladene
+   bekommt dabei eine "❌ Von X abgesagt"-Meldung (Status `storniert`)
+   in der Termin-Einladungen-Karte statt stillem Verschwinden, mit
+   "OK"-Button zum eigenständigen Ausblenden (einzige direkte
+   Client-Schreiboperation auf `termin_invitations`, rein aufräumend).
+   Der Organisator sieht den Einladungs-Status an beiden Stellen, an
+   denen er seinen Termin sieht (Kanban-Vorschau UND
+   `termineEntryModal`) über `invitationStatusLinesHtml()`.
 
-**Schreibrechte:** alles, was die Kalenderdaten einer ANDEREN Person
-berührt, läuft ausschließlich über die drei `SECURITY DEFINER`-Funktionen
-oben — `termin_invitations` hat bewusst KEINE insert/update/delete-Policy
-für normale Clients (gleiches Härtungsmuster wie die "Serverseitige
-Schreib-Härtung" vom 2026-08-15 für `action_log`/`user_inventory`), damit
-Einladung/Annahme/Update-Weitergabe nie in einem inkonsistenten
-Halbzustand enden können. Einladen ist nur innerhalb der eigenen
-Gilde/Freundschaft möglich (`socially_visible()`, seit Phase 1 der
-Gilden-Sichtbarkeit etabliert und geprüft — kein neuer Sichtbarkeits-
-Mechanismus).
+**Schreibrechte:** `termin_invitations` hat KEINE insert/update/delete-
+Policy für normale Clients (gleiches Härtungsmuster wie "Serverseitige
+Schreib-Härtung") — alles läuft über die `SECURITY DEFINER`-Funktionen
+oben. Einladen ist nur innerhalb der eigenen Gilde/Freundschaft möglich
+(`socially_visible()`). Eigene Titel/Zeit/Kanal/Organisator-
+Schattenfelder (gepflegt bei `invite_to_termin()`/`notify_termin_
+update()`), weil `termin_id` nach einer Absage `NULL` wird (`ON DELETE
+SET NULL`) — ohne Schattenfelder gäbe es nach dem Löschen des
+Original-Termins nichts mehr anzuzeigen.
 
-**Bewusste Vereinfachungen dieser ersten Fassung** (mit Nutzer
-abgestimmt, nicht vergessen falls das Thema weitergeht):
+**Bewusste Vereinfachungen dieser Fassung:**
 - Serientermine + Einladung sind nicht kombiniert (nur einzelne Termine).
-- Die Kopie beim Eingeladenen trägt keinen `contact_id`/`location_id`-Bezug
-  (nur Titel/Zeit/Kanal) — vermeidet, zusätzlich in die
-  Kontakt-Sichtbarkeitsrechte reingehen zu müssen (der Eingeladene hat ja
-  nicht zwingend irgendeine Berechtigung auf den Kontakt des Organisators).
-- Löschen des Original-Termins räumt die Kopie still ab, ohne eigene
-  "abgesagt"-Benachrichtigung (kein separater "cancelled"-Status).
-- Kein Push-/Badge-Hinweis außerhalb der Kalender-Seite — die Karte ist
-  nur sichtbar, wenn man die Seite tatsächlich öffnet.
+- Die Kopie beim Eingeladenen trägt keinen `contact_id`/`location_id`-
+  Bezug (nur Titel/Zeit/Kanal).
+- Kein Push-/Badge-Hinweis außerhalb der Kalender-Seite.
 
 **Fundament für die spätere Gildenquest** (siehe
-`project_questbaum_schema_design`/Erinnerung `project-roadmap-prioritaeten`,
-Punkt "Gildenleben" — vierter Quest-Typ, Team-Aggregation über eine Gilde
-in einem Zeitraum, Beispiel dort war explizit "gemeinsame Termine/Monat"):
-liefert erstmals ein echtes "geteilter Termin"-Signal, das ein künftiger
-Quest-Typ auswerten könnte (z.B. `termin_invitations.status='angenommen'`
-zählen). Noch keine Auswertungs-Logik dafür gebaut — das bleibt weiterhin
-der offene, nächste Schritt.
+`project_questbaum_schema_design` — vierter Quest-Typ, Team-Aggregation
+über eine Gilde in einem Zeitraum): liefert ein echtes "geteilter
+Termin"-Signal, das ein künftiger Quest-Typ auswerten könnte (z.B.
+`termin_invitations.status='angenommen'` zählen). Noch keine
+Auswertungs-Logik dafür gebaut.
 
-Backend end-to-end mit Wegwerf-Testaccounts verifiziert (Einladung,
-Annahme, Update-Weitergabe inkl. Status-Reset, Ablehnung inkl.
-Kopien-Löschung, Sicherheitsgrenze bei Fremden ohne gemeinsame Gilde,
-Lösch-Kaskade bei Original-Löschung — alle Prüfungen bestanden), Frontend
-zusätzlich per Playwright gegen den echten Account getestet (Vorschau-
-Popup, Einladen-Picker, Einladungs-Karte, Annehmen, schreibgeschützte
-Wochenansicht-Darstellung, erneute Bestätigungs-Anfrage nach Verschieben).
+## Gilden-Einladung mit Annahme/Ablehnung
 
-**Stolperstein beim Bauen, der Vollständigkeit halber festgehalten:** ein
-Versuch, die Migration vorab in einer `begin`/`rollback`-Transaktion zu
-testen, führte stattdessen (falscher CLI-Aufruf) zu einer echten,
-direkten Anwendung auf die Live-Datenbank, bevor das Nutzer-Go dafür
-eingeholt war — im Nachhinein per `supabase migration repair` sauber ins
-Migrations-Tracking eingetragen (die Migration selbst war inhaltlich
-korrekt und harmlos, da reine Schema-Ergänzung ohne Auswirkung auf
-bestehende Daten). Lehre: `supabase db query -f <datei>` führt IMMER
-direkt aus, unabhängig vom Dateiinhalt — ein `begin`/`rollback` muss
-explizit TEIL der SQL-Datei selbst sein, kann nicht durch einen separaten
-Wrapper-Aufruf erzwungen werden.
+Gleiches Prinzip wie bei den Termin-Einladungen: eine echte
+Gilden-Mitgliedschaft entsteht erst nach aktiver Annahme, nicht mehr
+direkt über den Mitglied-Picker (`searchGuildCandidates()`,
+Founder-Branch der `guild_members_insert_allowed`-Policy).
 
-**Nachtrag, noch am selben Abend — Absage-Benachrichtigung + Statusanzeige
-für den Organisator (Nutzerkorrektur der ersten Fassung):** die erste
-Fassung ließ eine Absage still verschwinden und zeigte dem Organisator
-nirgends, ob/wie geantwortet wurde — beides vom Nutzer explizit
-nachgefordert.
-
-- **Absage-Benachrichtigung:** löscht der Organisator einen Termin mit
-  offener/angenommener Einladung, bekommt der Eingeladene jetzt eine
-  echte "❌ Von X abgesagt"-Meldung in der Termin-Einladungen-Karte
-  (neuer Status `storniert`) statt stillem Verschwinden, mit einem
-  "OK"-Button zum eigenständigen Ausblenden (löscht die eigene Zeile,
-  einzige direkte Client-Schreiboperation auf `termin_invitations` —
-  rein aufräumend, keine Kreuz-Nutzer-Wirkung, deshalb ausnahmsweise per
-  normaler RLS-Policy statt einer eigenen RPC-Funktion erlaubt).
-- **Statusanzeige für den Organisator:** an beiden Stellen, an denen er
-  seinen Termin sieht (Kanban-Vorschau UND der Kalender-Termin selbst,
-  `termineEntryModal`) — "👤 Eingeladen: X — Ausstehend/Angenommen/
-  Abgelehnt", über einen gemeinsamen Helfer `invitationStatusLinesHtml()`.
-- **Technischer Kernpunkt:** `termin_invitations` bekam eigene Titel/
-  Zeit/Kanal/Organisator-Schattenfelder (gepflegt bei
-  `invite_to_termin()`/`notify_termin_update()`), weil `termin_id` nach
-  einer Absage `NULL` wird (FK von `ON DELETE CASCADE` auf `ON DELETE SET
-  NULL` umgestellt) — ohne die Schattenfelder gäbe es nach dem Löschen
-  des Original-Termins nichts mehr anzuzeigen. Zwei kleine
-  Folgemigrationen am selben Abend (erst Titel/Zeit/Kanal, dann separat
-  noch `organizer_id` nachgetragen, weil sonst nicht mehr feststellbar
-  gewesen wäre, WER abgesagt hat).
-
-Beide Migrationen zuerst per `begin`/`rollback`-Wrapper **innerhalb** der
-SQL-Datei (Lehre aus dem Stolperstein oben) syntaktisch geprüft, dann
-reguär per `supabase db push` angewendet. End-to-end mit
-Wegwerf-Testaccounts verifiziert (Annehmen → Absage → Eingeladener sieht
-Absage mit korrektem Titel/Zeit trotz gelöschtem Original → Ausblenden;
-Organisator sieht Status nach Einladen und nach Ablehnung), Frontend
-zusätzlich per Playwright gegen den echten Account getestet.
-
-## Gilden-Einladung mit Annahme/Ablehnung + zwei UI-Politur-Fixes (2026-08-18)
-
-Nutzer-Bugreport, noch am selben Tag: der Gildengründer konnte über den
-Mitglied-Picker (`searchGuildCandidates()`) bisher jedes Org-Mitglied
-**direkt und ohne dessen Zustimmung** in `guild_members` eintragen
-(Policy `guild_members_insert_allowed`, Founder-Branch). Gleiches Muster
-wie die Termin-Einladungen desselben Tages jetzt auch hier: eine echte
-Mitgliedschaft entsteht erst nach aktiver Annahme.
-
-**Bewusst eine GETRENNTE Tabelle** (`guild_invitations`, Migration
-`supabase/migrations/20260818230000_gilden_einladungen.sql`) statt eines
+**Eine GETRENNTE Tabelle** (`guild_invitations`) statt eines
 Status-Felds direkt an `guild_members` — Letzteres wird an sehr vielen
 Stellen im Schema (Kontakt-/Dungeon-Sichtbarkeit, Chronik-Sichtbarkeit,
 Notfallzugriff, Nachfolgeregelung) als "ist wirklich Mitglied, hat
-Zugriff" gelesen. Eine separate Einladungs-Tabelle lässt all das
-unangetastet — eine Zeile in `guild_members` entsteht weiterhin
-ausschließlich bei echter Zusage, keine bestehende Stelle musste geprüft
-werden. Drei neue `SECURITY DEFINER`-Funktionen, kein direktes
-Insert/Update/Delete auf `guild_invitations` für Clients (gleiches
-Härtungsmuster wie `termin_invitations`/`action_log`/`user_inventory`):
+Zugriff" gelesen, eine separate Einladungs-Tabelle lässt all das
+unangetastet. Drei `SECURITY DEFINER`-Funktionen, kein direktes
+Insert/Update/Delete auf `guild_invitations` für Clients:
 - `invite_to_guild(guild_id, invited_user_id)` — nur der Gildengründer,
-  nur an ein Org-Mitglied ohne bestehende Gilde (ein Nutzer kann
-  höchstens einer Gilde angehören, `guild_members.member_id` ist
-  Primärschlüssel). Erneutes Einladen nach einer Ablehnung setzt den
-  bestehenden Datensatz einfach wieder auf "offen".
+  nur an ein Org-Mitglied ohne bestehende Gilde. Erneutes Einladen
+  nach einer Ablehnung setzt den bestehenden Datensatz wieder auf
+  "offen".
 - `respond_to_guild_invitation(invitation_id, accept)` — nur der
   Eingeladene selbst. Erst bei Annahme entsteht die echte
-  `guild_members`-Zeile, mit denselben Minimalrechten wie bisher beim
+  `guild_members`-Zeile, mit denselben Minimalrechten wie beim
   Selbstbeitritt (`read`/`read`/`false`) — der Gründer passt sie danach
-  wie gewohnt über den bestehenden "Rechte"-Button an, kein
-  Zwangs-Dialog beim Annehmen.
+  über den bestehenden "Rechte"-Button an.
 - `cancel_guild_invitation(invitation_id)` — Zurückziehen einer noch
-  offenen Einladung durch den Einladenden (z.B. nach einem Fehlklick).
+  offenen Einladung durch den Einladenden.
 
 Der bestehende **Selbst-Beitritt** über die "Gilde beitreten"-Liste
-(`joinGuild()`, Selbstbeitritts-Zweig derselben Policy) bleibt
-unverändert — dort ist die beitretende Person selbst die Handelnde, kein
-Fremdeinfügen. Betroffen war ausschließlich der Founder-Branch.
+(`joinGuild()`) bleibt unverändert — betroffen war nur der
+Founder-Branch. Kandidatenfilterung (`searchGuildCandidates()`) prüft
+Mitgliedschaft org-weit, nicht nur in der aktuellen Gilde.
 
-**Frontend:** neue Karte "📨 Gilden-Einladung" oben auf der Gilde-Seite
+**Frontend:** Karte "📨 Gilden-Einladung" oben auf der Gilde-Seite
 (`loadGuildInvitationsCard()`, gleiches Muster wie die Termin-
-Einladungen-Karte auf dem Kalender — nur sichtbar, wenn wirklich etwas
-offen ist), wiederverwendet die bestehende `.friend-req-row`/
-`freq-accept`/`freq-decline`-Optik statt neuer CSS-Klassen. Der Picker
-(`searchGuildCandidates()`) zeigt für bereits offen eingeladene
-Kandidaten "Einladung zurückziehen" statt "Einladen". **Nebenbei
-mitbehoben:** die Kandidatenfilterung prüfte bisher nur Mitgliedschaft
-in der *aktuellen* Gilde, nicht org-weit — obwohl ein Nutzer nie in zwei
-Gilden gleichzeitig sein kann (latenter Bug, jetzt korrekt org-weit
-gefiltert).
+Einladungen-Karte, nur sichtbar wenn wirklich etwas offen ist),
+wiederverwendet `.friend-req-row`/`freq-accept`/`freq-decline`. Der
+Picker zeigt für bereits offen eingeladene Kandidaten "Einladung
+zurückziehen" statt "Einladen". Der "+ Gildenmitglied einladen"-Button
+in der Kanban-Kurzvorschau sitzt in einem eigenen
+`#kanbanPreviewInviteZone`-Platzhalter am Ende der Feldliste, mit
+Trennlinie abgesetzt (`.kp-invite-zone`/`.kp-invite-btn`).
 
-**Zwei kleinere, gleichzeitig gemeldete Design-Bugs mitbehoben:**
-- Das Namens-Suchfeld im Gilden-Picker (`#guildPickerSearch`) hatte gar
-  keine CSS-Regel — erschien als weißes Browser-Standardfeld statt im
-  dunklen App-Theme. Neue `.guild-picker input`-Regel behebt das.
-- Der "+ Gildenmitglied einladen"-Button in der Kanban-Kurzvorschau
-  (siehe "Kanban-Kurzvorschau" oben) wurde bisher roh per
-  `terminRow.after(inviteBtn)` mitten in die Feldliste eingehängt
-  (zwischen "Nächster Termin" und "Telefon"/"E-Mail") — Nutzerkritik
-  "klobig mitten drin". Jetzt ein eigener `#kanbanPreviewInviteZone`-
-  Platzhalter am Ende der Feldliste, mit Trennlinie abgesetzt
-  (`.kp-invite-zone`/`.kp-invite-btn`, kleinerer Pill-Button statt
-  vollbreitem `cal-nav-btn`).
+## Kanban ist strikt die eigene Vertriebspipe, kein Gilden-Blick
 
-Migration vorab per `begin`/`rollback`-Wrapper mit 8 Assertions gegen
-Wegwerf-Testaccounts verifiziert (Nicht-Gründer darf nicht einladen,
-Annehmen erzeugt korrekte Minimalrechte, direktes Fremdeinfügen jetzt
-RLS-blockiert, Ablehnen/Zurückziehen/Doppel-Mitgliedschaft-Schutz —
-alle 8 bestanden), danach per Nutzer-Go gepusht. Frontend zusätzlich
-per Playwright gegen den echten Account verifiziert (Input-Styling,
-Feld-Reihenfolge in der Kanban-Vorschau, Einladungskarte bleibt
-korrekt verborgen ohne offene Einladung).
+Das Kanban ist immer die **persönliche** Vertriebspipe jedes einzelnen
+Mitarbeiters — auch innerhalb einer gemeinsamen Gilde, auch für
+Admins, keine Ausnahme. Die **Kontakte-Seite** (Kundendatenbank) bleibt
+dagegen bewusst gilden-geteilt — Zweck der Trennung: beim Akquirieren
+abgleichen können, ob ein Interessent schon bei einem Kollegen im
+System steht (Dubletten-Vermeidung), ohne dass die eigene Pipeline-
+Ansicht mit fremden Karten zugemüllt wird. `renderKanbanBoard()`
+filtert die Gruppierung in die 8 Kanban-Spalten zusätzlich auf
+`c.owner_id === profile.id`, ohne Ausnahme für Admins — die
+Kontaktdaten-Sichtbarkeit selbst bleibt geteilt, nur die Kanban-
+**Ansicht** grenzt zusätzlich ein.
 
-## Kanban ist strikt die eigene Vertriebspipe, kein Gilden-Blick (2026-08-19)
-
-Echter, live beobachteter Bug, gefunden beim Durchsprechen der geplanten
-Termin-Einladung↔Kanban-Verknüpfung (siehe nächster Abschnitt): `renderKanbanBoard()`
-nutzte dieselbe ungefilterte `loadContactsBundle()`-Abfrage wie die
-Kontakte-Seite — für die Kontakte-Seite richtig (gemeinsame, gilden-geteilte
-Kundendatenbank ist dort ausdrücklich gewollt), fürs Kanban-Board fehlte
-aber seit jeher die Eigentümer-Einschränkung. Per direkter SQL-Abfrage
-gegen die echte DB bestätigt: ein eigener Kontakt mit gesetzter
-`kanban_stage` UND `write`-Gildenfreigabe tauchte dadurch bereits echt auf
-dem Kanban-Board eines Gilden-Kollegen mit auf, inklusive Zieh-/
-Verschieben-Möglichkeit im UI (serverseitig hätte `contacts_update_visible`
-zwar sowieso nur bei `write`-Freigabe erlaubt geschrieben zu werden — bei
-`read`-Freigabe wäre der Versuch RLS-blockiert, aber als wortloser
-Fehlschlag sichtbar gewesen).
-
-**Nutzerklärung des zugrunde liegenden Modells, "bottom up":** das Kanban
-ist immer die **persönliche** Vertriebspipe jedes einzelnen Mitarbeiters —
-auch innerhalb einer gemeinsamen Gilde, auch für Admins, keine Ausnahme.
-Die **Kontakte-Seite** (Kundendatenbank) bleibt dagegen bewusst
-gilden-geteilt wie bisher — Zweck dieser Trennung: beim Akquirieren
-abgleichen können, ob ein Interessent schon bei einem Kollegen im System
-steht (Dubletten-Vermeidung), ohne dass die eigene Pipeline-Ansicht mit
-fremden Karten zugemüllt wird. Jeder Kontakt bleibt dabei erkennbar seinem
-Eigentümer zugeordnet (unverändert, war schon vorher so).
-
-**Fix**, rein im Frontend (`index.html`, `renderKanbanBoard()`): die
-Gruppierung in die 8 Kanban-Spalten filtert jetzt zusätzlich auf
-`c.owner_id === profile.id`, ohne Ausnahme für Admins. Keine Datenbank-/
-RLS-Änderung nötig — die zugrunde liegende Sichtbarkeit der Kontaktdaten
-selbst soll ja weiterhin geteilt bleiben, nur die Kanban-**Ansicht** grenzt
-jetzt zusätzlich ein. Per Playwright gegen den echten Admin-Account
-verifiziert: Board zeigt weiterhin exakt die eigene Karte, keine
-Konsolenfehler (kein Testaccount für die Gegenprobe "Kollege sieht die
-fremde Karte jetzt nicht mehr" verfügbar — dafür reicht aber schon die
-direkte SQL-Bestätigung des vorherigen Lecks plus die triviale
-Filterbedingung).
-
-**Direkter Folgeauftrag, noch nicht gebaut:** die ursprünglich angedachte
-Termin-Einladung↔Kanban-Spiegelung (Eingeladener sieht/bearbeitet eine
-schreibgeschützte Kanban-Karte für den verknüpften Kontakt, kann von dort
-absagen, Organisator bekommt dieselbe Benachrichtigung wie bei einer
-Kalender-Absage — Punkte/Vertriebsstatistik bleiben ausschließlich beim
-Organisator, der Eingeladene ist zum Mitlernen/gemeinsamen Gildenziel
-dabei) muss durch diese Klarstellung neu gedacht werden: da das Kanban
-jetzt (richtigerweise) strikt persönlich ist, kann sich eine Einladung
-NICHT mehr einfach "for free" über die bestehende Gilden-Kontaktfreigabe
-zeigen — es bräuchte eine echte, gezielte Ausnahme (genau eine Karte,
-schreibgeschützt, erkennbar als "über Einladung geteilt") statt der
-vorher (fälschlich) angenommenen automatischen Sichtbarkeit.
-
-**Fertig gebaut, noch am selben Tag (2026-08-19):** genau diese gezielte
-Ausnahme. `contact_id` wird jetzt bei Termin-Einladungen als weiteres
-Schattenfeld auf `termin_invitations` mitgeführt (gleiche Technik wie
-`title`/`start_at`/`kanal`/`organizer_id`, Migration
-`20260819150000_termin_einladung_kanban_spiegel.sql`) und bei Annahme auf
-die Kalenderkopie des Eingeladenen übertragen. Hat der eingeladene Termin
-einen Kontaktbezug, zeigt `renderKanbanBoard()` zusätzlich zu den eigenen
-Karten einen zweiten, schreibgeschützten Kartensatz (`.kanban-card-shared`,
+**Gezielte Ausnahme: Termin-Einladung↔Kanban-Spiegelung.** Hat ein
+eingeladener Termin (siehe "Termin-Einladungen" oben) einen
+Kontaktbezug (`contact_id` als weiteres Schattenfeld auf
+`termin_invitations`, bei Annahme auf die Kalenderkopie übertragen),
+zeigt `renderKanbanBoard()` zusätzlich zu den eigenen Karten einen
+zweiten, schreibgeschützten Kartensatz (`.kanban-card-shared`,
 gestrichelter Rand, kein Zieh-Griff, kein Verschieben-Knopf) für jeden
-Kontakt aus einer angenommenen Einladung — live in der Spalte, in der der
-Kontakt beim Organisator tatsächlich gerade steht (derselbe
+Kontakt aus einer angenommenen Einladung — live in der Spalte, in der
+der Kontakt beim Organisator tatsächlich gerade steht (derselbe
 `kanban_stage`-Wert, keine eigene Kopie des Status). Statt des
-Verschieben-Knopfs ein `.kc-decline-btn` ("Termin absagen"), der dieselbe
-`respond_to_termin_invitation()`-Funktion aufruft wie im Kalender —
-Kalendereintrag UND Kanban-Spiegelkarte verschwinden dabei im selben Zug.
-Hat der Eingeladene keinen Lesezugriff auf den Kontakt (z.B. Einladung nur
-über eine Freundschaft ohne gemeinsame Gilde), liefert der Datenbank-Join
-schlicht nichts zurück — kein Sonderfall im Code, RLS regelt das von
-allein (per Testlauf mit einer reinen Freundschaft ohne Gildenfreigabe
-bestätigt: kein Zugriff, keine Karte). XP/Vertriebsstatistik bleiben
-unverändert ausschließlich beim Organisator, die Spiegelkarte selbst löst
-nie eine Aktion aus.
+Verschieben-Knopfs ein `.kc-decline-btn` ("Termin absagen"), der
+dieselbe `respond_to_termin_invitation()`-Funktion aufruft wie im
+Kalender — Kalendereintrag UND Kanban-Spiegelkarte verschwinden dabei
+im selben Zug. Hat der Eingeladene keinen Lesezugriff auf den Kontakt
+(z.B. Einladung nur über eine Freundschaft ohne gemeinsame Gilde),
+liefert der Datenbank-Join schlicht nichts zurück — kein Sonderfall im
+Code, RLS regelt das von allein. XP/Vertriebsstatistik bleiben
+unverändert ausschließlich beim Organisator, die Spiegelkarte selbst
+löst nie eine Aktion aus.
 
-**Dabei ein echter, vorbestehender Bug gefunden und behoben** (Migration
-`20260819160000_termin_einladung_absage_nach_annahme_fix.sql`):
-`respond_to_termin_invitation()` erlaubte eine Antwort nur noch, solange
-`status='offen'` war — das blockierte nicht nur den neuen
-"Termin absagen"-Knopf, sondern denselben, schon länger bestehenden
-"Aus meinem Kalender entfernen"-Weg im Kalender selbst (beide rufen die
-Funktion mit `p_accept=false` auf einer bereits `status='angenommen'`-
-Einladung auf) — vermutlich nie mit einer wirklich schon angenommenen
-Einladung durchgetestet. Fix: Annehmen bleibt nur aus `'offen'` möglich,
-Ablehnen jetzt sowohl aus `'offen'` als auch nachträglich aus
-`'angenommen'`.
+## Gildenleben: Team-Ziele + Gilden-Gebäude, Fundament
 
-Beide Migrationen vorab per `begin`/`rollback`-Wrapper mit echten
-Nicht-Admin-Testprofilen verifiziert, danach per Nutzer-Go gepusht.
-Zusätzlich ein echter Ende-zu-Ende-Test mit Playwright gegen den echten
-Account (testweise reale Einladung zwischen zwei echten Profilen
-aufgebaut, danach vollständig wieder entfernt): Spiegelkarte erscheint
-korrekt mit Organisator-Namen, nicht ziehbar, "Termin absagen" entfernt
-Kalendereintrag UND Karte im selben Zug, keine Konsolenfehler, 0
-Testdaten-Reste danach bestätigt.
+Erster Baustein des "Gildenleben"-Quest-Typs (Langfassung des Konzepts:
+Claudes Erinnerung `project_gildenleben_konzept`). Bewusst noch nicht
+angegangen: die echte Gebäude-Grafik (Platzhalter bleibt bis auf
+Weiteres), eine Self-Service-Oberfläche für Gildenführer (kommt laut
+Nutzer erst mit der großen, noch nicht angegangenen Automatisierung —
+"erst das Programm so groß wie möglich schreiben, bevor wir
+abstrahieren").
 
-## Gildenleben: Team-Ziele + Gilden-Gebäude, Fundament (2026-08-19)
+**Kernidee:** die Gilde bekommt eigene, verkaufsbasierte
+**Jahres-Team-Ziele** (mehrere gleichzeitig, je Sparte — nicht das
+eine tun ohne das andere zu lassen, z.B. Kranken UND Leben UND Sach
+parallel). Erfüllung schaltet **kein XP, keinen Titel** frei, sondern
+ein Bauteil eines gemeinsamen, gilden-eigenen "Gebäudes". **Wichtige
+Architektur-Klarstellung:** der jährliche Reset betrifft nur, welche
+Verkäufe für die *nächste offene* Stufe zählen — der Bau-Fortschritt
+selbst wird **nie** zurückgesetzt, akkumuliert über die ganzen 10 Jahre
+hinweg, exakt wie das individuelle Charakter-Level. Zielwerte leben
+vorerst von Hand im Regelwerk (gleiches Muster wie der restliche
+Questbaum).
 
-Löst den seit dem 2026-08-17 als nächsten Einstieg bestätigten
-"Gildenleben"-Quest-Typ (siehe `project-roadmap-prioritaeten`) — nach
-ausführlicher Konzept-Diskussion mit dem Nutzer (siehe
-[[project_gildenleben_konzept]] in Claudes Erinnerung für die Langfassung),
-bewusst nur der **erste** von mehreren Bauschritten: die Datenbank-Seite.
-Regelwerk-Beispieldaten, die Frontend-Auswertungslogik und der Gilde-
-Seiten-Umbau (Gebäude-Grafik oben, Reiter Mitglieder/Freunde, Team-Ziele-
-Bereich darunter — siehe eigener Diskussions-Abschnitt in der Erinnerung)
-folgen als eigene, noch nicht begonnene nächste Schritte.
-
-**Kernidee, mit dem Nutzer abgestimmt:** die Gilde bekommt eigene,
-verkaufsbasierte **Jahres-Team-Ziele** (mehrere gleichzeitig, je Sparte —
-"nicht das eine tun ohne das andere zu lassen", z.B. Kranken UND Leben UND
-Sach parallel). Erfüllung schaltet **kein XP, keinen Titel** frei, sondern
-ein Bauteil eines gemeinsamen, gilden-eigenen "Gebäudes" (Schloss/Tempel/
-o.ä. — Optik kommt als eigener, viel späterer Schritt, vergleichbar mit
-dem Charakter-Sprite-System, aktuell komplett ungebaut). **Wichtige
-Klarstellung des Nutzers, die die Architektur bestimmt:** der jährliche
-Reset betrifft nur, welche Verkäufe für die *nächste offene* Stufe zählen
-— der Bau-Fortschritt selbst wird **nie** zurückgesetzt, akkumuliert über
-die ganzen 10 Jahre hinweg, exakt wie das individuelle Charakter-Level nie
-zurückgesetzt wird. Zielwerte leben vorerst von Hand im Regelwerk
-(gleiches Muster wie der restliche Questbaum) — eine echte
-Self-Service-Oberfläche für Gildenführer kommt laut Nutzer bewusst erst
-mit der großen, noch nicht angegangenen Automatisierung ("erst das
-Programm so groß wie möglich schreiben, bevor wir abstrahieren").
-
-**Migration `20260819180000_gildenleben_teamziele_fundament.sql`, live:**
-- **`guild_quest_log`** — reines Anhänge-Protokoll, gleiches Prinzip wie
-  `action_log`: nichts wird als Zahl gespeichert, jede erfüllte
-  Team-Ziel-Stufe trägt sich als eine Zeile ein (`guild_id`, `quest_id`,
-  `stage_id`, `period_key` für das Jahr). Der Bau-Fortschritt eines
-  Gebäudes ist beim Anzeigen immer nur "wie viele Zeilen stehen für diese
-  Gilde im Protokoll" — nie eine gespeicherte Zahl. Unique-Key umfasst
-  bewusst `period_key` mit: dieselbe Stufe ist über mehrere Jahre hinweg
-  mehrfach erreichbar (Jahresziel-Prinzip wie beim individuellen
-  Questbaum seit Patch 50), nur nicht zweimal im selben Jahr. Sichtbar für
-  alle Mitglieder der jeweiligen Gilde + Admins, kein direktes
-  Insert/Update/Delete für Clients.
+**Datenmodell:**
+- **`guild_quest_log`** — reines Anhänge-Protokoll, gleiches Prinzip
+  wie `action_log`: nichts wird als Zahl gespeichert, jede erfüllte
+  Team-Ziel-Stufe trägt sich als eine Zeile ein (`guild_id`,
+  `quest_id`, `stage_id`, `period_key` für das Jahr). Der
+  Bau-Fortschritt eines Gebäudes ist beim Anzeigen immer nur "wie
+  viele Zeilen stehen für diese Gilde im Protokoll" — nie eine
+  gespeicherte Zahl. Unique-Key umfasst `period_key` mit: dieselbe
+  Stufe ist über mehrere Jahre hinweg mehrfach erreichbar, nur nicht
+  zweimal im selben Jahr. Sichtbar für alle Mitglieder der jeweiligen
+  Gilde + Admins, kein direktes Insert/Update/Delete für Clients.
 - **`guild_sales_metric_total(guild_id, field, category, year)`** —
   `SECURITY DEFINER`-Aggregat-Funktion (gleiches Schutzprinzip wie
   `friend_skill_totals()`), liefert nur eine Summe zurück, nie
-  Einzelverkäufe. Nötig, weil normale `sales`-RLS nicht automatisch alle
-  Verkäufe aller Gildenmitglieder zeigt (nur über zufällig geteilte
-  Kontakte) — ein Team-Ziel braucht aber die echte Summe über alle
-  Mitglieder. `field` ist auf eine feste Erlaubnisliste
-  (`bewertungssumme`/`laufender_beitrag`) geprüft, kein freier Spaltenname
-  vom Client. `category` filtert optional auf eine Produktkategorie
-  (NULL = alle zusammen). Zeitraum wie auf der persönlichen
-  Statistik-Seite: `vertragsbeginn`, Fallback `datum`.
-- **`grant_guild_quest_completion(guild_id, quest_id, stage_id, period_key)`**
-  — trägt eine erfüllte Stufe ins Protokoll ein, Duplikat-geschützt über
-  den Unique-Key (`on conflict do nothing`, Rückgabewert zeigt an, ob
-  wirklich neu vergeben wurde). Aufrufbar von jedem Mitglied der
-  betroffenen Gilde — die eigentliche Schwellenwert-Prüfung passiert
-  weiterhin im Frontend (gleiches Muster wie bei den bestehenden
-  persönlichen Quest-Prüfungen), diese Funktion verhindert nur doppeltes
-  Eintragen.
+  Einzelverkäufe — normale `sales`-RLS zeigt nicht automatisch alle
+  Verkäufe aller Gildenmitglieder. `field` ist auf eine feste
+  Erlaubnisliste (`bewertungssumme`/`laufender_beitrag`) geprüft,
+  `category` filtert optional auf eine Produktkategorie (NULL = alle
+  zusammen). Zeitraum wie auf der persönlichen Statistik-Seite:
+  `vertragsbeginn`, Fallback `datum`.
+- **`grant_guild_quest_completion(guild_id, quest_id, stage_id,
+  period_key)`** — trägt eine erfüllte Stufe ins Protokoll ein,
+  Duplikat-geschützt über den Unique-Key (`on conflict do nothing`).
+  Aufrufbar von jedem Mitglied der betroffenen Gilde — die eigentliche
+  Schwellenwert-Prüfung passiert im Frontend (gleiches Muster wie bei
+  den bestehenden persönlichen Quest-Prüfungen), diese Funktion
+  verhindert nur doppeltes Eintragen.
+- `rule_configs.config` hat zwei zusätzliche Top-Level-Schlüssel:
+  `guildTeamQuests` (die Team-Ziele, bewusst flach — kein
+  `stages`-Array, `stage_id` = `quest_id`, gleiche Konvention wie bei
+  Epics) und `guildBuilding` (das Bau-Rezept, 4 Stufen von "Kleine
+  Hütte" bis "Festung", reine Text-/Emoji-Platzhalter).
 
-Vorab per `begin`/`rollback`-Wrapper mit echten Profilen gegen die echte
-DB getestet (Summenbildung über einen echten Testverkauf bestätigt,
-Duplikat-Schutz bestätigt, ein gildenfremdes Profil sowohl von der
-Summenabfrage als auch von der Vergabe zuverlässig ausgeschlossen), danach
-per Nutzer-Go gepusht.
-
-**Schritte 2-4, noch am selben Abend, alle vier Schritte des Konzepts
-damit fertig:**
-
-- **Schritt 2** (Migration `20260819200000_gildenleben_teamziele_beispiele.sql`):
-  zwei neue Top-Level-Schlüssel additiv ins bestehende `rule_configs.config`
-  gemerged (bestehender Inhalt unangetastet). `guildTeamQuests` — die
-  Team-Ziele selbst, bewusst flach (kein `stages`-Array wie beim
-  individuellen Ladder-Typ, `stage_id` = `quest_id`, gleiche Konvention
-  wie bei Epics). Zwei Beispiel-Ziele, **explizit als Testwerte markiert,
-  kein echtes Geschäftsziel** — es gab beim Schreiben noch keine einzige
-  eingetragene individuelle Planung (`profiles.planung_*` komplett leer,
-  vorher geprüft), daher keine "×10"-Ableitung aus echten Werten möglich,
-  nur runde Platzhalter. `guildBuilding` — das Bau-Rezept (4 Stufen von
-  "Kleine Hütte" bis "Festung", reine Text-/Emoji-Platzhalter, keine
-  echte Grafik).
-- **Schritt 3**: zwei neue Frontend-Funktionen neben den bestehenden
-  Quest-Check-Funktionen (`checkAndAwardEpics()` & Co.).
-  `loadAndEvaluateGuildTeamQuests(guildId)` prüft UND vergibt in einem
-  Rutsch (ruft `guild_sales_metric_total()`, bei Erfüllung
-  `grant_guild_quest_completion()`), gibt anzeigefertige Daten zurück.
-  `loadGuildBuildingProgress(guildId)` leitet den Bau-Stand rein aus der
-  Zeilenzahl von `guild_quest_log` für diese Gilde ab (nie eine
-  gespeicherte Zahl, gleiches Prinzip wie XP/Level).
-- **Schritt 4**: Gilde-Seite (Orden/Legion/Bund) umgebaut wie mit dem
-  Nutzer abgestimmt — Gebäude-Karte oben (Platzhalter-Optik: Icon +
-  Titel + "X Teile bis zur nächsten Stufe"), darunter Reiter
-  Mitglieder/Freunde (`.view-switch`-Muster), darunter Team-Ziele mit
-  Fortschrittsbalken. **Wichtige Randbedingung, vom Nutzer bestätigt:**
-  "die Seite kann so bleiben wie heute" für alle, die noch in keiner
-  Gilde sind (5 von 7 echten Profilen aktuell) — Freunde bleibt für sie
-  eine eigene, immer sichtbare Karte, exakt wie bisher. Technisch gelöst,
-  ohne die Freunde-Logik zu duplizieren: die Freunde-Karte
-  (`#friendCard`) ist ein einziges DOM-Element, das `loadGuildState()`
-  per `appendChild()` zwischen zwei Ankerpunkten hin- und herschiebt —
-  `#friendCardHome` (Standardposition, kein-Gilde-Fall) und
-  `#guildTabFreunde` (Reiter-Inhalt, in-Gilde-Fall). `appendChild()`
-  verschiebt ein bereits vorhandenes Element inklusive aller
-  Event-Listener, keine Neuerzeugung nötig. Verlässt man die Gilde,
-  landet die Karte automatisch wieder an ihrem Stammplatz.
-  **Reihenfolge-Bug beim ersten Testlauf gefunden und behoben:** die
-  Gebäude-Anzeige wurde vor der Team-Ziele-Auswertung gerendert — bei
-  genau der Erfüllungs-Runde eines Ziels zeigte das Gebäude deshalb noch
-  den alten Stand (der neue Protokoll-Eintrag existierte zu dem
-  Zeitpunkt noch nicht). Reihenfolge in `loadGuildState()` korrigiert:
-  erst `renderGuildTeamQuests()` (prüft/vergibt), dann erst
-  `renderGuildBuilding()` (liest den ggf. gerade neuen Stand).
-
-End-to-end per Playwright gegen den echten Account verifiziert: Gebäude-/
-Reiter-/Team-Ziele-Anzeige korrekt, Reiter-Umschaltung funktioniert,
-Freunde-Karte landet korrekt im Reiter. Danach ein echter, großer
-Test-Verkauf eingefügt (Lebensversicherung, 600.000 € BWS) — Team-Ziel
-schaltete korrekt auf ✅, Gebäude sprang korrekt auf "Kleine Hütte",
-wiederholtes Neuladen erzeugte keinen zweiten Protokoll-Eintrag
-(Duplikat-Schutz bestätigt). Test-Verkauf, -Kontakt, -Produkt und der
-dadurch entstandene Protokoll-Eintrag danach vollständig entfernt, Seite
-zeigt wieder exakt den Ausgangszustand.
-
-**Damit ist die komplette, ausführlich mit dem Nutzer besprochene
-Konzeptreihe zum Gildenleben-Team-Ziele-Fundament (alle 4 Schritte)
-fertig.** Details/Diskussionsverlauf in Claudes Erinnerung
-(`project_gildenleben_konzept`). Bewusst noch nicht angegangen: die
-echte Gebäude-Grafik (Platzhalter bleibt bis auf Weiteres), eine
-Self-Service-Oberfläche für Gildenführer (kommt laut Nutzer erst mit der
-großen Automatisierung).
-
-**Aktionsleiste-Politur, erledigt 2026-08-20:** die "+ hinzufügen"/
-"Gilde verlassen"-Aktionsleiste saß vorher OBERHALB des Mitglieder/
-Freunde-Reiters, wirkte für beide Reiter gleichermaßen gültig —
-verwirrend, weil "hinzufügen" im Mitglieder-Kontext (nur Gildenführer)
-etwas anderes meint als "hinzufügen" im Freunde-Kontext (das dort schon
-existierende Freunde-Suchfeld, für jeden sichtbar). "+ hinzufügen" sitzt
-jetzt **innerhalb** des Mitglieder-Reiters (unter dem Reiter-Umschalter,
-weiterhin nur für den Gründer sichtbar), "Gilde verlassen" wanderte
-stattdessen an den Gebäude-Header (gildenweite Aktion, für alle
-Mitglieder). Reine HTML-Verschiebung, keine neue Logik — per Playwright
-gegen den echten Account (Gründer-Rolle) verifiziert, Desktop + Mobile,
-keine Konsolenfehler.
+**Frontend:** `loadAndEvaluateGuildTeamQuests(guildId)` prüft UND
+vergibt in einem Rutsch (ruft `guild_sales_metric_total()`, bei
+Erfüllung `grant_guild_quest_completion()`). `loadGuildBuildingProgress
+(guildId)` leitet den Bau-Stand rein aus der Zeilenzahl von
+`guild_quest_log` für diese Gilde ab (nie eine gespeicherte Zahl,
+gleiches Prinzip wie XP/Level). Gilde-Seite (Orden/Legion/Bund):
+Gebäude-Karte oben (Icon + Titel + "X Teile bis zur nächsten Stufe"),
+darunter Reiter Mitglieder/Freunde (`.view-switch`-Muster), darunter
+Team-Ziele mit Fortschrittsbalken. Wer noch in keiner Gilde ist, sieht
+weiterhin nur die eigenständige Freunde-Karte — `#friendCard` ist ein
+einziges DOM-Element, das `loadGuildState()` per `appendChild()`
+zwischen zwei Ankerpunkten hin- und herschiebt (`#friendCardHome`
+Standardposition ohne Gilde, `#guildTabFreunde` Reiter-Inhalt bei
+Mitgliedschaft) statt die Freunde-Logik zu duplizieren — verlässt man
+die Gilde, landet die Karte automatisch wieder an ihrem Stammplatz.
+"+ hinzufügen" (nur für den Gildenführer) sitzt innerhalb des
+Mitglieder-Reiters unter dem Reiter-Umschalter, "Gilde verlassen"
+(gildenweite Aktion, alle Mitglieder) am Gebäude-Header.
 
 ## Aufgaben-System: echte, abhakbare Aufgaben (Outlook-Stil), Patch 51 (2026-08-20)
 
