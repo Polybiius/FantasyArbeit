@@ -500,6 +500,56 @@ gezeichneter SVGs — die erste Fassung ohne Referenzbilder wirkte laut
 Nutzer "nicht ganz rund", danach erst die vier Screenshots angefordert
 und die Formensprache (nicht die Bilder selbst) übernommen.
 
+## 2026-08-03 bis 2026-08-14: BWS-Verrechnung, Entstehung + Rework
+
+**Nachträglich beim Häppchen-12-Durchgang eingefügt (2026-08-23):** die
+"Bewusst aufgeschobene Ideen"-Liste in CLAUDE.md enthielt bis dahin
+noch die komplette, 168 Zeilen lange Original-Beschreibung dieser
+Funktion mit der Einleitung "Formel jetzt bekannt, noch nicht gebaut" —
+faktisch falsch, da die Funktion längst fertig gebaut, live UND am
+2026-08-14 grundlegend überarbeitet worden war (bestätigt gegen den
+echten Code: `PRODUCT_ART_CONFIG`, `profiles.lv_prozent_satz`/
+`pma_suh_satz`/`pma_kv_satz` existieren, `sales.bewertungssumme` wird
+nicht mehr beschrieben). Klassischer Fall eines später nie
+zurücksynchronisierten Abschnitts, gleiche Bug-Klasse wie der Profil-
+Onboarding/Aussehen-Screen-Widerspruch aus Häppchen 2 und der
+Verkaufsstatistik-Fund aus Häppchen 2 — hier nur besonders groß, weil
+zwei ganze Baurunden (2026-08-03 und 2026-08-14) nie in den "aktueller
+Stand"-Text zurückgeflossen sind. Der alte, jetzt entfernte Text (169
+Zeilen, ursprünglicher Excel-Auslese-/Formel-Bau-Bericht vom
+2026-08-03) liegt zur Vollständigkeit als Rohtext bei Bedarf im
+Commit-Diff dieses Häppchens. Die korrigierte, aktuelle Fassung steht
+jetzt als eigener Abschnitt "BWS-Verrechnung: Provision &
+Bewertungspunkte" in CLAUDE.md (vorher fälschlich unter "Bewusst
+aufgeschobene Ideen" einsortiert).
+
+**Kurzfassung der Entstehung** (volle Details in Claudes Erinnerung
+`project_bws_verrechnung`, dort bereits mit dem "Stand 2026-08-14"-Fazit
+dokumentiert — hier nur die Eckpunkte, damit HISTORY.md eigenständig
+lesbar bleibt): am 2026-08-03 lieferte der Nutzer seine bestehende Excel
+(`~/Schreibtisch/Projekt.xlsm`, 14 Blätter), Claude Code las sie
+vollständig aus (ZIP+XML, ohne Excel/openpyxl), Formel + Datenmodell
+(Patch 30) + Einstellungen-Seite (Patch 31) + Kompendium-Dashboard
+entstanden in derselben Session. Am 2026-08-14 räumte der Nutzer ein,
+dass er Claude die Excel anfangs "ohne ausreichende Rückfragen" hatte
+interpretieren lassen ("das war doof von mir") — daraufhin ein
+grundlegender Rework in einer eigenen Session, Stück für Stück mit
+expliziter Rückfrage vor jeder Änderung: Produktanlage radikal
+vereinfacht (nur noch Name+Art), PMA-Sätze zu echten persönlichen
+Feldern gemacht (vorher fest im Produkt verbacken — ein Fehler
+gegenüber der Excel), Leben-Satz von ‰ auf % umgestellt, Bewertungs-
+summe (Leben) wird seitdem live aus dem Beitrag berechnet statt manuell
+erfasst, Stückzahl-Feld komplett entfernt. Dabei drei echte,
+vorbestehende Bugs beim Live-Testen mit dem Nutzer gefunden und
+behoben (Verkaufs-Popup verwarf einen Verkauf still ohne "+ Produkt
+hinzufügen", `kanban_stage` wurde beim Verkauf-Eintragen auf der
+Kontakt-Seite nie gesetzt, offene Kontakt-Seite zeigte neue Verträge
+erst nach manuellem Reload, ein Modal-Stapel-Bug, eine CSS-Lücke bei
+`<select>`-Elementen in `.kanban-newlead-form`). Alles per Playwright
+end-to-end gegen die echte DB verifiziert (u.a. 150€ Beitrag → 54.000€
+BWS → 1.350€ Provision bei 2,5% → 810€ Differenzprovision, exakt
+nachgerechnet).
+
 ## 2026-08-03/04/09: Changelog-Popup, Sprite-Labor, Pixel-Art-Referenzmasken
 
 **Häppchen 6 (Changelog-Popup bis Pixel-Art-Referenzmasken-System,
@@ -1056,3 +1106,1034 @@ Gildenführer) etwas anderes meint als "hinzufügen" im Freunde-Kontext
 Reine HTML-Verschiebung, keine neue Logik (aktueller Stand: CLAUDE.md)
 — per Playwright gegen den echten Account (Gründer-Rolle) verifiziert,
 Desktop + Mobile, keine Konsolenfehler.
+
+**Termin-Einladungen-Robustheit, noch am 2026-08-19:** zwei kleine
+Unschärfen behoben, Migration
+`20260819120000_termin_einladungen_robustheit.sql`. Vor dem Push mit
+echten Nicht-Admin-Testprofilen (nicht dem eigenen Admin-Account — der
+erste Testlauf hatte fälschlich den Admin-Bypass mitgetestet und
+dadurch nichts bewiesen) in einer `begin`/`rollback`-Transaktion
+verifiziert: Organisator sieht seine stornierte Einladung jetzt über
+`organizer_id`, direktes Löschen der Einladungs-Kopie durch den
+Eingeladenen ist jetzt RLS-blockiert (nur noch über
+`respond_to_termin_invitation()` möglich), eigene normale Termine
+bleiben normal löschbar (keine Regression). Aktueller Stand: CLAUDE.md,
+Abschnitt "Bekannte, bewusst in Kauf genommene Lücken". Die vom Nutzer
+zusätzlich vermutete dritte Unschärfe (offene, noch nicht angenommene
+Einladung "verschwindet" beim Empfänger, wenn der Organisator den
+Termin löscht) war beim Nachtesten **kein Bug** — funktionierte bereits
+korrekt (Status wechselt sichtbar auf "storniert").
+
+## 2026-08-20: Aufgaben-System (Patch 51) + Code-Review-Durchgang
+
+**Aufgaben-System, Entstehung:** löst den seit 2026-08-09 unter
+"Bewusst aufgeschobene Ideen" notierten Wunsch "Outlook-artige
+abhakbare Aufgaben" — nach ausführlicher Konzept-Diskussion (Nutzer
+beschrieb genau das Outlook-Verhalten: Aufgaben mit Termin, Abhaken
+lässt sie verschwinden). Migration `20260820120000_aufgaben_system.sql`.
+End-to-end per Playwright gegen den echten Account verifiziert: Aufgabe
+anlegen ohne/mit Datum, Abhaken löscht sofort, überfällige Aufgabe rot,
+Doppelklick springt korrekt in den Tag-Reiter, kein horizontales
+Overflow auf 390px nach dem `min-width:0`-Fix, keine Konsolenfehler —
+sowie der komplette Wiedervorlage-Ablauf über einen echten Testkontakt
+(Anlegen mit Datum → Aufgabe erscheint → Datum ändern → alte Aufgabe
+verschwindet, neue erscheint am neuen Tag → Testkontakt/-aufgabe
+wieder entfernt).
+
+**Nachtrag 1:** Nutzer-Bugreport ("Systemuhr auf 2027-06-10
+vorgestellt, Kundengeburtstag taucht nirgends auf, auch nicht im
+Kalender") — Ursache war die eigene Einstellung
+`calendar_show_birthdays` (aus), per direkter SQL-Prüfung bestätigt
+(Kontaktdaten selbst waren korrekt). Dabei eine echte, zusätzliche
+Lücke gefunden: das Umschalten von "Geburtstage anzeigen" wirkte
+bisher nur auf die alten, rein clientseitig berechneten Kalender-
+Punkte, nicht auf die neuen echten Aufgaben-Zeilen — die hätten erst
+beim nächsten Tageswechsel oder Neuladen nachgezogen. Fix (aktueller
+Stand: CLAUDE.md) per Playwright mit gefälschter Browser-Systemuhr
+(`context.addInitScript()`, `Date` auf 2027-06-10 überschrieben)
+verifiziert: Aufgabe UND Kalender-Punkt erscheinen korrekt am
+gefälschten Datum, Umschalten des Häkchens entfernt/erzeugt die
+Aufgaben-Zeile sofort ohne Neuladen.
+
+**Nachtrag 2, zwei Bugs beim manuellen Vorausblättern gefunden:**
+(1) Monat/Woche/Tag hatten je ihr eigenes, unabhängiges Datum —
+Doppelklick auf einen Tag in der Zukunft zeigte in der Tagesansicht
+korrekt diesen Tag, sprang aber beim Wechsel zu Woche/Monat zurück auf
+die aktuelle Woche/den aktuellen Monat, "inkonsistent". Behoben durch
+die gemeinsame `calFocusDate`-Variable (aktueller Stand: CLAUDE.md) —
+betraf strukturell auch Monat↔Woche schon vor dem Tag-Reiter, fiel
+dort nur nie auf. (2) Ein an einem NICHT-heutigen Tag liegender
+Geburtstag fehlte in der Aufgaben-Liste komplett, obwohl der alte
+Kalender-Punkt ihn längst zeigte — die alten Punkte rechnen live für
+jedes Datum, die neuen Aufgaben-Zeilen entstehen aber nur für den
+echten heutigen Tag. Behoben durch die nicht-abhakbare Vorschau-Zeile
+(aktueller Stand: CLAUDE.md). Reiner Diagnose-Fund nebenbei (kein
+Bug): `calendar_show_birthdays` stand im echten Account zwischenzeit-
+lich wieder auf "aus" — für den Test wieder eingeschaltet. Per
+Playwright verifiziert (Vorblättern 10 Monate, Doppelklick auf
+10.06.2027, Wechsel Tag→Woche→Monat→Heute): alle drei Ansichten
+zeigen konsistent den 10.06.2027 bzw. Juni 2027, "Heute" springt
+zuverlässig zurück, Geburtstags-Vorschau erscheint korrekt ohne
+Checkbox/Aufgaben-ID, keine Konsolenfehler.
+
+**Nachtrag 3, Reload-Persistenz:** Nutzerwunsch, klar begründet: "ich
+bin bei einem Datum, trage dort was ein, lade neu, soll dort bleiben —
+für 'heute' hab ich ja den Knopf." Löste das dritte Hash-Format
+(aktueller Stand: CLAUDE.md). Beim Umsetzen zwei echte Race-Bugs
+gefunden und behoben, beide Folge davon, dass `initJournal()` in
+`enterApp()` bewusst unawaited aufgerufen wird (damit der restliche
+Login-Ablauf nicht auf das Tagebuch warten muss): die Kalender-
+Grundvariablen wurden bisher erst nach dem ersten `await` in
+`initJournal()` gesetzt — je nach Netzwerk-Timing konnte
+`restoreLastPage()` (das per Hash `calFocusDate` auf einen fremden Tag
+setzt) vorher laufen, die wiederhergestellte Ansicht dann beim
+späteren Fortsetzen still wieder auf "heute" zurückwerfen; jetzt steht
+der komplette Block ganz am Anfang, vor dem ersten `await`. Ein
+unbedingtes `renderCalendar()` am Ende von `initJournal()` überschrieb
+außerdem die schon korrekt wiederhergestellte `calMonthLabel`-
+Kopfzeile wieder mit dem Monat von "heute" — jetzt modusabhängig
+(`renderDayView`/`renderWeekView`/`renderCalendar`). Beide Bugs wurden
+erst durch einen echten End-to-End-Test mit tatsächlichem Seiten-
+Reload sichtbar, nicht durch Code-Lesen — per Playwright verifiziert:
+Doppelklick auf 10.08.2027 → Aufgabe eintragen → echter Reload →
+Tag-Reiter, Datum UND Aufgabe korrekt erhalten; Wochenansicht-Wechsel
+→ Reload → richtige Woche erhalten; normale Seiten-Navigation bleibt
+unberührt; "Heute"-Knopf springt weiterhin zuverlässig zurück.
+
+**Code-Review-Durchgang übers gesamte `index.html`, Patch-Nachtrag:**
+auf Nutzeranstoß ("wo gehobelt wird fallen Späne", nach einer Session
+mit sehr viel neuem Code auf einmal) `/code-review high` gegen die
+komplette `index.html` laufen lassen (5 parallele Hintergrund-Agenten:
+Altitude/Konventionen, Wiederverwendung/Effizienz, Cross-File-Tracing,
+Zeile-für-Zeile-Diff-Scan, entferntes-Verhalten-Audit). Alle 9
+gemeldeten Funde vor dem Weiterreichen selbst gegengeprüft (nicht
+blind übernommen), 3 als echte, spürbare Bugs eingestuft und sofort
+behoben, jeweils per Playwright end-to-end verifiziert:
+
+1. **Reiter-Wechsel verwarf den gerade erst gebauten Kalender-Hash** —
+   ein normaler Klick auf "Abenteuerlog" rief `showPage('tagebuch')`
+   ohne den `updateHash`-Schutz auf, wodurch `location.hash` stumm auf
+   das generische `#tagebuch` zurückfiel. Fix: der Nav-Klick-Handler
+   behandelt `tagebuch` als Sonderfall (`showPage('tagebuch', false)`
+   + `updateCalendarHash()`).
+2. **Termin speichern/löschen aus der Tagesansicht aktualisierte die
+   sichtbare Tagesansicht nie** — vier Stellen riefen immer
+   `renderWeekView(false)`/`renderCalendar()`, nie `renderDayView()`.
+   Alle vier nutzen jetzt einheitlich `renderCalTasksNow()` (bereits
+   vorhandener 3-Wege-Dispatcher).
+3. **Kontakt mit offener Wiedervorlage löschen hinterließ eine
+   Aufgaben-Karteileiche für immer.** Erster Fix-Versuch (Aufräumen
+   NACH dem Löschen) griff im Playwright-Test nachweislich NICHT —
+   Ursache: die `ON DELETE SET NULL`-Fremdschlüsselregel auf
+   `tasks.contact_id` setzt die Spalte schon im selben Löschvorgang
+   auf `NULL`, `syncWiedervorlageTask()` findet die Zeile über
+   `contact_id` danach nicht mehr. Reihenfolge umgedreht (die daraus
+   gezogene, generalisierbare Lehre steht jetzt dauerhaft im
+   Aufgaben-System-Abschnitt in CLAUDE.md).
+
+**Bewusst zurückgestellt** (kleinere, im selben Durchgang gefundene
+Punkte, kein akuter Nutzer-Schmerz — Stand der Zurückstellung, einige
+inzwischen behoben, siehe jeweils referenzierte Abschnitte): veraltete
+Kopfzeile beim Wechsel Tag→Woche; die Zeitzonen-Inkonsistenz zwischen
+`dateKeyLocal()` und `todayKey()` (vollständig behoben, 2026-08-21,
+Commit `ca8d896`, siehe CLAUDE.md-Abschnitt "Zeitzonen-Inkonsistenz");
+doppeltes Laden beim Login mit gespeichertem Kalender-Hash; spürbare
+Code-Duplikation zwischen `renderDayView()` und `renderWeekView()`;
+eine tote `.task-contact-icon`-CSS-Regel; ein vorbestehender (nicht
+neu eingeführter, nur durch den Umbau vergrößerter) Listener-Stapel-
+Bug bei mehrfachem `enterApp()`-Aufruf über die Admin-Debug-Funktion
+"🎭 Neu erschaffen".
+
+## 2026-08-21/22: Systematischer Bugfix-Durchgang übers gesamte `index.html`, in Häppchen
+
+Nutzerwunsch: "die Bugfixes des GANZEN Systems in angemessen große
+Häppchen kleinteilen und schon mal anfangen — soll mit meinem Claude Pro
+Kontingent passen." Direkter Nachfolger des Code-Review-Durchgangs vom
+2026-08-20 (siehe oben) — dort lief EIN `/code-review high`-Durchgang mit
+5 parallelen Hintergrund-Agenten über die ganze Datei auf einmal. Diesmal
+bewusst in 12 kleinere Häppchen zerlegt (nach den bestehenden
+`// ----`-Abschnittsmarkierungen im `<script>`-Block), über mehrere
+Sitzungen verteilt abgearbeitet, damit ein einzelner Durchgang nicht das
+ganze Nutzungskontingent einer Sitzung verbraucht. **Methodik-Anpassung:**
+der `code-review`-Skill reviewt standardmäßig nur den aktuellen Diff, auch
+mit Datei-Pfad als Zusatzargument — für einen Vollständigkeits-Audit von
+bereits committetem Code laufen stattdessen pro Häppchen 5 selbst
+formulierte, parallele Hintergrund-Agenten (Agent-Tool) mit fünf festen
+Blickwinkeln: **Korrektheit/Logikfehler, Wiederverwendung/Effizienz,
+Cross-File-Konsistenz (JS↔SQL/RPC), akribischer Zeile-für-Zeile-Scan,
+totes/inkonsistentes Verhalten** — jeder gemeldete Fund wird vor dem
+Fixen selbst im Code gegengeprüft, nicht blind übernommen. Laufender
+Fortschritt/Häppchen-Einteilung: siehe Erinnerung
+`project_full_bugfix_sweep` (Claude), nicht hier — dieser Abschnitt hält
+nur die tatsächlich gefundenen und behobenen Bugs fest.
+
+**Häppchen 1 (Fundament/Onboarding, Commit 713ee4d):**
+`enterProfileOnboarding()` (Alt-Account-Nachtrag + Admin-"Neu erschaffen")
+wählte die Klasse beim Fortsetzen eines bestehenden Profils nicht vor —
+ein Klick auf eine andere Klassenkarte hätte `character_class` entgegen
+"einmalig, dauerhaft" überschreiben können. Behoben: Klasse wird jetzt
+aus dem bestehenden Profil vorausgewählt.
+
+**Häppchen 2 (Sigil/Aktionsraster/Questbaum-Engine, Commits 2bc429a +
+c89e135):**
+- `lastQuestActivity()` verglich `action_key` per strikter Gleichheit,
+  obwohl `metric.denominator` bei Ratio-Quests laut eigenem Code-Kommentar
+  auch ein Array sein darf (z.B. anruf_erreicht/nicht_erreicht) — solche
+  Ketten hatten dadurch immer `lastActivity:null` und rutschten in der
+  Questbaum-Schnellansicht fälschlich ans Ende. Fix: nutzt jetzt
+  `questActionMatches()` wie der Rest der Engine.
+- `logTallyAction()` (5er-Anruf-Zähler) setzte den Zähler VOR dem
+  RPC-Aufruf zurück — schlug der Aufruf fehl, gingen alle 5 gesammelten
+  Taps stillschweigend verloren. Fix: Reset erst nach Erfolg.
+- `drawSigil()` hatte einen nie gelesenen `totalXp`-Parameter (tote
+  Signatur seit der Umstellung auf eine feste, vom Gesamt-XP unabhängige
+  Obergrenze) — entfernt, inkl. einer dadurch überflüssigen Summierung in
+  `openFriendSigil()`.
+- **Kanban-Kanal-Nachtrag schlug seit der RLS-Härtung vom 2026-08-15 immer
+  still fehl:** `attachKanalToLoggedAction()` versuchte ein direktes
+  `.update()` auf `action_log`, wofür es seitdem keine Schreib-Policy mehr
+  gibt. Per Drag&Drop auf eine BESTEHENDE Kanban-Karte gebuchte Termine
+  bekamen dadurch nie einen Kanal (online/büro/betrieb) ins Log und
+  fielen aus den Kanal-Questbaum-Ketten heraus. Neue Migration
+  `20260821120000_action_log_kanal_nachtrag_rpc.sql` fügt
+  `attach_kanal_to_own_action()` als SECURITY-DEFINER-RPC hinzu (mergt
+  `meta.kanal` statt zu überschreiben, feste Kanal-Erlaubnisliste) —
+  selbes Härtungsmuster wie `log_action_for_self()`. Per
+  `begin`/`rollback`-Dry-Run mit drei Testfällen verifiziert, dann per
+  Nutzer-Go gepusht.
+
+**Häppchen 3 (Zunftbuch/Changelog/Quest-Belohnungen, Commit 8b5df18) —
+wichtigster Fund des bisherigen Durchgangs:**
+`checkAndAwardEpics()` gab beim ALLERERSTEN Check einer Sitzung
+(`celebratedEpicIds===null`) sofort komplett auf, VOR der eigentlichen
+Vergabe-Schleife — der Code-Kommentar sagte explizit, das solle NUR die
+Feier-Animation unterdrücken, nicht die XP-Vergabe. Tatsächlich bekam
+dadurch JEDES zu diesem Zeitpunkt schon erfüllte Epic nie seinen Bonus
+(100–800 XP laut Regelwerk) — dauerhaft, seit Patch 50 (2026-08-17), weil
+ein bereits erfülltes Epic sofort in den neuen Sitzungs-Baseline-Snapshot
+wandert und dadurch für immer als "schon gesehen" gilt. Fix: die
+Vergabe-Schleife läuft jetzt immer (weiterhin durch lokalen +
+serverseitigen Duplikat-Schutz abgesichert), nur der Toast wird beim
+ersten Sitzungs-Check ausgelassen — betroffene Nutzer bekommen die
+ausstehende XP beim nächsten Login nachgezahlt. Zweiter, kleinerer Fund:
+`checkAndAwardRecurringQuests()` fehlte beim Login (`enterApp()`), obwohl
+alle 6 anderen Aufrufstellen alle drei Quest-Check-Funktionen zusammen
+aufrufen — ergänzt.
+
+**Häppchen 4 (Tagebuch/Abenteuerlog + Aufgaben-System, Commit fbb2ed4):**
+- `refreshDotForDate()` entfernte nur den ERSTEN `.dot` statt des ganzen
+  `.cal-day-dots`-Wrappers — an Tagen mit mehreren Punkt-Typen (Termin +
+  Wiedervorlage/Geburtstag) gleichzeitig blieb beim nächsten Tagebuch-/
+  Foto-Save der Rest-Punkt als Karteileiche stehen, während ein zweiter,
+  kompletter Wrapper danebengesetzt wurde (sichtbar doppelte Punkte). Fix:
+  entfernt jetzt den ganzen Wrapper vor dem Neu-Einfügen.
+- `syncWiedervorlageTask()`/`syncBirthdayTasksIfNeeded()` prüften den
+  Rückgabewert ihrer `.delete()`-Aufrufe nicht, entgegen der sonstigen
+  Projekt-Konvention — schlug das Löschen fehl, blieb die alte Aufgabe
+  unbemerkt als Karteileiche stehen, genau der Fall, den
+  `syncWiedervorlageTask()` laut eigenem Kommentar verhindern soll. Fix:
+  beide Aufrufe loggen jetzt über `logSilentError()`.
+- `syncBirthdayTasksIfNeeded()` bekam zusätzlich einen einfachen
+  In-Flight-Schutz gegen echte Überlappung innerhalb derselben Sitzung
+  (z.B. schneller Doppelklick auf den Geburtstage-Schalter in den
+  Einstellungen) — der rein clientseitige `tasks_synced_date`-Check
+  allein greift erst nach mehreren `await`-Punkten.
+- `startTaskDayRolloverWatcher()` bekam einen Mehrfachaufruf-Schutz (2x
+  unabhängig von den Review-Agenten gefunden) — ohne ihn häufte der
+  Admin-Debug-Knopf "Neu erschaffen" bei jedem Durchlauf ein weiteres
+  paralleles 5-Minuten-Intervall plus weitere
+  `visibilitychange`/`focus`-Listener an.
+
+**Korrektur, noch am selben Tag:** die reinen Effizienzfunde (mehrfache
+Neuberechnung, doppelte Lookups, sequenzielle statt parallele
+Ladeaufrufe) waren hier ursprünglich als "bewusst nicht angefasst"
+protokolliert ("bei der aktuellen Datenmenge nicht spürbar"). Der Nutzer
+hat das ausdrücklich zurückgewiesen — Effizienz-/Aufräumfunde aus einem
+Review werden ab sofort standardmäßig mitgefixt, nicht selbst als
+"lohnt sich noch nicht" abgewertet (siehe Erinnerung
+`feedback_fix_efficiency_findings_dont_defer`). Alle in Häppchen 2-4
+gefundenen Effizienzfunde wurden daraufhin nachträglich umgesetzt:
+`logInCurrentYear()` memoisiert, `matchingSalesForArt()`/
+`isBirthdayOn()`-Helfer lösen Code-Dopplung auf, Streak-Totals
+(`dailyActionTotals`/`weeklyActionTotals`) werden pro Kette einmal statt
+pro Stufe neu aufgebaut, `computeQuestTreeStages()` +
+`checkAndAwardQuestTreeAndEpics()` + `grantQuestTreeStageBonus()`
+bündeln die vorher mehrfach unabhängig traversierte Questbaum-Auswertung,
+`renderCalendar()`/`showDayPreview()` laden per `Promise.all` parallel,
+`initJournalMentions()` nutzt einen delegierten statt fünf einzelner
+Klick-Listener. Alle Aufrufstellen einzeln nachverfolgt, ESLint +
+Syntax-Check sauber, keine Verhaltensänderung. Die damals bewusst
+zurückgestellte Zeitzonen-Inkonsistenz (`dateKeyLocal()` vs.
+`todayKey()`) — anders als die Effizienzfunde eine echte, wenn auch
+seltene Verhaltens-Abweichung, die der Nutzer bewusst gebündelt statt
+Stelle für Stelle angehen wollte — ist seit 2026-08-21 vollständig
+behoben, siehe eigener Abschnitt unten.
+
+**Nachtrag, noch am selben Tag:** ein letzter zurückgestellter Fund
+(doppelter `journal_entries`-Schreibzugriff in `confirmMention()` —
+ein eigener sofortiger Upsert fürs @mention-Fremdschlüssel-Erfordernis
+UND derselbe Schreibvorgang nochmal 700ms später über den Tagebuch-
+Debounce) wurde dem Nutzer als echter Grenzfall vorgelegt (Fix würde den
+vielgenutzten Debounce-Mechanismus anfassen, Gewinn klein). Antwort:
+"das was langfristig am besten ist. irgendwann werden tausende Menschen
+das System nutzen. programmier es dementsprechend." Der eigentliche
+Speicher-Code ist jetzt in `saveJournalEntryNow()` extrahiert — sowohl
+der Debounce (`scheduleJournalSave()`, Tippen) als auch `confirmMention()`
+(sofort, kein Debounce bei einem einzelnen Klick sinnvoll) rufen dieselbe
+Funktion auf. Ergebnis: nur noch EIN Schreibzugriff pro @mention-
+Bestätigung statt zwei, plus sofortiges "gespeichert"-Feedback/Kalender-/
+Serien-Update statt erst nach 700ms verzögert. Tiebreaker-Regel für
+künftige ähnliche Grenzfälle (sicherer Fix möglich, nur Aufwand/kleiner
+Gewinn heute dagegen): langfristige Nutzerzahl-Perspektive gewinnt,
+"reicht für jetzt" wird nicht akzeptiert — siehe Erinnerung
+`feedback_fix_efficiency_findings_dont_defer`. Gilt nur für Code-
+Sauberkeit innerhalb der bestehenden Architektur, keine Abkehr vom
+"nicht vorbeugend optimieren"-Prinzip bei echten Infrastruktur-
+Entscheidungen (siehe "Technische Skalierungs-Schwellen" oben).
+
+**Häppchen 5 (Inventar/Freunde/Gilde-Basics/Kontakte-Einstieg, Commit
+9a05d3d, 2026-08-21):**
+- Admin-Klassenschalter aktualisierte `updateKanbanLabels()` nicht mit —
+  Nav-Button/Seitenüberschrift des Kanban blieben nach einem Klassenwechsel
+  auf dem alten Begriff stehen (z.B. "Questpfad" statt "Gildenbrett"), bis
+  die Seite neu geladen wurde, während alle fünf anderen abhängigen
+  Update-Aufrufe korrekt liefen. Ergänzt.
+- `createSpriteRenderer()` (die animierte Sprite-Technik hinter jedem
+  bewegten Avatar) startete pro Aufruf ein `setInterval`, das nie gestoppt
+  wurde — echter, unbegrenzt wachsender Leak: jedes Neu-Rendern der
+  Freundes-/Gildenkacheln (nach Annehmen/Entfernen einer Freundschaft,
+  neuer Anfrage) ersetzte die Canvas-Elemente per `innerHTML`, ihre alten
+  Animations-Timer liefen aber unsichtbar für die längst entfernten
+  Elemente weiter. Fix: `createSpriteRenderer()` gibt jetzt zusätzlich
+  `stop()` zurück, `mountAvatarTile()` merkt sich das pro Canvas
+  (`canvas._stopSprite`), neuer Helfer `stopGridAvatarRenderers(gridEl)`
+  wird vor jedem `innerHTML`-Ersatz in `renderFriendGrid()` UND
+  `renderGuildMembers()` aufgerufen (gleicher Helfer, beide Stellen
+  betroffen).
+- `syncProfileStatsCache()` übernahm `profile.total_xp`/`level` lokal,
+  BEVOR der `sync_own_level_cache()`-RPC-Aufruf sein Ergebnis kannte —
+  schlug der Sync fehl, verhinderte der Kurzschluss-Guard beim nächsten
+  Aufruf mit denselben (unveränderten) Werten jeden weiteren Versuch
+  innerhalb derselben Sitzung. Fix: lokale Übernahme erst nach
+  bestätigtem RPC-Erfolg.
+- `openFriendSigil()` setzte den Modal-Titel sofort, ließ aber bei einem
+  RPC-Fehler (`friend_skill_totals`) das SVG der zuvor geöffneten Person
+  unverändert stehen — Titel und Sigil-Inhalt konnten dadurch
+  auseinanderdriften. Fix: bei Fehler wird das Sigil jetzt explizit auf 0
+  zurückgesetzt statt den alten Stand zu behalten.
+
+Cross-File-Agent (JS↔SQL/RPC) fand in diesem Häppchen ausnahmsweise
+**keine** Diskrepanzen — alle Aufrufe gegen `user_inventory`/`profiles`/
+`friends`/die RPCs stimmten mit den tatsächlichen Migrationen überein.
+Effizienzfunde direkt mitgefixt (kein Zurückstellen mehr, siehe
+`feedback_fix_efficiency_findings_dont_defer`): Doppelklick-Schutz bei
+Inventar-Buttons (`btn.disabled` synchron vor dem `await`, damit ein
+zweiter Klick während eines laufenden RPC-Aufrufs nicht doppelt feuert),
+`initFriends()` lädt Anfragen+Freundesliste jetzt per `Promise.all`
+parallel statt sequenziell, `searchFriendByName()`s zwei sequenzielle
+"gibt es schon eine Freundschaft"-Abfragen (eine je Richtung) zu einer
+einzigen `.or()`-Abfrage zusammengefasst (Muster von `removeFriend()`
+übernommen), ungenutztes `character_class` aus `AVATAR_PROFILE_FIELDS`
+entfernt (in beiden Konsumenten nie gelesen — der Avatar rendert nur aus
+den Sprite-Layer-Feldern).
+
+Per Playwright gegen den echten Account verifiziert: Klassenwechsel zeigt
+den Kanban-Label-Fix live, danach korrekt auf die Ausgangsklasse
+zurückgesetzt; Doppelklick auf einen Ausrüstungs-Button löst keine
+Exception aus; Sigil-Modal öffnet korrekt; drei Reiter-Wechsel zwischen
+Charakter- und Gilde-Seite ohne Fehlerhäufung; 0 Konsolenfehler
+durchgehend. Ein durch den Doppelklick-Test versehentlich ausgezogenes
+Holzschwert wurde danach wieder angezogen, Testzustand exakt
+wiederhergestellt.
+
+**Häppchen 6a (Verkaufsstatistik + Schatzraum, Commit 284b48e,
+2026-08-21) — Häppchen 6 wegen Kontingent-Sorge in 6a/6b gesplittet,
+siehe Erinnerung `project_full_bugfix_sweep`:**
+- `renderStatCategoryChart()` escapte den admin-editierbaren
+  Produktkategorienamen an drei Stellen nicht — Legende,
+  Balkenbeschriftung, UND das `title`-Attribut (dort am gefährlichsten,
+  Ausbruch aus dem Attribut-Kontext möglich). Echte, ausnutzbare
+  Stored-XSS-Lücke, gleiche Klasse wie der Sicherheits-Durchgang vom
+  2026-08-07/die `locName()`-Lücke vom 2026-08-11 — und **keine**
+  `rule_configs`-Ausnahme, da `products.category` über das In-App-
+  Produktformular gepflegt wird, nicht per SQL-Editor. Fix: `escHtml()`
+  an allen drei Stellen ergänzt.
+- Der Schatzraum sprang beim Wiederöffnen nicht mehr aufs laufende Jahr
+  zurück, wenn zuvor per Vor/Zurück navigiert wurde — `trophyRoomYear`
+  wurde beim Öffnen nie zurückgesetzt, entgegen dem eigenen
+  Code-Kommentar ("heute ist der naheliegende Startpunkt"). Fix: Klick-
+  Handler setzt `trophyRoomYear = currentBusinessYear()` vor dem Öffnen.
+- Drei Stellen (`salesForPeriod()`, `trophyRoomYear`-Initialisierung,
+  `renderStatTabs()`) nutzten `new Date().getFullYear()` statt dem im
+  selben Feature-Bereich bereits vorhandenen `currentBusinessYear()`-
+  Helfer — vereinheitlicht (reiner Cleanup, keine Verhaltensänderung).
+
+Effizienz direkt mitgefixt: `renderStatistikPage()` filterte für die 12
+Monats-Sparklines bisher den KOMPLETTEN `mySalesCache` zwölfmal neu nach
+Jahr+Monat, obwohl die bereits jahresgefilterte `salesList` längst da
+war — jetzt ein einziger Durchlauf, der `salesList` in 12 Monats-Buckets
+aufteilt. `enterApp()` lud Produkte/Ortstypen/eigene Verkäufe bisher
+sequenziell, obwohl es drei unabhängige Tabellen-Reads ohne
+gemeinsamen Zustand sind — jetzt per `Promise.all` parallel, spart zwei
+Netzwerk-Rundlaufzeiten bei jedem Login.
+
+**Zwei Funde bewusst NICHT selbst entschieden, liegen dem Nutzer vor:**
+1. Der Cross-File-Agent fand eine SQL-Lücke: `products_provision_mode_
+   check` erlaubt nur `'fest'`/`'individuell_lv'`/`'individuell_kv'`,
+   obwohl `PRODUCT_ART_CONFIG` (Zeile ~8394) für die Arten pmaSUH/pmaKV
+   seit dem BWS-Verrechnungs-Rework (2026-08-14) bereits
+   `'individuell_pma_suh'`/`'individuell_pma_kv'` setzt — ein Admin, der
+   ein Produkt dieser beiden Arten anlegt, bekommt seither zwingend eine
+   CHECK-Constraint-Verletzung. Diese zwei Produktarten waren dadurch nie
+   tatsächlich anlegbar, obwohl `saleProvision()` längst vollständig
+   dafür vorbereitet ist. Migration
+   `supabase/migrations/20260821140000_products_provision_mode_pma_check_fix.sql`
+   liegt bereit (erweitert die Erlaubnisliste um die beiden fehlenden
+   Werte, per `begin`/`rollback`-Dry-Run inkl. Testinsert verifiziert) —
+   **seit demselben Tag live**, siehe Nachtrag am Ende dieses Abschnitts
+   ("Kranken als eigene Sparte").
+2. Der Korrektheits-Agent fand eine echte Business-Logik-Frage: der KPI
+   "Bewertungsbeitrag sonstige" (`aggregateStats()`, summiert JEDE
+   nicht-Leben-Sparte: Kranken+Sach/Hausrat+Kfz+Rechtsschutz+pmaSUH+
+   pmaKV+Darlehen zusammen) wird im Fortschritts-Ring gegen
+   `profile.planung_kv_mb` gemessen — ein Zielfeld, das in den
+   Einstellungen explizit "Planung **Kranken**-Beitrag" heißt und laut
+   Platzhaltertext nur das Kranken-Ziel meint. Verkauft ein Nutzer
+   überwiegend Sach/Kfz/RS statt Kranken, ist der Ring-Füllstand
+   irreführend (zu hoch oder zu niedrig, je nach Mix). Bewusst nicht
+   code-seitig entschieden (Kategorie trennen? Zielfeld umbenennen/neues
+   Feld für "sonstige" einführen?) — braucht ein Gespräch mit dem Nutzer,
+   passt zur bestehenden Linie bei BWS-Verrechnungs-Themen (siehe
+   Erinnerung `project_bws_verrechnung`).
+
+Per Playwright gegen den echten Account verifiziert (Statistik-Seite,
+Jahr/Monat-Reiter-Wechsel, Schatzraum öffnen/schließen/erneut öffnen,
+0 Konsolenfehler). Die eigentlich noch offene Kontakte-Kernseite
+(~830 Zeilen, ursprünglich fälschlich als Teil des "Schatzraum"-Blocks
+mitgezählt) ist ein eigenes, noch nicht begonnenes Häppchen 6b, siehe
+Erinnerung `project_full_bugfix_sweep`.
+
+**Nachtrag, noch am selben Tag: Kranken als eigene Sparte statt in
+"Bewertungsbeitrag sonstige" gemischt (Commit `d1277b9`).** Direkte
+Nutzerkorrektur zum offen vorgelegten Fund oben — "alles zusammenfassen
+macht gar kein Sinn, Kranken muss eine eigene Sparte sein". `aggregateStats()`
+summiert jetzt `beitragKranken` (nur `individuell_kv`) getrennt von
+`beitragSonstige` (SH/Kfz/RS/pmaSUH/pmaKV/Darlehen). Beide Kartensätze
+(Verkaufsstatistik-Seite UND Schatzraum-Zusammenfassung, beide nutzen
+denselben `aggregateStats()`-Kern) zeigen seitdem 6 statt 5 Karten — die
+neue "Bewertungsbeitrag Kranken"-Karte trägt den Fortschrittsring gegen
+`profile.planung_kv_mb`, "sonstige" bleibt eine Karte ohne Ziel (wie
+Provision/Differenzprovision). Per Playwright verifiziert (beide Seiten
+zeigen korrekt 6 Karten mit Kranken-Trennung, 0 Konsolenfehler). Die
+zusätzlich gepushte `products_provision_mode_check`-Migration (Fund 1
+oben) wurde im selben Zug per Nutzer-Go angewendet, Commit `e6d5f4b`
+(nachträglich, war zunächst nur gepusht, nicht committet — nachgeholt).
+
+**Häppchen 6b-1 (Kontakte-Kernseite, Grundgerüst-Hälfte, Commit `43d15dd`,
+2026-08-21) — Zeilen 5291-5695:** vier echte Bugs: Stored-XSS in
+`searchLocationSuggestions()` (Betriebs-Suchtext floss ungeescapt in
+`innerHTML`, `escHtml()` fehlte genau in der Zeile direkt unter einer
+Nachbarzeile, die es korrekt macht); `jumpToJournalDay()` ließ
+`calFocusDate`/den Kalender-Hash unangetastet, brach damit das seit dem
+"Dritter Nachtrag" (siehe Aufgaben-System-Abschnitt oben) etablierte
+Navigations-Muster; `openContactPage()` hatte keinen Staleness-Guard nach
+dem asynchronen `loadContactsBundle()` — eine schnelle Doppelnavigation
+zwischen zwei Kontakten konnte Anzeige/Edit-Buttons auf den falschen
+Kontakt binden; aktiver Detail-Reiter (Chronik/Dateien/Tagebucheintrag)
+sprang bei jedem Refresh der Kontaktseite zurück auf "Übersicht",
+entgegen der am Refresh-Aufruf dokumentierten Absicht — neue Variable
+`currentContactDetailTab` merkt sich den zuletzt gewählten Reiter, wird
+nur bei echtem Kontaktwechsel auf "Übersicht" zurückgesetzt. Dazu ein
+Listener-Stacking-Fund (`initContactFormToggle()`/
+`initContactLocationAutocomplete()` bei jedem `initContacts()`-Aufruf,
+erreichbar über den Admin-Debug-Knopf "Neu erschaffen") und drei
+Effizienzfunde (`loadContactsBundle()` per `Promise.all`, doppelte
+`contact_files`-Zählabfrage entfernt, `betriebCreateBtn`-Doppelklick-
+Schutz).
+
+**Häppchen 6b-2 (Kontakte-Kernseite, Tabs/Bearbeiten/Aktionsdialog-
+Hälfte, Commit `55b712f`, 2026-08-21) — Zeilen 5702-6138:** fünf echte
+Bugs: derselbe Stored-XSS-Fehltyp beim Produktnamen (`products.name`) an
+zwei Stellen (Verträge-Zone, Chronik-Verkaufszeilen); `logActionForContact()`/
+`openContactActionModal()` hatten keinen Doppelklick-Schutz — ein
+schneller Doppelklick konnte die Tages-Energie-Prüfung umgehen (beide
+Klicks lasen denselben, noch nicht aktualisierten `log`-Array-Stand) und
+dieselbe Aktion doppelt loggen, per Playwright bestätigt behoben
+(Energie sank nach Doppelklick nur um den einfachen Wert); `contactAddBtn`
+hatte denselben fehlenden Schutz, konnte bei Neuanlage zwei identische
+Kontakte erzeugen; Formular-Reset nach dem Speichern vergaß drei
+Auswahlfelder (Rolle/Status/Kanban-Stufe) — nach einer Bearbeitung
+blieben deren Werte stehen und flossen unbemerkt in den nächsten neu
+angelegten Kontakt; toter Copy-Paste-Rest (`bossClass`/`bossIcon`, nie
+erreichbar) entfernt. Effizienz: dreifach duplizierter "Kontaktliste +
+Detailseite neu rendern"-Ablauf zu einem gemeinsamen
+`refreshContactsAndDetail()`-Helfer zusammengefasst (läuft seitdem
+parallel statt sequenziell, an mehreren Stellen im Projekt weiter
+genutzt); Datei-Uploads bei Mehrfachauswahl laufen jetzt parallel statt
+nacheinander. **Häppchen 6 (6a+6b-1+6b-2) damit komplett fertig** — die
+gesamte Kontakte-Kernseite ist durch.
+
+**Häppchen 7 (Anruf/Email am Kontakt loggen + Gilden-Rechte-Modal,
+Commit `346fcba`, 2026-08-21) — Zeilen 6158-6668:** drei echte Bugs:
+`guildNoGuildView` (Beitrittsliste) wurde nie wieder ausgeblendet,
+sobald eine Mitgliedschaft entstand (Gilde beitreten/Einladung
+annehmen) — "Keine Gilde"-Ansicht und Mitgliedsansicht liefen dadurch
+gleichzeitig sichtbar übereinander; `activitySaveBtn` (Anruf/Email
+loggen) hatte keinen Doppelklick-Schutz — `log_action_for_self()` hat
+für normale Aktionen bewusst KEINEN serverseitigen Duplikat-Schutz (nur
+Quest-Boni haben einen), ein schneller Doppelklick konnte dieselbe
+Aktivität doppelt loggen, per Playwright über drei Testläufe hinweg
+konsistent bestätigt behoben; Reiter-Default "Mitglieder" beim Betreten
+der Gildenansicht war fälschlich an den Einmal-Listener-Guard
+(`wireGuildAreaTabsOnce`) gekoppelt und griff nach einem Verlassen+Neu-
+Beitreten derselben Sitzung nicht mehr — als eigene, bei jedem
+`loadGuildState()`-Aufruf laufende Funktion
+(`resetGuildAreaTabToMitglieder()`) herausgelöst (die konkrete
+Leave/Rejoin-Randbedingung selbst bewusst nicht live simuliert, hätte
+echte Gildenmitgliedschaft mutieren müssen). Zusätzlich
+`guildCreateBtn`/`guildRightsSaveBtn`/`joinGuild` um denselben
+Doppelklick-Schutz ergänzt. Fünf Effizienzfunde (unabhängige,
+sequenzielle Supabase-Abfragen in `initGuild()`, dem Einladung-annehmen-
+Handler, `renderJoinableGuilds()`, `searchGuildCandidates()` und
+`loadGuildState()`s Mitglieder-/Team-Ziele-Laden) auf `Promise.all`
+umgestellt. **Ein bekannter, bewusst nicht behobener Grenzfall:**
+schlägt der `contact_activities`-Insert NACH erfolgreicher XP-Buchung
+fehl, bleibt die XP-Gutschrift ohne Kompensationslogik bestehen —
+bräuchte eine neue SQL-Funktion (kombinierte RPC oder Rollback), kein
+reiner UI-Fix, daher nur dokumentiert.
+
+Alle drei Häppchen liefen nach demselben Muster (5 parallele Review-
+Agenten: Korrektheit/Effizienz/Cross-File-JS↔SQL/Zeile-für-Zeile/totes
+Verhalten, jeder Fund selbst gegen den Code verifiziert, keiner blind
+übernommen), jeweils per Playwright gegen den echten Account bestätigt,
+0 Konsolenfehler, Testdaten (soweit erzeugt) wieder aufgeräumt — Details
+und der laufende Fortschritt über alle 12 Häppchen in Claudes Erinnerung
+(`project_full_bugfix_sweep`), nicht hier dupliziert. Stand nach diesem
+Durchgang: 7 von 12 Häppchen fertig, 27 echte Bugs insgesamt gefunden
+und behoben.
+
+**Häppchen 8 (Dungeons/Karte, Leaflet, Zeilen 6715-6981) — 2026-08-22:**
+fünf echte Bugs: `locAddBtn`/`terminLeadSaveBtn`/`kanbanTerminSaveBtn`
+hatten keinen Doppelklick-Schutz (konnten doppelte Dungeons, doppelte
+Kontakte+doppeltes XP-Log+doppelte Termine bzw. doppelte Termine
+erzeugen); die Aktions-Buttons im Dungeon-Modal (`data-locaction`) UND
+im Kontakt-Aktionsdialog (`data-contactaction` — geteiltes `locActionModal`,
+derselbe Bugtyp, mitgefixt) wurden von der globalen Energie-Sperre in
+`render()` nie erfasst (die liest nur `data-action`) — bei leerer
+Tagesenergie blieben beide Button-Sätze klickbar, ein Klick wurde
+serverseitig zwar abgelehnt, aber komplett ohne Rückmeldung; die
+Lead-Anlage am Dungeon verschluckte eine ungültige Zeitspanne
+(Ende vor Start) still — der Kontakt wurde trotzdem angelegt und als
+"hinzugefügt" gemeldet, nur der gewünschte Kalendertermin fehlte
+unbemerkt (`promptKanbanTermin()` zeigte für denselben Fall dagegen
+korrekt eine Fehlermeldung). Neuer gemeinsamer Helfer
+`computeTerminRange()` (Datum+Uhrzeiten → UTC-Zeitraum, `'invalid'` bei
+Ende≤Start) läuft jetzt in beiden Termin-Funktionen statt doppelt
+gepflegter Umrechnungslogik, `refreshActionGridEnergyState()` deckt
+beide Aktionsraster-Varianten ab. Ein sechster, echter Bug betraf die
+Seite selbst: `ensureDungeonMap()` lud Standorte/Account-Pool nur beim
+allerersten Besuch der Sitzung — kehrte man zur Karte zurück, blieb der
+Stand vom ersten Aufruf stehen, auch wenn zwischenzeitlich ein neuer
+Dungeon angelegt oder ein Account umverteilt wurde. Kartenerzeugung
+(einmalig) und Datenstand (bei jedem Besuch) sind jetzt sauber getrennt
+(`refreshDungeonData()`), was nebenbei auch den vom Effizienz-Agenten
+gefundenen doppelten `locations`-Abruf behebt (`renderAccountPool()`
+bekommt die von `loadAndRenderLocations()` ohnehin schon geladenen Zeilen
+übergeben, statt sie ein zweites Mal zu holen).
+
+**Siebter Fund, SQL-seitig, seit 2026-08-22 live:** der Cross-File-Agent
+fand eine seit 2026-08-08 bestehende, bisher nicht dokumentierte
+RLS-Lücke bei `locations.owner_id` — die konsolidierte
+`locations_update_visible`-Policy (RLS-Performance-Härtung,
+2026-08-17) prüft in ihrer `WITH CHECK`-Klausel für Nicht-Admins nur
+`guild_id`, nicht `owner_id`. Ein Gildenführer konnte dadurch per
+direktem API-Aufruf `owner_id` eines Dungeons, den ein eigenes
+Gildenmitglied besitzt, auf einen beliebigen Wert setzen (inkl. sich
+selbst) — obwohl "Umverteilen bleibt Admin-exklusiv" (Patch 14,
+`renderAccountPool()` ist auch nur für Admins sichtbar) das explizit
+verhindern sollte. Die Lücke steckte bereits in der ursprünglichen
+`locations_update_guild_admission`-Policy vom 2026-08-08, die
+Performance-Härtung hat sie nur unverändert mit übernommen. Migration
+`supabase/migrations/20260822120000_locations_owner_tamper_schutz.sql`,
+gleiches "korrigieren statt ablehnen"-Muster wie
+`protect_privileged_profile_fields()` (Patch 38/47): ein
+BEFORE-UPDATE-Trigger setzt `owner_id` bei Nicht-Admins still auf den
+alten Wert zurück und protokolliert den Versuch über
+`log_security_alert()`. Per `begin`/`rollback`-Dry-Run mit zwei echten,
+guildenlosen Nicht-Admin-Testprofilen (Enerfuqi als Gildenführer, kf als
+Mitglied/Dungeon-Eigentümer) gegen die echte DB verifiziert: Kaperversuch
+wird zuverlässig zurückgesetzt UND protokolliert (auch kombiniert mit
+einer legitimen Namensänderung im selben Update — die geht durch, nur
+`owner_id` bleibt geschützt), Admin-Umverteilung bleibt unverändert
+erlaubt. Nach dem Push per direkter Trigger-Abfrage gegen die echte DB
+bestätigt: `trg_protect_location_owner` steht live auf `locations`.
+
+Fünf parallele Review-Agenten (Korrektheit/Effizienz/Cross-File-JS↔SQL/
+Zeile-für-Zeile/totes Verhalten), jeder Fund selbst verifiziert (u.a.
+Zeile-für-Zeile-Agent fand nichts Neues, Effizienz-Agent bestätigt durch
+den Datenfluss-Umbau miterledigt). Per Playwright gegen den echten
+Account verifiziert: `locations`-Netzwerkabfragen verdoppeln sich beim
+zweiten Seitenbesuch (Beweis für den Reload-Fix), Doppelklick auf einen
+Dungeon-Aktions-Button senkt die Energie nur um den einfachen Wert,
+ungültige Zeitspanne wird jetzt korrekt gemeldet UND blockiert die
+Kontaktanlage, gültiges Speichern trotz Doppelklick funktioniert normal
+und schließt das Modal, 0 Konsolenfehler, Testkontakt danach entfernt.
+Stand nach diesem Durchgang: 8 von 12 Häppchen fertig, 33 echte Bugs
+insgesamt gefunden und behoben, alle bisher aufgelaufenen SQL-Fixes aus
+diesem Durchgang sind live (auf ausdrücklichen Nutzerwunsch "mach alle
+aufgeschobenen sql dinge fertig", 2026-08-22 — betraf zu diesem
+Zeitpunkt nur diese eine Migration, die PMA-Migration aus Häppchen 6a
+war bereits am 2026-08-21 im selben Zug wie die Kranken-Sparten-Trennung
+angewendet worden).
+
+**Häppchen 9 (Termin-Kalender: Wochenansicht + Serientermine, Zeilen
+7050-7506) — 2026-08-22:** vier echte Bugs, alle rein clientseitig (kein
+SQL nötig): `attachDragHandlers()` (Zeitraster-Ziehen zum Termin-Anlegen)
+hatte keinen `pointercancel`-Handler — bricht der Browser eine laufende
+Zeiger-Geste ab (Touch-Scroll-Erkennung, System-Geste, Tab-Wechsel
+während gehaltenem Finger), blieb das `.week-drag-ghost`-Element
+dauerhaft im DOM stehen und `dragging` hing auf `true` fest, von zwei
+unabhängigen Agenten gefunden; derselbe Agent fand zusätzlich, dass die
+Ziehzustands-Variablen nicht nach `pointerId` unterschieden waren — ein
+zweiter Finger während einer laufenden Geste in derselben Tagesspalte
+konnte den Zustand des ersten überschreiben und zu einem falsch
+positionierten/geöffneten Termin führen. Beides behoben: `activePointerId`
+verfolgt den aktiven Zeiger (ein zweiter `pointerdown` während `dragging`
+wird jetzt ignoriert), `pointercancel` räumt Ghost+Zustand genauso auf wie
+`pointerup`, nur ohne einen Termin zu öffnen/anzulegen. `askSeriesScope()`
+(Serientermin-Ändern/Löschen-Auswahl "Nur diesen"/"Ganze Serie") ließ
+seine zurückgegebene Promise für immer unaufgelöst, wenn der Nutzer statt
+eines der drei Buttons auf die abgedunkelte Fläche daneben klickte — der
+bestehende globale Backdrop-Handler blendete das Modal zwar aus, kannte
+aber die Promise nicht. Ein wartender `await askSeriesScope(...)` in
+`termineEntrySaveBtn`/`termineEntryDeleteBtn` (strukturell schon im
+nächsten Häppchen, Tag-Reiter-Abschnitt) blieb dadurch für diesen Klick
+für immer hängen, ohne Fehlermeldung, ohne dass der Termin
+gespeichert/gelöscht wurde. Fix: ein pro Aufruf frisch registrierter,
+in `finish()` wieder entfernter Backdrop-Klick-Listener löst die Promise
+jetzt mit `null` auf — bestehende Aufrufer behandeln `null` bereits
+korrekt als Abbruch (`if(!scope) return`), keine Änderung an den
+Aufrufern nötig. Direkter Folgefund, außerhalb des Zeilenbereichs, aber
+unmittelbar die hier besprochene Kalender-Navigation betreffend:
+`initJournal()` (Tagebuch/Abenteuerlog-Abschnitt, bereits als Häppchen 4
+abgeschlossen dokumentiert) registrierte die Klick-Handler für
+`calPrevBtn`/`calNextBtn`/`calTodayBtn` sowie `journalBookTile` und die
+5 Tagebuch-Eingabefelder bei JEDEM Aufruf neu, ohne Guard — erreichbar
+über den wiederholbaren Admin-Debug-Knopf "Neu erschaffen"
+(`charRespawnBtn`, ruft am Ende erneut `enterApp()` → `initJournal()`
+auf), gleiche Bug-Klasse wie `createSpriteRenderer()`/
+`initContactFormToggle()` in früheren Häppchen. Neuer Guard
+`journalListenersWired` wrappt alle fünf Listener-Registrierungen, der
+Rest der Funktion (Kalender-Grundzustand, Tagebuch laden, Rendern) läuft
+weiterhin bei jedem Aufruf.
+
+Effizienzfund direkt mitgefixt: `renderWeekView()` lud eigene Kontakte
+(für die Aufgaben-Chips, `loadContactTaskData()`) und die Termine der
+Woche bisher sequenziell — beide Abfragen sind komplett unabhängig,
+laufen jetzt per `Promise.all` parallel, spart eine Netzwerk-
+Rundlaufzeit bei jedem Wochenwechsel (Vor/Zurück/Heute), nicht nur beim
+ersten Laden. Cross-File-Agent und Zeile-für-Zeile-Agent fanden keine
+weiteren echten Funde (u.a. explizit bestätigt: `dateKeyLocal()`/
+`todayKey()` werden in diesem Abschnitt überall korrekt verwendet, keine
+Vertauschung; alle RLS-Policies/Spalten für `termine`/`termin_series`
+stimmen mit dem Frontend überein).
+
+Per Playwright gegen den echten Account verifiziert: `calNextBtn` bewegt
+die Woche vor UND nach einem vollständigen Admin-Respawn-Durchlauf um
+exakt 7 Tage (kein Doppel-Fire); ein synthetischer `pointercancel` nach
+`pointerdown` entfernt das Ghost-Element zuverlässig, ohne fälschlich ein
+Termin-Modal zu öffnen, ein nachfolgender `pointerdown` funktioniert
+danach normal; ein echter, materialisierter Serientermin wurde angelegt,
+bearbeitet, beim Speichern erschien der Scope-Dialog, ein Klick auf die
+abgedunkelte Fläche schloss ihn OHNE jeden Schreibvorgang auf
+`termine`/`termin_series` (0 zusätzliche Requests) UND ohne hängenden
+Zustand (ein erneuter Speichern-Klick zeigte den Dialog korrekt wieder);
+`contacts`- und `termine`-Abfrage feuerten beim Wochenwechsel im Abstand
+von 2ms (Beweis für echte Parallelität). Testserie danach vollständig
+entfernt (0 Reste), 0 Konsolenfehler. Stand nach diesem Häppchen: 9 von
+12 fertig, 37 echte Bugs insgesamt, keine offenen SQL-Fixes. Nächstes
+Häppchen: 10 (Tag-Reiter: Tagesansicht + Aufgaben-UI).
+
+**Häppchen 10 (Tag-Reiter: Tagesansicht + Aufgaben-UI + Termin-Popup,
+Zeilen 7557-7961) — 2026-08-22:** **wichtigster Fund:** `singleTerminUpdated`
+(das Flag hinter der "Update an Eingeladene senden?"-Nachfrage aus dem
+Termin-Einladungen-Feature vom 2026-08-18) wurde nur im Nicht-Serien-Zweig
+des Speichern-Handlers gesetzt — sowohl "Nur diesen Termin ändern" als auch
+"Ganze Serie ändern" bei einem Serientermin ließen die Nachfrage seither
+dauerhaft ausfallen, unabhängig davon, ob eine angenommene Einladung
+existierte. Fix: das Flag wurde durch ein Array `updatedTerminIds` ersetzt,
+das in allen drei Update-Pfaden (Einzeltermin, "nur diesen" bei einer
+Serie, "ganze Serie") korrekt befüllt wird; die Prüfung läuft jetzt über
+`.in('termin_id', updatedTerminIds)` statt eines einzelnen `termin_id`.
+**Live verifiziert** (Playwright + `supabase db query --linked`, echte
+per SQL eingeschleuste `angenommen`-Einladung an einer vergangenen UND
+einer künftigen Serien-Instanz): beide Szenarien lösten danach korrekt den
+Bestätigungsdialog aus, vorher keines von beiden.
+
+Vier weitere echte Bugs: eine wöchentliche Serie mit 0 ausgewählten
+Wochentagen wurde lautlos angelegt, ohne je einen Folgetermin zu erzeugen
+(`generated_until` rückt trotzdem auf den vollen Horizont vor, kein
+späterer Nachhol-Lauf hilft) — jetzt eine Validierung vor dem Speichern
+("Bitte mindestens einen Wochentag ... auswählen"), live verifiziert;
+`taskAddBtn`/`termineEntrySaveBtn`/`termineEntryDeleteBtn` hatten keinen
+Doppelklick-Schutz (Live-verifiziert: ein simultaner Doppelklick erzeugt
+danach nur noch 1 Aufgabe bzw. 1 Termin statt 2); ein totes Code-Fragment
+(eine Delete-Button-Sichtbarkeits-Zeile, die eine Zeile später unbedingt
+überschrieben wurde) entfernt; `invitationStatusLinesHtml()` hatte keinen
+Staleness-Guard (Race Condition beim schnellen Wechsel zwischen zwei
+Termin-Popups, gleiche Bug-Klasse wie `openContactPage()` in Häppchen
+6b-1) — derselbe Fix-Ansatz übernommen (Termin-ID beim Anfragen merken,
+beim Auflösen gegen den dann aktuellen Bearbeitungszustand prüfen).
+
+Effizienzfunde direkt mitgefixt: `renderDayView()` lud Kontakte+Termine
+sequenziell, obwohl `renderWeekView()` (Häppchen 9) genau das schon per
+`Promise.all` parallelisiert hatte — der Fix war hier nicht nachgezogen
+worden, jetzt nachgeholt; `renderTaskColumn()` lud nach jedem Abhaken/
+Neuanlegen einer Aufgabe unnötig die komplette Liste neu von der DB, obwohl
+der lokale Cache bereits aktuell war — in `renderTaskColumn()` (mit Reload)
+und `renderTaskColumnDom()` (reines Rendern aus dem Cache) aufgeteilt,
+Checkbox- und Anlege-Handler nutzen jetzt Letzteres; fehlende
+Fehlerbehandlung in der `Promise.all`-Zeilen-Update-Schleife beim
+Serien-Ändern ergänzt (ein einzelner fehlgeschlagener Zeilen-Update blieb
+vorher unbemerkt). Ein von einem Agenten gemeldeter Scroll-Unterschied
+zwischen Tag- und Wochen-Navigation (`renderDayView(false)` vs.
+`renderWeekView(true)`) wurde geprüft und NICHT als Bug gewertet — nur 1
+von 5 Agenten fand ihn, plausibel absichtlich (Tage-Blättern behält die
+Scrollposition, weil man vermutlich dieselbe Tageszeit vergleicht;
+Wochen-Wechsel ist ein größerer Sprung, der neu zur Standardzeit springt).
+
+Kein SQL nötig, alle Fixes rein clientseitig, Commit `30f4dc3`. Stand
+nach diesem Häppchen: 10 von 12 fertig, 42 echte Bugs insgesamt, keine
+offenen SQL-Fixes. Nächstes Häppchen: 11 (Kanban).
+
+**Häppchen 11a (Kanban, erste Hälfte: Board-Rendering/Vorschau/
+Einladungen/Drag&Drop, Zeilen 8030-8417) — 2026-08-22:** das Kanban-Board
+war mit 700 Zeilen deutlich größer als übliche Häppchen, deshalb wie schon
+bei Häppchen 6 in zwei Hälften gesplittet. Vier echte Bugs: die Kanban-
+Kurzvorschau (`openKanbanPreview()`) und die Termin-Einladungen-Karte
+(`loadTerminInvitesCard()`) zeigten den Termin-Zeitpunkt Browser-lokal
+statt über die aufgelöste Zeitzone (`tz()`/`fullPartsInTZ()`) — derselbe
+Bug-Typ wie die große Zeitzonen-Vereinheitlichung vom 2026-08-21, hier an
+zwei Stellen nicht mitgezogen. Neuer gemeinsamer Helfer `terminRangeLabel()`,
+live mit `profiles.timezone='Pacific/Honolulu'` (Gerät auf Europe/Berlin)
+verifiziert: zeigte danach korrekt die Honolulu-Zeit statt der
+Berlin-Zeit. `openKanbanPreview()` hatte außerdem KEINEN Staleness-Guard —
+eine spät ankommende Antwort für Kontakt A konnte die inzwischen für
+Kontakt B geöffnete Vorschau überschreiben, dabei sogar den "Einladen"-
+Button fälschlich an den Termin von A binden (3 von 5 Agenten unabhängig
+gefunden). Neue Variablen `kanbanPreviewRequestId`/`kanbanPreviewOpenTerminId`,
+gleiches Muster wie `currentContactPageId` aus Häppchen 6b-1. Dritter Bug:
+`openTerminInviteModal()` (der Einladen-Picker) zeigte NUR Gildenmitglieder,
+obwohl die Backend-Funktion `invite_to_termin()` über `socially_visible()`
+laut CLAUDE.md ausdrücklich auch Freunde erlaubt — ein Nutzer ohne Gilde,
+aber mit Freunden, konnte dadurch niemanden einladen. Fix: Gildenmitglieder
+UND Freunde werden jetzt zusammengeführt und dedupliziert, live verifiziert
+(ein Freund, der zufällig auch Gildenmitglied ist, erscheint korrekt nur
+einmal). Vierter Bug: nach erfolgreicher Einladung aktualisierte sich die
+dahinterliegende Kanban-Vorschau nicht automatisch — jetzt über
+`refreshKanbanPreviewInviteZone()` behoben. Zusätzlich ein Doppelklick-
+Schutz im Verschieben-Menü (Touch-Ersatz fürs Ziehen) ergänzt, live per
+Netzwerk-Mitschnitt verifiziert (nur noch 1 statt 2 `contacts`-PATCH-
+Aufrufe bei simultanem Doppelklick). Effizienzfund direkt mitgefixt:
+`renderKanbanBoard()` lud Kontakt-Bundle + geteilte Karten jetzt per
+`Promise.all` parallel statt sequenziell. Kleinere Funde: geteilte
+Kanban-Karten zeigten den Betriebsnamen nicht, obwohl geladen (jetzt
+Feature-Parität zu eigenen Karten); ein in diesem Kontext nie erreichbarer
+`storniert`-Eintrag in `INVITATION_STATUS_LABELS` entfernt.
+
+Kein SQL nötig, alle Fixes rein clientseitig, Commit `cb6eabf`. Stand
+nach diesem Häppchen: 10/12 + 11a fertig, 47 echte Bugs insgesamt, keine
+offenen SQL-Fixes. Nächstes Häppchen: 11b (Kanban, zweite Hälfte:
+Aktionen-Logging/Verkauf/Win-Loss/Move-Logik).
+
+**Häppchen 11b (Kanban, zweite Hälfte: Aktionen-Logging/Verkauf/Win-Loss/
+Move-Logik/Neuer-Lead, Zeilen 8493-8804) — 2026-08-22:** drei echte Bugs.
+`recordWinOrLoss()` (gemeinsame Funktion für Kanban-Drop UND den normalen
+Kontakt-Aktionsdialog) setzte `contacts.status` auf 'kunde'/'verloren'
+**unbedingt** — auch wenn das Verkaufs-Popup (`recordLostSale()`/
+`recordWonSalesLoop()`) mit "✕" geschlossen wurde, ohne je ein Produkt
+einzutragen. Ein Kontakt konnte dadurch als "Kunde" mit 0 Verträgen in der
+Verträge-Zone landen — beim Testen live bestätigt (ein Testkontakt aus
+einer früheren Session hatte genau diesen Fehlerzustand: `status='kunde'`
+bei 0 `sales`-Zeilen). Fix: beide Verkaufs-Popups geben jetzt zurück, ob
+wirklich mindestens ein Produkt erfasst wurde, `recordWinOrLoss()`
+überspringt den Statuswechsel sonst — live verifiziert (Status blieb nach
+Abbruch ohne Produkt korrekt auf dem alten Wert). `populateCategorySelect()`
+(Kategorie-Dropdown in beiden Verkaufs-Popups) escapte die admin-editierbare
+Produktkategorie nicht — echte Stored-XSS-Lücke, derselbe Bug-Typ wie in
+Häppchen 6a bei `renderStatCategoryChart()` gefunden, dort aber nur diese
+eine Nachbarstelle gefixt, `populateCategorySelect()` blieb übersehen.
+Live mit echtem `<img src=x onerror=alert(1)>`-Testprodukt verifiziert:
+0 Ausführungen, Kategorie blieb als sichtbarer Text escaped. Dritter Bug:
+`kanbanTerminKanal` (die Kanal-Auswahl im Ersttermin-Popup während eines
+Kanban-Übergangs) wurde beim Öffnen zurückgesetzt, aber nicht beim
+Abbrechen (✕ statt Speichern) — wählte der Nutzer einen Kanal und brach
+dann ab, blieb der Wert stehen und wurde trotzdem per
+`attachKanalToLoggedAction()` an den `termin_vereinbart`/`kundenausbau`-
+Log-Eintrag gehängt, obwohl gar kein Termin existierte, dem er zuzuordnen
+gewesen wäre. Fix: `promptKanbanTermin()` gibt jetzt den tatsächlich
+verwendeten Kanal zurück (`null` bei Abbruch), der Aufrufer verlässt sich
+nicht mehr auf die geteilte Variable — live verifiziert (`action_log.meta`
+blieb korrekt `null` nach Kanal-Klick + Abbruch, vorher hätte der Kanal
+fälschlich gestanden). Ein vierter, von mehreren Agenten gemeldeter
+vermeintlicher Fund (Zweittermin bekommt nie einen Kanal ins `action_log`,
+anders als Ersttermin) wurde geprüft und als **bewusstes Design**
+verworfen: `questMatchesKanal()` dokumentiert im Code explizit, dass der
+Kanal nur bei der Aktion `termin_vereinbart` mitgeschrieben wird, nicht
+bei `pitch` (das Zweittermin loggt) — kein Fund, keine Änderung.
+Effizienzfunde direkt mitgefixt: Doppelklick-Schutz für
+`kanbanNewLeadSaveBtn`, `recordLostSale()`s Bestätigen-Button,
+`recordWonSalesLoop()`s "+ Produkt hinzufügen"/"Fertig" (ein gemeinsamer
+Sperr-Zustand für beide, da beide auf `sales` schreiben und ein Klick auf
+"Fertig" während laufendem "+ Produkt hinzufügen" sonst ebenfalls hätte
+kollidieren können), `offerExtraAction()`s Zusatzaktions-Buttons (bekamen
+zusätzlich die schon an anderer Stelle etablierte Energie-Sperre
+`refreshActionGridEnergyState()`, vorher blieben sie bei leerer
+Tagesenergie klickbar) — alle live per simultanem Doppelklick verifiziert
+(nur 1 statt 2 Schreibvorgänge). Ein von einem Agenten selbst als "nicht
+risikofrei" eingestufter Merge-Vorschlag (zwei sequenzielle
+`contacts`-Updates in `moveKanbanCard()`/`recordWinOrLoss()`
+zusammenlegen) wurde bewusst NICHT umgesetzt.
+
+Kein SQL nötig, alle Fixes rein clientseitig, Commit `f348a3f`. **Kanban
+(Häppchen 11a+11b) damit komplett fertig.** Stand nach diesem Häppchen:
+11 von 12 fertig, 50 echte Bugs insgesamt, keine offenen SQL-Fixes.
+
+**Häppchen 12 (Produkte, Einstellungen, Sicherheitswarnungen,
+Fehlerprotokoll, Notfallzugriff, Seitennavigation, Z. 8865-9719) —
+letztes Häppchen, 2026-08-22:** 5 parallele Agenten — sieben echte Bugs:
+Stored-XSS bei `products.subcategory` (`renderProductsPage()`, Zeile
+~8902) — die Gruppenüberschrift rendert `category + ' — ' + subcategory`
+ungeescaped, obwohl `p.name` zwei Zeilen darunter korrekt escaped wird,
+von 2 unabhängigen Agenten gefunden, mit echtem `<img onerror>`-
+Testprodukt live verifiziert (0 Ausführungen, Text blieb sichtbar
+escaped); fehlender Doppelklick-Schutz bei `prodAddBtn` (live per
+simultanem Doppelklick verifiziert: nur 1 statt 2 Produkte) und
+`eaRequestBtn` (CLAUDE.md dokumentiert "bewusst nur EIN Log-Eintrag pro
+Auslösung" — ein Doppelklick hätte das gebrochen; Fix nach Code-Review
+angewendet, nicht live gegen einen echten Kollegen getestet, um dessen
+private Daten nicht unnötig per Notfallzugriff abzurufen); Race
+Condition in `searchEaCandidates()` (Notfallzugriff-Personensuche) ohne
+Staleness-Guard — der bestehende Debounce verhindert nur mehrfaches
+Timer-Feuern, bricht aber keine bereits laufende Anfrage ab, eine
+langsame ältere Suche konnte eine schnellere neuere überschreiben (neue
+`eaSearchRequestId`-Variable, gleiches Muster wie
+`kanbanPreviewRequestId`/`currentContactPageId` aus früheren Häppchen);
+stiller `NaN`→`null`-Datenverlust bei `settingsSaveBarSave()` —
+Dezimal-/Zahlenfelder in den Einstellungen (z.B. "Leben-Satz (%)") sind
+`type="text"`, eine ungültige Eingabe (`parseFloat("abc")`) wurde
+bisher kommentarlos als `null` gespeichert statt eine Fehlermeldung zu
+zeigen, jetzt live verifiziert (Meldung "Ungültige Zahl bei ... — bitte
+korrigieren", kein Speichervorgang); `SECURITY_EVENT_LABELS` fehlte der
+am 2026-08-22 (Häppchen 8) neu hinzugekommene `location_owner_tamper`-
+Event-Typ — wäre nur als roher Schlüssel statt deutschem Label
+angezeigt worden, ergänzt; Hash blieb nach einem Berechtigungs-Redirect
+in `showPage()` dauerhaft falsch stehen — `routeToHash()`/
+`restoreLastPage()` rufen `showPage(..., false)` auf, um einen
+gespeicherten Hash nicht zu überschreiben, aber genau dieser Hash war
+gerade als ungültig/verboten erkannt worden (z.B. `#notfallzugriff` als
+Nicht-Admin per Bookmark/Direktaufruf) — die Adressleiste blieb dann
+dauerhaft falsch stehen, bis zum nächsten echten Nav-Klick, obwohl
+intern schon die Charakter-Seite gezeigt wurde. Fix: Hash wird jetzt
+zusätzlich zu `updateHash!==false` auch dann geschrieben, wenn ein
+Redirect stattgefunden hat (nicht live mit einem Nicht-Admin-
+Zweitaccount getestet, nur code-seitig verifiziert — Aufwand/Risiko
+eines Wegwerf-Onboarding-Durchlaufs für diesen kosmetischen URL-Bug
+bewusst nicht betrieben). Zwei Aufräumfunde: veralteter Kommentar bei
+`PRODUCT_ART_CONFIG` (behauptete, `D` [Darlehen] sei "noch nicht
+aufgenommen", obwohl der Eintrag längst existiert) korrigiert; toter
+Ternary in `settingsTileSubtitle()` (beide Zweige lieferten identisch
+`' geändert'`) vereinfacht. Effizienzfunde direkt mitgefixt:
+Doppelklick-Schutz zusätzlich bei `productDetailSaveBtn`/`toggleBtn`/
+`tzSaveBtn`/`azSaveBtn` (Updates sind zwar idempotent, aber unnötiger
+doppelter Netzwerk-Schreibzugriff, inkonsistent mit dem sonst im
+Projekt etablierten Muster); doppelte DOM-Lookups in
+`wireArbeitszeitenExtras()`s Mo–Fr-Übernehmen-Schleife und
+`openProductDetailModal()` (Modal-Element dreifach gesucht) in lokale
+Variablen gecacht. Cross-File-Agent bestätigte ansonsten volle
+Konsistenz zwischen `index.html` und den SQL-Migrationen (inkl. der
+bereits am 2026-08-21 live gepushten `products_provision_mode`-PMA-
+Erweiterung). Kein neuer SQL-Fix nötig. Per Playwright gegen den echten
+Account verifiziert (XSS-Testprodukt, Doppelklick-Anlage bei prodAddBtn,
+NaN-Validierung, Regressionstest eines gültigen Speichervorgangs, 0
+Konsolenfehler) — Testprodukt danach vollständig gelöscht, Test-
+Einstellungswert exakt auf den Ausgangszustand (leer) zurückgesetzt.
+
+**Damit ist der gesamte 12-teilige systematische Bugfix-Durchgang
+(Häppchen 1-12) über die komplette `index.html` abgeschlossen** —
+Gesamtbilanz: 57 echte Bugs gefunden und behoben, alle SQL-Fixes live,
+kein offenes Häppchen mehr. Details siehe Claudes Erinnerung
+`project_full_bugfix_sweep`.
+
+**Fazit-Gespräch direkt im Anschluss, 2026-08-22: die 57 Bugs sind kein
+Zufall, sondern fallen fast alle in eine Handvoll wiederkehrender
+Klassen** — mit Abstand am häufigsten fehlender Doppelklick-Schutz bei
+Buttons, die eine Datenbank-Schreiboperation auslösen (~20+
+Fundstellen über praktisch jedes Häppchen verteilt), dazu vergessenes
+`escHtml()` bei neuem Rendering-Code (Stored-XSS, ~7 Fundstellen NACH
+der bereits großen Sicherheits-Sweep vom 2026-08-07), Async-Race-
+Conditions ohne Staleness-Guard (~4 Fundstellen) und Listener-Stacking
+bei wiederholtem Init (~5 Fundstellen, nur über den Admin-Debug-Knopf
+"Neu erschaffen" erreichbar, geringes Praxisrisiko). Grund: das
+"Rezept" für einen neuen Button/eine neue Render-Funktion hatte den
+Schutz nie strukturell eingebaut, sondern verließ sich jedes Mal aufs
+Erinnern — bei den ersten beiden Klassen weit über die im Projekt
+selbst verwendete Rule-of-Three-Schwelle hinaus wiederholt.
+
+**Zwei neue, verbindliche Helfer, direkt gebaut statt nur dokumentiert
+("mach"):**
+- **`withClickGuard(btnId, handler)`** (neben `reportError`/
+  `logSilentError`, Zeile ~2110): umhüllt einen Klick-Handler so, dass
+  der Button synchron vor dem Ausführen deaktiviert und danach
+  garantiert (auch bei Exception, `finally`) wieder aktiviert wird.
+  Nimmt bewusst die Button-ID statt eines Element-Verweises entgegen
+  (bei jedem Klick frisch aufgelöst), damit derselbe Aufruf sowohl bei
+  `addEventListener('click', ...)` als auch bei `btn.onclick=...`
+  funktioniert (z.B. bei pro Modal-Öffnung neu zugewiesenen Handlern).
+- **`html`/`raw()`** (neben `escHtml()`, Zeile ~7150): escaping-
+  sicheres Tagged-Template — jeder interpolierte Wert wird automatisch
+  `escHtml()`-behandelt, außer er ist über `raw(str)` (bewusst
+  vertraute, fest im Code stehende Fragmente wie Emoji/style-Attribute)
+  oder als Ergebnis eines verschachtelten `html\`...\``-Aufrufs bereits
+  als sicher markiert. Arrays (z.B. `${liste.map(x=>html\`...\`)}`)
+  werden Element für Element behandelt und korrekt verkettet — **wichtig:
+  die einzelnen Elemente nicht selbst per `.join('')` zu einem rohen
+  String verketten und DEN interpolieren**, sonst greift die
+  Auto-Escaping-Prüfung nicht mehr richtig.
+
+**Live angewendet statt nur deklariert** (damit die Helfer sofort
+echten, getesteten Code betreffen statt unbenutzt zu bleiben — sonst
+hätte ESLint sie ohnehin als unused geflaggt): alle 6 Doppelklick-Fixes
+aus Häppchen 12 (`prodAddBtn`, `productDetailSaveBtn`/`toggleBtn`,
+`tzSaveBtn`, `azSaveBtn`, `eaRequestBtn`) auf `withClickGuard`
+umgestellt, `renderProductsPage()` auf den `html`-Tag umgestellt (löst
+dieselbe XSS-Stelle bei `products.subcategory`/`p.name` jetzt
+strukturell statt durch manuelles `escHtml()`). Per Playwright
+verifiziert: dreifacher simultaner Klick auf `prodAddBtn` legt weiterhin
+nur 1 Produkt an, XSS-Payload bleibt escaped, `raw()` liefert korrekt
+das leere/gefüllte `style`-Attribut ohne Doppel-Escaping, ein
+synthetischer Doppelklick auf `productDetailToggleBtn` (per
+`dispatchEvent`, da Playwrights `page.click()` bei einem sich
+schließenden Modal in einen eigenen Retry-Deadlock läuft) kippt den
+Status nur einmal (per direkter DB-Abfrage bestätigt: `false→true`,
+kein Zurückspringen), Einstellungen-Zeitzone/Arbeitszeiten speichern
+weiterhin normal, 0 Konsolenfehler. Testprodukt danach vollständig
+gelöscht, Zeitzone auf Ausgangszustand zurückgesetzt.
+
+**Verbindliche Regel ab sofort:** jeder NEUE Button, der eine
+Datenbank-Schreiboperation auslöst, wird mit `withClickGuard()`
+verdrahtet; jeder NEUE Rendering-Code, der Datenbank-Text per
+`innerHTML` einfügt, nutzt den `html`-Tag statt roher Template-Literale
++ einzelner `escHtml()`-Aufrufe. **Bestehende, bereits einzeln gefixte
+Stellen werden NICHT automatisch mitgezogen** — ein Massenumbau der
+~100+ bestehenden `innerHTML`-Stellen bzw. der übrigen ~15 bereits
+korrekt manuell gefixten Doppelklick-Stellen wäre ein eigenes, riskantes
+Vorhaben ohne zusätzlichen Bugfix-Nutzen (die sind ja schon korrekt) —
+bei Gelegenheit (nächster Umbau in der Nähe einer bestehenden Stelle)
+kann sie mitgezogen werden, kein eigener Rückbau-Häppchen dafür.
+
+## 2026-08-21: Zeitzonen-Inkonsistenz `dateKeyLocal()` vs. `todayKey()` behoben
+
+Löst den seit dem Code-Review-Durchgang vom 2026-08-20 bekannten,
+damals bewusst zurückgestellten Fund vollständig auf ("ein rein in
+Europe/Berlin ansässiges Team hat aktuell ohne praktische Auswirkung,
+aber ein echter Konventionsbruch") — auf ausdrücklichen Nutzerwunsch
+("mach das zeitzonen thema komplett") nicht nur die ursprünglich
+gemeldete eine Stelle (Tag-Reiter-Aufgabenspalte) gefixt, sondern alle
+16 `dateKeyLocal()`-Aufrufstellen im gesamten Kalender-/Termin-/
+Konstanz-Code einzeln klassifiziert (Kernunterscheidung Typ A/Typ B:
+aktueller Stand CLAUDE.md).
+
+**Fünf echte Fundstellen behoben:**
+- **Wurzelursache:** `calWeekStart`/`calDayDate`/`calFocusDate` wurden
+  bei `initJournal()` und im "Heute"-Knopf direkt aus `new Date()`
+  (Browser-lokal) gesetzt — obwohl im SELBEN Codeblock `calViewYear`/
+  `calViewMonth` für die Monatsansicht bereits korrekt über
+  `localPartsInTZ()` liefen. Monats- vs. Wochen-/Tagesansicht konnten
+  dadurch von unterschiedlichen "heute"-Referenzen ausgehen.
+- `calTermineDates` (Monatsansicht-Kalenderpunkte) und die Termin-Tag-
+  Zuordnung in der Wochenansicht nutzten `dateKeyLocal(new
+  Date(t.start_at))` auf echten Zeitstempeln statt `todayKey(t.
+  start_at)`.
+- Der "today"-Vergleich (CSS-Hervorhebung) in Wochen- und Tagesansicht
+  nutzte `dateKeyLocal(new Date())` statt `todayKey(new Date())`.
+- `weeklyActionTotals()`/`streakFromWeeklyTotals()` (Konstanz-Kachel,
+  Wochen-Schwellenwert) nutzten Browser-lokale Zeit, während das direkt
+  danebenstehende Tages-Pendant `dailyActionTotals()` schon immer
+  `todayKey()` nutzte.
+- `termineEntryDateForSave` beim Bearbeiten eines bestehenden Termins
+  (Basis für eine daraus neu erstellte Serie) las den Kalendertag
+  Browser-lokal statt zeitzonenbewusst.
+
+**Ursprünglich bewusst NICHT Teil dieser Änderung** (die restlichen
+`dateKeyLocal()`-Aufrufstellen auf Typ-B-Objekten blieben korrekt so;
+Termin-Uhrzeit-Anzeige/-Positionierung und die UTC-Grenzen der Tag-/
+Wochen-Datenbankabfragen blieben zunächst Browser-lokal, "eine
+vollständige Umstellung wäre ein größerer, eigener architektonischer
+Schritt") — **noch am selben Tag doch angegangen**, siehe nächster
+Eintrag "Vollständige geräteunabhängige Zeitraster-Engine".
+
+**Verifikation, bewusst nicht nur mit der echten aktuellen Uhrzeit**
+(die zufällig zu keiner Tagesgrenzen-Überschneidung geführt hätte): per
+Playwright mit `context.addInitScript()` manipulierter Systemzeit
+(`2026-08-21T23:30:00Z`, in Europe/Berlin bereits der 22.08., in der
+Geräte-Zeitzone `Pacific/Honolulu`, UTC−10, noch der 21.08. — ein
+garantierter Tagesgrenzen-Konflikt) UND vor dem Fix gegen den
+vorherigen Commit getestet (`git stash`): Tag-Reiter zeigte davor
+fälschlich "Freitag 21.08.", danach korrekt "Samstag 22.08." — bewiesen
+echter Fix, kein Zufallstreffer. Zusätzlich mit zwei realen Zeitzonen
+(Europe/Berlin, Pacific/Honolulu) zur echten aktuellen Uhrzeit gegen
+Monats-/Wochen-/Tagesansicht plus "Heute"-Knopf getestet, keine
+Konsolenfehler, ESLint sauber. Commit `ca8d896`.
+
+## 2026-08-21: Vollständige geräteunabhängige Zeitraster-Engine
+
+Direkte Fortsetzung des `dateKeyLocal()`/`todayKey()`-Zeitzonenfixes
+vom selben Tag (siehe CLAUDE.md-Abschnitt "Zeitzonen-Inkonsistenz") —
+ursprünglich als "erst bei echtem Auslöser" zurückgestellte
+Skalierungs-Schwelle (siehe gestrichener Eintrag bei "Technische
+Skalierungs-Schwellen" in CLAUDE.md), dann nach kurzer Diskussion doch
+direkt gebaut: die Zeitraster-Engine wird laufend weiter ausgebaut
+(jedes neue Feature vergrößert später den Umstellungs-Umfang), es gibt
+noch keine echten Produktions-Nutzer (nur Tester, siehe Erinnerung
+`feedback_no_production_users_yet`), und auf die Frage "wie macht das
+Salesforce?" gab es eine klare Antwort statt einer offenen Anforderung.
+Migration `20260821160000_profil_zeitzone.sql`. Aktuelles Modell/
+Helfer/umgestellte Stellen: CLAUDE.md, Abschnitt "Zeitzonen: pro
+Nutzer, geräteunabhängig".
+
+Ursprünglich blieben zwei Stellen bewusst außen vor (`fmtTime()`, das
+Anruf/Email-Zeitfeld) — auf Nachfrage noch am selben Tag ("mach
+fertig, wenn es das beste für das system ist") ebenfalls umgestellt,
+CLAUDE.md zeigt bereits den fertigen, vollständigen Endzustand.
+
+**Verifikation, per Playwright gegen den echten Account, in mehreren
+Runden über den Tag verteilt:**
+- Einstellungen-Kachel zeigt 419 Zeitzonen-Optionen (`Intl.
+  supportedValuesOf('timeZone')`), Speichern funktioniert
+  (`profiles.timezone` live gesetzt/bestätigt).
+- **Kernbeweis:** Nutzer-Zeitzone auf `Pacific/Honolulu` gesetzt,
+  Geräte-Zeitzone bewusst auf `Europe/Berlin` belassen (Playwright
+  `timezoneId`), Systemzeit auf `2026-08-21T23:30:00Z` fixiert — Kalender
+  zeigte korrekt den Honolulu-Tag (21.08.), NICHT den Berlin-/Org-Tag
+  (22.08.), obwohl das Gerät selbst Berlin ist — beweist, dass
+  `profile.timezone` tatsächlich Vorrang vor Organisations- UND
+  Geräte-Zeitzone hat.
+- Per Drag im Wochenraster ein Termin auf "14:00" (Honolulu-Anzeige)
+  gelegt, gespeichert, direkt in der DB nachgeprüft: `start_at` exakt
+  `2026-08-22T00:00:00Z` — mathematisch korrekt (14:00 UTC−10 = 00:00
+  UTC am Folgetag), kein Zufallstreffer durch bloßes Round-Trip-Display.
+- Für `fmtTime()`/das Anruf/Email-Zeitfeld separat, beide Enden
+  unabhängig voneinander bestätigt (Systemzeit `2026-08-21T20:00:00Z` =
+  22:00 Berlin = 10:00 Honolulu): vorbefülltes Zeitpunkt-Feld zeigte
+  korrekt `2026-08-21T10:00` (nicht 22:00); die gespeicherte Zeile
+  landete in der DB exakt bei `2026-08-21 20:00:00+00`; die Chronik
+  zeigte anschließend "heute 10:00" (nicht 22:00) — Schreiben und
+  Anzeigen getrennt verifiziert, kein zufälliger Round-Trip-Treffer.
+- Regressionstest im Normalfall (kein Override, echte Systemzeit, reale
+  Geräte-/Org-Zeitzone Berlin): Zeitzone-Feld korrekt leer nach Reset,
+  Wochenansicht/Terminanlage round-trip-korrekt, 0 Konsolenfehler.
+- Alle Testdaten (Testtermine, `contact_activities`+`action_log`-
+  Testzeilen, `profiles.timezone`-Override) danach vollständig
+  entfernt, ESLint sauber.
+
