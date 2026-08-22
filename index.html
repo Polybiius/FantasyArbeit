@@ -7563,7 +7563,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // oder Tag), damit Klick-zum-Bearbeiten in openTermineEntryModal ohne
   // Änderung weiterfunktioniert.
   async function renderDayView(scrollToDefault){
-    await loadContactTaskData();
     const d = calDayDate;
     const dateStr = dateKeyLocal(d);
     document.getElementById('calMonthLabel').textContent =
@@ -7576,14 +7575,20 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     timeColEl.innerHTML = timeHtml;
     timeColEl.style.height = totalHeight+'px';
 
+    // Zwei unabhängige Ladevorgänge (eigene Kontakte für die Aufgaben-Chips,
+    // Termine des Tages) -- parallel starten statt nacheinander abzuwarten,
+    // gleiches Muster wie renderWeekView().
     const dayStartUtc = zonedTimeToUtc(d.getFullYear(), d.getMonth()+1, d.getDate(), 0, 0, tz());
     const dayEndUtc = zonedTimeToUtc(d.getFullYear(), d.getMonth()+1, d.getDate()+1, 0, 0, tz());
-    const { data, error } = await sb.from('termine')
-      .select('*, contact:contacts(id,name), location:locations(id,name), organizer:organizer_id(display_name,real_name)')
-      .eq('owner_id', profile.id)
-      .gte('start_at', dayStartUtc.toISOString()).lt('start_at', dayEndUtc.toISOString());
-    if(error) logSilentError('Termine laden', error);
-    weekTermine = data || [];
+    const [, termineRes] = await Promise.all([
+      loadContactTaskData(),
+      sb.from('termine')
+        .select('*, contact:contacts(id,name), location:locations(id,name), organizer:organizer_id(display_name,real_name)')
+        .eq('owner_id', profile.id)
+        .gte('start_at', dayStartUtc.toISOString()).lt('start_at', dayEndUtc.toISOString())
+    ]);
+    if(termineRes.error) logSilentError('Termine laden', termineRes.error);
+    weekTermine = termineRes.data || [];
 
     const daysEl = document.getElementById('dayDays');
     daysEl.innerHTML = '';
@@ -7636,6 +7641,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // unten, unabhängig vom angezeigten Tag, nie rot.
   async function renderTaskColumn(viewedDateStr){
     await loadOpenTasks();
+    renderTaskColumnDom(viewedDateStr);
+  }
+
+  // Reines Rendern aus dem bereits geladenen openTasksCache, ohne neu von
+  // der DB zu laden -- genutzt nach lokalen Cache-Mutationen (Abhaken,
+  // Neuanlegen), wo der Cache schon aktuell ist und ein erneutes
+  // loadOpenTasks() nur eine unnötige Netzwerk-Rundlaufzeit wäre.
+  function renderTaskColumnDom(viewedDateStr){
     const listEl = document.getElementById('taskListEl');
     const todayStr = todayKey(new Date());
     const isToday = viewedDateStr === todayStr;
@@ -7678,25 +7691,38 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     listEl.querySelectorAll('input[type="checkbox"]').forEach(cb=>{
       cb.addEventListener('change', async ()=>{
         const id = cb.dataset.taskId;
+        cb.disabled = true;
         const { error } = await sb.from('tasks').delete().eq('id', id);
-        if(error){ logSilentError('Aufgabe abhaken', error); cb.checked=false; return; }
+        if(error){ logSilentError('Aufgabe abhaken', error); cb.checked=false; cb.disabled=false; return; }
         openTasksCache = openTasksCache.filter(t=>t.id!==id);
-        renderTaskColumn(viewedDateStr);
+        renderTaskColumnDom(viewedDateStr);
       });
     });
   }
 
   document.getElementById('taskAddBtn').addEventListener('click', async ()=>{
+    const btn = document.getElementById('taskAddBtn');
+    if(btn.disabled) return;
     const titleEl = document.getElementById('taskTitleInput');
     const dueEl = document.getElementById('taskDueInput');
     const title = titleEl.value.trim();
     if(!title) return;
-    const { error } = await sb.from('tasks').insert({
-      org_id: profile.org_id, owner_id: profile.id, title, due_date: dueEl.value || null, source_type: 'manual'
-    });
-    if(error){ logSilentError('Aufgabe anlegen', error); return; }
-    titleEl.value = ''; dueEl.value = '';
-    renderTaskColumn(dateKeyLocal(calDayDate));
+    btn.disabled = true;
+    try{
+      const { data, error } = await sb.from('tasks').insert({
+        org_id: profile.org_id, owner_id: profile.id, title, due_date: dueEl.value || null, source_type: 'manual'
+      }).select().single();
+      if(error){ logSilentError('Aufgabe anlegen', error); return; }
+      titleEl.value = ''; dueEl.value = '';
+      openTasksCache.push(data);
+      openTasksCache.sort((a,b)=>{
+        if(!a.due_date && !b.due_date) return 0;
+        if(!a.due_date) return 1;
+        if(!b.due_date) return -1;
+        return a.due_date < b.due_date ? -1 : a.due_date > b.due_date ? 1 : 0;
+      });
+      renderTaskColumnDom(dateKeyLocal(calDayDate));
+    } finally { btn.disabled = false; }
   });
   document.getElementById('taskTitleInput').addEventListener('keydown', (e)=>{
     if(e.key==='Enter') document.getElementById('taskAddBtn').click();
@@ -7721,7 +7747,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('termineEntryContactSearch').value = (opts.editing && opts.editing.contact) ? opts.editing.contact.name : '';
     document.getElementById('termineEntryLocationSearch').value = (opts.editing && opts.editing.location) ? opts.editing.location.name : '';
     document.getElementById('termineEntryStatus').textContent = '';
-    document.getElementById('termineEntryDeleteBtn').style.display = opts.editing ? 'block' : 'none';
 
     // Eine per Einladung angenommene Kopie darf nicht eigenständig
     // verschoben werden (würde vom Original abdriften, dessen Zeit über
@@ -7744,7 +7769,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const invStatusEl = document.getElementById('termineEntryInvitationStatus');
     invStatusEl.innerHTML = '';
     if(opts.editing && !isDelegatedCopy){
-      invitationStatusLinesHtml(opts.editing.id).then(html=>{ invStatusEl.innerHTML = html; });
+      const requestedTerminId = opts.editing.id;
+      invitationStatusLinesHtml(requestedTerminId).then(html=>{
+        // Staleness-Guard: falls der Nutzer inzwischen ein anderes Modal
+        // geöffnet hat (termineEditingId zeigt dann auf einen anderen
+        // Termin), darf diese verspätet ankommende Antwort den bereits
+        // sichtbaren, korrekten Status nicht überschreiben.
+        if(termineEditingId === requestedTerminId) invStatusEl.innerHTML = html;
+      });
     }
 
     // Wiederholung lässt sich nur beim Neuanlegen festlegen (Outlook-Stil:
@@ -7855,6 +7887,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('termineEntryModal').style.display='none';
   });
   document.getElementById('termineEntrySaveBtn').addEventListener('click', async ()=>{
+    const saveBtn = document.getElementById('termineEntrySaveBtn');
+    if(saveBtn.disabled) return;
     const statusEl = document.getElementById('termineEntryStatus');
     const title = document.getElementById('termineEntryTitle').value.trim();
     const startStr = document.getElementById('termineEntryStart').value;
@@ -7867,62 +7901,85 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const startAt = zonedTimeToUtc(d.getFullYear(), d.getMonth()+1, d.getDate(), sh, sm, tz());
     const endAt = zonedTimeToUtc(d.getFullYear(), d.getMonth()+1, d.getDate(), eh, em, tz());
     if(endAt<=startAt){ statusEl.textContent = 'Ende muss nach dem Start liegen.'; return; }
+    if(!termineEditingId && document.getElementById('termineEntryRecurrenceFreq').value==='woechentlich' && recurrenceSelectedWeekdays.size===0){
+      statusEl.textContent = 'Bitte mindestens einen Wochentag für die Wiederholung auswählen.'; return;
+    }
 
-    const payload = { title, start_at:startAt.toISOString(), end_at:endAt.toISOString(), contact_id:termineContactSelectedId, location_id:termineLocationSelectedId, kanal:termineEntryKanal||null };
-    let error;
-    let singleTerminUpdated = false;
-    if(termineEditingId){
-      const editingRow = weekTermine.find(t=>t.id===termineEditingId);
-      if(editingRow && editingRow.series_id){
-        const scope = await askSeriesScope('Diesen Termin oder die ganze Serie ändern?');
-        if(!scope) return;
-        if(scope==='all'){
-          const { error: seriesErr } = await sb.from('termin_series').update({ start_time:startStr, end_time:endeStr, kanal:termineEntryKanal||null }).eq('id', editingRow.series_id);
-          if(seriesErr){ reportError('Serie ändern', seriesErr, statusEl); return; }
-          const todayP = fullPartsInTZ(new Date(), tz());
-          const startOfToday = zonedTimeToUtc(todayP.year, todayP.month, todayP.day, 0, 0, tz());
-          const { data: futureRows, error: futErr } = await sb.from('termine').select('id,start_at')
-            .eq('series_id', editingRow.series_id).gte('start_at', startOfToday.toISOString());
-          if(futErr) logSilentError('Serie: künftige Termine laden', futErr);
-          await Promise.all((futureRows||[]).map(row=>{
-            const rp = fullPartsInTZ(row.start_at, tz());
-            const ns = zonedTimeToUtc(rp.year, rp.month, rp.day, sh, sm, tz());
-            const ne = zonedTimeToUtc(rp.year, rp.month, rp.day, eh, em, tz());
-            return sb.from('termine').update({ title, start_at:ns.toISOString(), end_at:ne.toISOString(), contact_id:termineContactSelectedId, location_id:termineLocationSelectedId, kanal:termineEntryKanal||null }).eq('id', row.id);
-          }));
+    saveBtn.disabled = true;
+    try{
+      const payload = { title, start_at:startAt.toISOString(), end_at:endAt.toISOString(), contact_id:termineContactSelectedId, location_id:termineLocationSelectedId, kanal:termineEntryKanal||null };
+      let error;
+      // Alle Termin-IDs, die durch diesen Speichervorgang tatsächlich mit der
+      // neuen Zeit aktualisiert wurden -- Grundlage für die "Update an
+      // Eingeladene senden?"-Nachfrage unten. Ersetzt das frühere
+      // singleTerminUpdated-Flag, das den scope==='single'- UND den
+      // scope==='all'-Zweig bei Serienterminen fälschlich übersprungen hat.
+      let updatedTerminIds = [];
+      if(termineEditingId){
+        const editingRow = weekTermine.find(t=>t.id===termineEditingId);
+        if(editingRow && editingRow.series_id){
+          const scope = await askSeriesScope('Diesen Termin oder die ganze Serie ändern?');
+          if(!scope) return;
+          if(scope==='all'){
+            const { error: seriesErr } = await sb.from('termin_series').update({ start_time:startStr, end_time:endeStr, kanal:termineEntryKanal||null }).eq('id', editingRow.series_id);
+            if(seriesErr){ reportError('Serie ändern', seriesErr, statusEl); return; }
+            const todayP = fullPartsInTZ(new Date(), tz());
+            const startOfToday = zonedTimeToUtc(todayP.year, todayP.month, todayP.day, 0, 0, tz());
+            const { data: futureRows, error: futErr } = await sb.from('termine').select('id,start_at')
+              .eq('series_id', editingRow.series_id).gte('start_at', startOfToday.toISOString());
+            if(futErr) logSilentError('Serie: künftige Termine laden', futErr);
+            const updateResults = await Promise.all((futureRows||[]).map(row=>{
+              const rp = fullPartsInTZ(row.start_at, tz());
+              const ns = zonedTimeToUtc(rp.year, rp.month, rp.day, sh, sm, tz());
+              const ne = zonedTimeToUtc(rp.year, rp.month, rp.day, eh, em, tz());
+              return sb.from('termine').update({ title, start_at:ns.toISOString(), end_at:ne.toISOString(), contact_id:termineContactSelectedId, location_id:termineLocationSelectedId, kanal:termineEntryKanal||null }).eq('id', row.id);
+            }));
+            updateResults.forEach((r,i)=>{
+              if(r.error) logSilentError('Serientermin aktualisieren', r.error);
+              else updatedTerminIds.push(futureRows[i].id);
+            });
+          } else {
+            ({ error } = await sb.from('termine').update(payload).eq('id', termineEditingId));
+            if(!error) updatedTerminIds = [termineEditingId];
+          }
         } else {
           ({ error } = await sb.from('termine').update(payload).eq('id', termineEditingId));
+          if(!error) updatedTerminIds = [termineEditingId];
         }
       } else {
-        ({ error } = await sb.from('termine').update(payload).eq('id', termineEditingId));
-        singleTerminUpdated = !error;
+        const { data: inserted, error: insErr } = await sb.from('termine').insert({ ...payload, org_id:profile.org_id, owner_id:profile.id }).select().single();
+        error = insErr;
+        if(!insErr && document.getElementById('termineEntryRecurrenceFreq').value){
+          await createSeriesFromModal(inserted, startStr, endeStr);
+        }
       }
-    } else {
-      const { data: inserted, error: insErr } = await sb.from('termine').insert({ ...payload, org_id:profile.org_id, owner_id:profile.id }).select().single();
-      error = insErr;
-      if(!insErr && document.getElementById('termineEntryRecurrenceFreq').value){
-        await createSeriesFromModal(inserted, startStr, endeStr);
-      }
-    }
-    if(error){ reportError('Termin speichern', error, statusEl); return; }
-    document.getElementById('termineEntryModal').style.display='none';
-    renderCalTasksNow();
+      if(error){ reportError('Termin speichern', error, statusEl); return; }
+      document.getElementById('termineEntryModal').style.display='none';
+      renderCalTasksNow();
 
-    // Outlook-Vorbild (Nutzerwunsch 2026-08-18): wurde ein einzelner,
-    // bereits bestehender Termin verschoben/geändert, der angenommene
-    // Einladungen hat, fragen wir, ob die Kopien der Eingeladenen
-    // mitgezogen werden sollen -- deren Status springt dabei zurück auf
-    // "offen", sie müssen die neue Zeit erneut bestätigen.
-    if(singleTerminUpdated){
-      const { count } = await sb.from('termin_invitations')
-        .select('id', {count:'exact', head:true}).eq('termin_id', termineEditingId).eq('status', 'angenommen');
-      if(count && count>0 && confirm(`${count} Eingeladene(r) hat/haben diesen Termin bereits angenommen. Update senden?`)){
-        const { error: notifyErr } = await sb.rpc('notify_termin_update', { p_termin_id: termineEditingId });
-        if(notifyErr) logSilentError('Termin-Update an Eingeladene senden', notifyErr);
+      // Outlook-Vorbild (Nutzerwunsch 2026-08-18): wurden bereits bestehende
+      // Termine mit angenommenen Einladungen verschoben/geändert, fragen
+      // wir, ob die Kopien der Eingeladenen mitgezogen werden sollen --
+      // deren Status springt dabei zurück auf "offen", sie müssen die neue
+      // Zeit erneut bestätigen. Deckt jetzt alle drei Update-Pfade ab
+      // (Einzeltermin, "nur diesen" bei einer Serie, "ganze Serie").
+      if(updatedTerminIds.length){
+        const { data: invRows, error: invErr } = await sb.from('termin_invitations')
+          .select('termin_id').in('termin_id', updatedTerminIds).eq('status', 'angenommen');
+        if(invErr) logSilentError('Angenommene Einladungen prüfen', invErr);
+        const affectedIds = [...new Set((invRows||[]).map(r=>r.termin_id))];
+        if(affectedIds.length && confirm(`${affectedIds.length} Termin(e) mit angenommener Einladung betroffen. Update an Eingeladene senden?`)){
+          const notifyResults = await Promise.all(affectedIds.map(id=> sb.rpc('notify_termin_update', { p_termin_id: id })));
+          notifyResults.forEach(r=>{ if(r.error) logSilentError('Termin-Update an Eingeladene senden', r.error); });
+        }
       }
+    } finally {
+      saveBtn.disabled = false;
     }
   });
   document.getElementById('termineEntryDeleteBtn').addEventListener('click', async ()=>{
+    const delBtn = document.getElementById('termineEntryDeleteBtn');
+    if(delBtn.disabled) return;
     if(!termineEditingId) return;
     const editingRow = weekTermine.find(t=>t.id===termineEditingId);
     if(editingRow && editingRow.organizer_id){
@@ -7930,33 +7987,44 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       // ablehnen" -- läuft über den Antwort-RPC statt eines direkten
       // Deletes, damit termin_invitations.status konsistent bleibt.
       if(!confirm('Diesen eingeladenen Termin aus deinem Kalender entfernen?')) return;
-      const { data: inv, error: invErr } = await sb.from('termin_invitations')
-        .select('id').eq('invitee_termin_id', termineEditingId).eq('invited_user_id', profile.id).maybeSingle();
-      if(invErr || !inv){ logSilentError('Einladung zum Ablehnen finden', invErr || new Error('nicht gefunden')); return; }
-      const { error } = await sb.rpc('respond_to_termin_invitation', { p_invitation_id: inv.id, p_accept: false });
-      if(error){ reportError('Einladung ablehnen', error); return; }
-      document.getElementById('termineEntryModal').style.display='none';
-      renderCalTasksNow();
+      delBtn.disabled = true;
+      try{
+        const { data: inv, error: invErr } = await sb.from('termin_invitations')
+          .select('id').eq('invitee_termin_id', termineEditingId).eq('invited_user_id', profile.id).maybeSingle();
+        if(invErr || !inv){ logSilentError('Einladung zum Ablehnen finden', invErr || new Error('nicht gefunden')); return; }
+        const { error } = await sb.rpc('respond_to_termin_invitation', { p_invitation_id: inv.id, p_accept: false });
+        if(error){ reportError('Einladung ablehnen', error); return; }
+        document.getElementById('termineEntryModal').style.display='none';
+        renderCalTasksNow();
+      } finally { delBtn.disabled = false; }
       return;
     }
     if(editingRow && editingRow.series_id){
       const scope = await askSeriesScope('Nur diesen Termin oder die ganze Serie löschen?');
       if(!scope) return;
-      if(scope==='all'){
-        if(!confirm('Die ganze Serie inkl. aller vergangenen und künftigen Termine wirklich löschen?')) return;
-        const { error } = await sb.from('termin_series').delete().eq('id', editingRow.series_id);
-        if(error){ reportError('Serie löschen', error); return; }
-      } else {
-        const { error } = await sb.from('termine').delete().eq('id', termineEditingId);
-        if(error){ reportError('Termin löschen', error); return; }
-      }
-    } else {
-      if(!confirm('Diesen Termin wirklich löschen?')) return;
+      delBtn.disabled = true;
+      try{
+        if(scope==='all'){
+          if(!confirm('Die ganze Serie inkl. aller vergangenen und künftigen Termine wirklich löschen?')) return;
+          const { error } = await sb.from('termin_series').delete().eq('id', editingRow.series_id);
+          if(error){ reportError('Serie löschen', error); return; }
+        } else {
+          const { error } = await sb.from('termine').delete().eq('id', termineEditingId);
+          if(error){ reportError('Termin löschen', error); return; }
+        }
+        document.getElementById('termineEntryModal').style.display='none';
+        renderCalTasksNow();
+      } finally { delBtn.disabled = false; }
+      return;
+    }
+    if(!confirm('Diesen Termin wirklich löschen?')) return;
+    delBtn.disabled = true;
+    try{
       const { error } = await sb.from('termine').delete().eq('id', termineEditingId);
       if(error){ reportError('Termin löschen', error); return; }
-    }
-    document.getElementById('termineEntryModal').style.display='none';
-    renderCalTasksNow();
+      document.getElementById('termineEntryModal').style.display='none';
+      renderCalTasksNow();
+    } finally { delBtn.disabled = false; }
   });
 
   // ---- Kanban (Questpfad / Gildenbrett / Feldzug) ----
