@@ -2259,19 +2259,12 @@ bestehenden Seiten stehen (`.content`-Wrapper), sonst greift das
 Sidebar-Layout nicht — vor dem ersten Screenshot direkt gegenprüfen,
 nicht erst nach Nutzer-Beschwerde (Bug-Verlauf: HISTORY.md).
 
-## Serverseitige Schreib-Härtung: user_inventory / action_log / sales / locations (2026-08-15 abends)
+## Serverseitige Schreib-Härtung: user_inventory / action_log / sales / locations
 
-Löst die am 2026-08-07 gefundene, damals bewusst zurückgestellte
-`user_inventory`-RLS-Lücke endgültig — auf Nutzerwunsch ("will das vom
-Tisch haben"), danach auf die Nachfrage "haben wir noch dringliche
-Themen davon" um drei weitere, im selben Zug gefundene Stellen erweitert
-(`action_log`, `sales`, `locations`). **Wiederkehrendes Muster über alle
-vier:** die RLS-Regel prüfte bisher nur "gehört dir die Zeile", nicht ob
-der geschriebene WERT plausibel ist — dieselbe Lückenklasse wie die
-XSS-Lücke vom 2026-08-07, nur auf der Schreib- statt der Lese-Seite.
-
-**Migrationen:** `20260815223000_user_inventory_rpc_haertung.sql` +
-`20260815230000_action_log_sales_locations_haertung.sql`.
+**Wiederkehrendes Muster über alle vier Tabellen** (Entstehung:
+HISTORY.md): die RLS-Regel prüfte bisher nur "gehört dir die Zeile",
+nicht ob der geschriebene WERT plausibel ist — dieselbe Lückenklasse
+wie XSS-Lücken, nur auf der Schreib- statt der Lese-Seite.
 
 **`user_inventory`** (Items/Ausrüstung): direktes Schreiben komplett
 gesperrt (`inventory_insert_own`/`inventory_update_own` entfernt). Zwei
@@ -2346,77 +2339,47 @@ Browser) zusätzlich serverseitig nachbauen — ein eigenes großes Projekt,
 als künftige Skalierungs-Schwelle in Claudes Erinnerungssystem
 (`project_business_fahrplan`, Phase 5) vermerkt, nicht sofort gebaut.
 
-End-to-end gegen die echte DB verifiziert (jede Sperre UND jeder
-legitime Ablauf einzeln getestet, u.a. `set_config('request.jwt.claim.
-sub', ...)` + `set role authenticated` gegen den echten Admin-Account),
-Testzustand danach exakt auf den Ausgangswert zurückgesetzt (alle
-Zeilenzahlen unverändert).
+**Systematischer statt zufälliger Durchgang:** alle `INSERT`/`UPDATE`-
+Policies im gesamten Schema geprüft (`pg_policies`), nicht nur die
+Tabellen, an die zufällig gedacht wurde (Entstehung/Verifikation:
+HISTORY.md) — zwei weitere echte Funde, beide behoben:
 
-**Direkter Folgeauftrag, noch am selben Abend: systematischer statt
-zufälliger Durchgang.** Nutzerfrage "gibt es noch andere Grundregeln,
-die wir übersehen haben" — alle `INSERT`/`UPDATE`-Policies im gesamten
-Schema auf einen Schlag geprüft (`pg_policies`), nicht mehr nur die
-Tabellen, an die zufällig gedacht wurde. Ergebnis: `rule_configs` und
-`products` sind bereits sauber admin-only (der ganze Tag hing also nicht
-in der Luft), aber zwei weitere echte Funde, beide live bestätigt und
-behoben (Migration
-`20260815233000_guild_selfjoin_und_level_cache_haertung.sql`):
-
-- **`guild_members`-Selbstbeitritt** — die ernsteste Lücke des ganzen
-  Tages, weil sie echten Zugriff auf Kolleg:innen-Daten verschafft, nicht
-  nur Kosmetik: `contacts_access`/`dungeons_access`/`team_rights` waren
-  beim Selbst-Beitritt (`joinGuild()`) komplett ungeprüft — ein Mitglied
-  hätte sich beim Beitreten sofort Schreibzugriff auf alle geteilten
-  Kontakte/Dungeons UND die Nachfolge-Berechtigung selbst geben können,
-  ganz ohne Gründer-Zutun. Live bestätigt (Wegwerf-Testmitgliedschaft,
-  danach entfernt). Fix: Selbst-Beitritt erzwingt jetzt die echten
-  Minimalrechte (Lesen, kein Team-Recht) — außer beim Gründer der eigenen
-  Gilde (`guildCreateBtn` setzt sich legitim volle Rechte, bleibt
-  erlaubt).
+- **`guild_members`-Selbstbeitritt** — `contacts_access`/
+  `dungeons_access`/`team_rights` waren beim Selbst-Beitritt
+  (`joinGuild()`) komplett ungeprüft — ein Mitglied hätte sich beim
+  Beitreten sofort Schreibzugriff auf alle geteilten Kontakte/Dungeons
+  UND die Nachfolge-Berechtigung selbst geben können. Fix: Selbst-
+  Beitritt erzwingt die echten Minimalrechte (Lesen, kein Team-Recht) —
+  außer beim Gründer der eigenen Gilde (`guildCreateBtn` setzt sich
+  legitim volle Rechte, bleibt erlaubt).
 - **`profiles.total_xp`/`level`** — reiner Anzeige-Cache (die Wahrheit
-  bleibt immer `action_log`), aber direkt auf einen beliebigen Wert
-  überschreibbar (Level 100 ohne einen Punkt XP, sichtbar für Freunde/
-  Gilde über die Avatar-Kacheln). Live bestätigt. Fix: neue Funktion
-  `sync_own_level_cache()` berechnet total_xp/level serverseitig aus der
-  echten `action_log`-Summe + der echten Level-Kurve
-  (`rule_configs.config.levelBase`/`levelExponent`, identische Formel wie
-  `xpForLevel()`/`levelInfo()` im Frontend) neu.
-  `protect_privileged_profile_fields()` (Patch 38/39) bekam dafür eine
-  dritte Prüfung, erkennbar an einem Transaktions-lokalen Sitzungs-Flag
-  (`app.trusted_level_sync`), das nur diese eine Funktion setzt — jeder
-  andere Schreibversuch auf diese beiden Spalten wird blockiert.
-  **Admin-Bypass bleibt bestehen**, wie bei role/character_class/org_id
-  (konsistent mit dem Rest der Funktion) — beim Testen zunächst
-  fälschlich mit dem eigenen Admin-Account geprüft (Bypass griff
-  erwartungsgemäß), danach korrekt mit einem echten Nicht-Admin-Konto
-  verifiziert (Blockade griff).
-  `syncProfileStatsCache()` in `index.html` ruft jetzt `sb.rpc('sync_
-  own_level_cache')` statt eines direkten `.update()` auf.
+  bleibt immer `action_log`), war aber direkt auf einen beliebigen Wert
+  überschreibbar. Fix: `sync_own_level_cache()` berechnet total_xp/level
+  serverseitig aus der echten `action_log`-Summe + der echten
+  Level-Kurve neu. `protect_privileged_profile_fields()` (Patch 38/39)
+  hat dafür eine dritte Prüfung, erkennbar an einem Transaktions-
+  lokalen Sitzungs-Flag (`app.trusted_level_sync`), das nur diese eine
+  Funktion setzt — jeder andere Schreibversuch auf diese beiden Spalten
+  wird blockiert. **Admin-Bypass bleibt bestehen**, wie bei
+  role/character_class/org_id. `syncProfileStatsCache()` in `index.html`
+  ruft `sb.rpc('sync_own_level_cache')` statt eines direkten `.update()`
+  auf.
 
-**Bekannter Datenverlust beim Testen, offen kommuniziert:**
-`profiles.company` des Admin-Accounts wurde während eines Testschritts
-mit einem Platzhalterwert überschrieben, der ursprüngliche Inhalt war
-nicht mehr rekonstruierbar (rein informatives Freitextfeld, siehe
-"Profil-Onboarding" oben) — auf `NULL` zurückgesetzt, Nutzer informiert,
-bei Bedarf in Einstellungen neu einzutragen. **Lehre fürs nächste Mal:**
-vor einem Test-Schreibvorgang auf ein Feld ohne bekannten Ausgangswert
-immer zuerst den aktuellen Wert auslesen und sichern, nicht raten oder
-mit `NULL` überschreiben.
+**Lehre aus einem Testing-Vorfall** (Details: HISTORY.md): vor einem
+Test-Schreibvorgang auf ein Feld ohne bekannten Ausgangswert immer
+zuerst den aktuellen Wert auslesen und sichern, nicht raten oder mit
+`NULL` überschreiben.
 
-## Sicherheitswarnungen (Alarm-Logging), Patch 47 (2026-08-16)
+## Sicherheitswarnungen (Alarm-Logging)
 
-Löst Punkt 9 der BaaS-Aufgabenliste ("Logging mit echter Reaktion statt
-nur Speicherung") — Auslöser: offene Selbstregistrierung + öffentlich
-erreichbare App bedeuten, dass ein Angriff nicht zwingend über die
-eigene Oberfläche laufen muss. Bisher landete ein abgewehrter
-Manipulationsversuch nur dann im Fehlerprotokoll, wenn der **Browser**
-ihn freiwillig meldete — ein direkter API-Aufruf an unserer Oberfläche
-vorbei blieb komplett unsichtbar.
+Löst das Problem, dass ein abgewehrter Manipulationsversuch bisher nur
+dann im Fehlerprotokoll landete, wenn der **Browser** ihn freiwillig
+meldete — ein direkter API-Aufruf an der Oberfläche vorbei blieb
+komplett unsichtbar (Entstehung: HISTORY.md).
 
 **Neue Tabelle `security_alerts`** (nur Admins dürfen lesen, Schreiben
 ausschließlich über die neue Funktion `log_security_alert()`, die
-absichtlich NICHT per RPC aufrufbar ist — siehe unten). Migration
-`supabase/migrations/20260816140000_security_alerts.sql`.
+absichtlich NICHT per RPC aufrufbar ist — siehe unten).
 
 **Kernidee — "korrigieren statt ablehnen", damit der Log-Eintrag
 niemals durch ein Rollback verloren geht:** die beiden schwerwiegendsten,
@@ -2474,15 +2437,7 @@ trigger`-Funktionen kann Postgres strukturell nicht per RPC aufrufen
 lassen, unabhängig von vergebenen Rechten (gleiche Begründung wie beim
 Advisor-Durchgang 2026-08-11).
 
-End-to-end mit einem Wegwerf-Testprofil gegen die echte DB verifiziert
-(`set_config('request.jwt.claim.sub', ...)` + `set role authenticated`):
-Selbst-Admin-Versuch UND Level-Fälschung in einem Aufruf → beide
-Werte blieben unverändert, zwei Alarme protokolliert. Gilden-
-Selbstbeitritt mit `write`/`write`/`true` → Mitgliedschaft wurde
-angelegt, aber auf `read`/`read`/`false` zurückgesetzt, ein Alarm
-protokolliert. Direkter RPC-Aufruf von `log_security_alert()` als
-normaler Nutzer → `permission denied`, wie beabsichtigt. Testdaten
-danach vollständig entfernt (0 Reste verifiziert).
+Verifikations-Verlauf: HISTORY.md.
 
 ## Questbaum: Jahres-Reset + Bonus-XP für den gesamten Baum, Patch 50 (2026-08-17)
 

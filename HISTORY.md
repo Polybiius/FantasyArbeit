@@ -727,3 +727,75 @@ von `.content` platziert, direkt neben den anderen `.page`-Geschwistern.
 Die daraus gezogene Lehre (eine neue `.page` muss strukturell im
 selben Container wie bestehende Seiten stehen, sonst greift das
 Sidebar-Layout nicht) steht kompakt in CLAUDE.md.
+
+## 2026-08-15/16: Serverseitige Schreib-Härtung + Sicherheitswarnungen
+
+**Häppchen 9 (Serverseitige Schreib-Härtung bis Sicherheitswarnungen,
+ursprünglich CLAUDE.md-Zeile 2262–2485), fertig 2026-08-22.** Die
+zentrale Write-Hardening-Architektur des Projekts (RPC-Pflicht für
+`action_log`/`user_inventory`, "korrigieren statt ablehnen"-Muster) —
+wird an vielen späteren Stellen vorausgesetzt, bewusst konservativ
+gekürzt. Nur Entstehungs-/Test-/Incident-Erzählung wandert hierher.
+
+**Auslöser (2026-08-15 abends):** löste die am 2026-08-07 gefundene,
+damals bewusst zurückgestellte `user_inventory`-RLS-Lücke endgültig —
+auf Nutzerwunsch ("will das vom Tisch haben"), danach auf die
+Nachfrage "haben wir noch dringliche Themen davon" um drei weitere, im
+selben Zug gefundene Stellen erweitert (`action_log`, `sales`,
+`locations`). Wiederkehrendes Muster über alle vier (aktuelle Lösung:
+CLAUDE.md): die RLS-Regel prüfte bisher nur "gehört dir die Zeile",
+nicht ob der geschriebene WERT plausibel ist — dieselbe Lückenklasse
+wie die XSS-Lücke vom 2026-08-07, nur auf der Schreib- statt der
+Lese-Seite.
+
+**Verifikation:** end-to-end gegen die echte DB (jede Sperre UND jeder
+legitime Ablauf einzeln getestet, `set_config('request.jwt.claim.
+sub', ...)` + `set role authenticated` gegen den echten Admin-Account),
+Testzustand danach exakt auf den Ausgangswert zurückgesetzt.
+
+**Folgeauftrag, noch am selben Abend: systematischer statt zufälliger
+Durchgang.** Nutzerfrage "gibt es noch andere Grundregeln, die wir
+übersehen haben" — alle `INSERT`/`UPDATE`-Policies im gesamten Schema
+auf einen Schlag geprüft (`pg_policies`), nicht mehr nur die Tabellen,
+an die zufällig gedacht wurde. `rule_configs`/`products` waren bereits
+sauber admin-only, aber zwei weitere echte Funde, beide live bestätigt
+und behoben:
+- **`guild_members`-Selbstbeitritt** — die ernsteste Lücke des ganzen
+  Tages: `contacts_access`/`dungeons_access`/`team_rights` waren beim
+  Selbst-Beitritt (`joinGuild()`) komplett ungeprüft — ein Mitglied
+  hätte sich beim Beitreten sofort Schreibzugriff auf alle geteilten
+  Kontakte/Dungeons UND die Nachfolge-Berechtigung selbst geben können.
+  Live bestätigt mit Wegwerf-Testmitgliedschaft.
+- **`profiles.total_xp`/`level`** — direkt auf einen beliebigen Wert
+  überschreibbar (Level 100 ohne einen Punkt XP). Live bestätigt, dann
+  behoben (aktueller Mechanismus `sync_own_level_cache()`: CLAUDE.md).
+  Beim Testen zunächst fälschlich mit dem eigenen Admin-Account geprüft
+  (Bypass griff erwartungsgemäß, bewies nichts), danach korrekt mit
+  einem echten Nicht-Admin-Konto verifiziert (Blockade griff).
+
+**Bekannter Datenverlust beim Testen, offen kommuniziert:**
+`profiles.company` des Admin-Accounts wurde während eines Testschritts
+mit einem Platzhalterwert überschrieben, der ursprüngliche Inhalt war
+nicht mehr rekonstruierbar — auf `NULL` zurückgesetzt, Nutzer
+informiert. Die daraus gezogene Lehre (vor einem Test-Schreibvorgang
+auf ein Feld ohne bekannten Ausgangswert immer zuerst den aktuellen
+Wert auslesen und sichern) steht kompakt in CLAUDE.md.
+
+**Sicherheitswarnungen, Auslöser (Patch 47, 2026-08-16):** löst Punkt 9
+der BaaS-Aufgabenliste ("Logging mit echter Reaktion statt nur
+Speicherung") — offene Selbstregistrierung + öffentlich erreichbare
+App bedeuten, dass ein Angriff nicht zwingend über die eigene
+Oberfläche laufen muss. Bisher landete ein abgewehrter
+Manipulationsversuch nur dann im Fehlerprotokoll, wenn der Browser ihn
+freiwillig meldete — ein direkter API-Aufruf daran vorbei blieb
+komplett unsichtbar.
+
+**Verifikation:** end-to-end mit einem Wegwerf-Testprofil gegen die
+echte DB (`set_config('request.jwt.claim.sub', ...)` + `set role
+authenticated`) — Selbst-Admin-Versuch UND Level-Fälschung in einem
+Aufruf → beide Werte blieben unverändert, zwei Alarme protokolliert;
+Gilden-Selbstbeitritt mit vollen Rechten → Mitgliedschaft angelegt,
+aber auf Minimalrechte zurückgesetzt, ein Alarm protokolliert; direkter
+RPC-Aufruf von `log_security_alert()` als normaler Nutzer →
+`permission denied`. Testdaten danach vollständig entfernt (0 Reste
+verifiziert).
