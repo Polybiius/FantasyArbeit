@@ -951,21 +951,12 @@ das explizit erst später besprechen ("wir müssen die Datenbank komplett
 neu bearbeiten", noch ohne Details) und echte Email-Integration
 (IMAP/Weiterleitung o.ä., nur das Datenfundament ist vorbereitet).
 
-## Einstellungen: Registry-getriebenes Fundament, seit 2026-08-07
+## Einstellungen: Registry-getriebenes Fundament
 
-Auf Nutzerwunsch ("ich möchte mir dir heute eine grundidee ein fundament
-für die einstellungen gießen") umgebaut, bevor die Seite über die bisher 3
-Themen-Kacheln hinauswächst — Auslöser war ein vom Nutzer gesehenes Video
-mit einer als vorbildlich empfundenen Einstellungen-UX, aus der er
-Stichworte mitbrachte (instant-apply Toggles, Save-Bar bei Identitätsfeldern,
-Gruppierung statt langer Liste, Advanced-Klappe, Suche mit Highlighting,
-Modified-Badge, Undo, Danger Zone). **Wichtig für die Zusammenarbeit:** der
-Nutzer verstand das Registry-Prinzip trotz zweier Erklärversuche nicht
-wirklich — hat aber grünes Licht gegeben, nachdem klar war, dass es
-Industriestandard ist ("wenn das best practice ist ... dann bitte"). Bei
-ähnlich abstrakten Architektur-Erklärungen künftig nicht auf vollständigem
-Verständnis bestehen, sondern die Best-Practice-Einordnung anbieten und bei
-Zustimmung einfach bauen (siehe [[feedback_defer_to_best_practice_when_confused]]).
+Registry-getriebener Aufbau (Entstehung: HISTORY.md; Nutzer verstand das
+Registry-Prinzip nicht vollständig, gab aber Best-Practice-Grünes-Licht —
+generelle Lehre dazu in Claudes Erinnerung,
+[[feedback_defer_to_best_practice_when_confused]]).
 
 **Kernidee:** `SETTINGS_REGISTRY` (Liste aller Einstellungen) +
 `SETTINGS_GROUPS` (Themen-Kacheln: Profil, Provision & Planungsziele,
@@ -1028,38 +1019,21 @@ die neue Regel steht. Lösung: beide Klassen kombinieren
 (`.card.settings-danger-zone`, `.cal-nav-btn.settings-save-bar-save`) statt
 nur die neue Klasse allein zu verwenden.
 
-**Zwei Nachbesserungen, noch am selben Tag (2026-08-07), beide auf direktes
-Nutzer-Feedback:**
-
-1. **Optik-Politur:** native Checkboxen/zu schmale Eingabefelder/Monospace-
-   Fließtext wirkten "klobig". Ersetzt durch einen echten Pill-Schalter
-   (`.settings-switch`, folgt automatisch der Klassen-Akzentfarbe),
-   volle-Breite dunkle Inputs (`.settings-input`), normale Fließschrift
-   für Beschreibungen (`.settings-field-desc`, nicht mehr das
-   wiederverwendete `.empty-page-hint`) und weniger Trennlinien.
-2. **Startseite von Balken auf Kacheln umgebaut:** die anfängliche
-   Gruppen-Übersicht (4 volle-Breite aufklappbare Balken) fühlte sich laut
-   Nutzer nicht stimmig an ("diese großen Rechtecke... ist nicht meins") —
-   passte auch nicht ins sonstige Kachel-Vokabular der App (Dungeons,
-   Gilde, Inventar, Produkte laufen alle über `.dungeon-tile-grid`/
-   `.dungeon-tile`, "Kachel statt Liste" war schon beim Produktkatalog
-   ausdrücklicher Nutzerwunsch, 2026-08-03). Jetzt: `buildSettingsTileGridHtml()`
-   zeigt die 4 Gruppen als kompakte Icon-Kacheln (Symbol, Name, Untertitel
-   = Feldanzahl oder "N geändert"), Klick auf eine Kachel öffnet
-   `openSettingsGroupModal(gid)` — ein `.loc-modal` mit den Feldern dieser
-   EINEN Gruppe, exakt wie beim Produkt-Detail-Modal. Danger Zone bleibt
-   bewusst eine eigene rote Karte außerhalb des Kachel-Rasters (nur ein
-   Button, keine Feldliste — keine "vielen großen Rechtecke" mehr, aber
-   auch keine künstliche Vereinheitlichung um der Einheitlichkeit willen).
-   Save-Bar/Toast bekamen `z-index:1002` (über dem Modal, `z-index:1000`),
-   da Text-/Zahlenfelder jetzt im Modal liegen. Suche filtert jetzt die
-   Kacheln (zeigt nur Gruppen mit Treffern, hebt den Kachel-Namen hervor)
-   und hebt zusätzlich die passenden Felder hervor, sobald das jeweilige
-   Gruppen-Modal offen ist (`settingsHighlightFieldsInScope()`). Die
-   Arbeitszeiten-Tagesreihen (Checkbox+zwei Uhrzeiten pro Wochentag)
-   brachen im schmaleren Modal (480px statt voller Kartenbreite) hässlich
-   um — neues kompaktes `.az-day-row`-Layout (Label links, beide Uhrzeiten
-   rechts als Paar) behebt das, unabhängig von Bildschirmbreite.
+**Aktuelle Optik/Layout** (Entstehung/Nutzer-Feedback dazu: HISTORY.md):
+echter Pill-Schalter (`.settings-switch`, folgt der Klassen-Akzentfarbe),
+volle-Breite dunkle Inputs (`.settings-input`), normale Fließschrift für
+Beschreibungen (`.settings-field-desc`). Startseite zeigt die 4 Gruppen
+als kompakte Icon-Kacheln (`buildSettingsTileGridHtml()` — Symbol, Name,
+Untertitel = Feldanzahl oder "N geändert"), Klick öffnet
+`openSettingsGroupModal(gid)` — ein `.loc-modal` mit den Feldern dieser
+EINEN Gruppe, exakt wie beim Produkt-Detail-Modal. Danger Zone bleibt
+eine eigene rote Karte außerhalb des Kachel-Rasters. Save-Bar/Toast haben
+`z-index:1002` (über dem Modal, `z-index:1000`). Suche filtert die
+Kacheln UND hebt passende Felder hervor, sobald das jeweilige
+Gruppen-Modal offen ist (`settingsHighlightFieldsInScope()`). Die
+Arbeitszeiten-Tagesreihen nutzen ein kompaktes `.az-day-row`-Layout
+(Label links, beide Uhrzeiten rechts als Paar) — bricht auch im
+schmaleren Modal (480px) nicht um.
 
 ## Sicherheits-Durchgang: XSS-Escaping nachgerüstet, 2026-08-07
 

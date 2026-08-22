@@ -246,3 +246,35 @@ einem großen Teil aus reinen "Entstehungsweg"-Erzählungen.
   Klassenwahl-Bildschirm-Version — beides durch die Canvas-Animation
   ersetzt. Aktueller Stand von `Design/` (was übrig bleibt/warum): siehe
   CLAUDE.md.
+
+**Häppchen 3 (Produktkatalog & Verkaufshistorie bis Einstellungen,
+ursprünglich CLAUDE.md-Zeile 818–1063), fertig 2026-08-22.** Produktkatalog
+und Kontakt-Chronik waren schon vorher lean (Business-Regeln, kaum
+Erzählung) — der Hauptfund war der Einstellungen-Abschnitt.
+
+- **Einstellungen-Registry, Entstehung (2026-08-07):** umgebaut auf
+  Nutzerwunsch ("ich möchte mir dir heute eine grundidee ein fundament
+  für die einstellungen gießen"), bevor die Seite über die bisher 3
+  Themen-Kacheln hinauswuchs — Auslöser war ein vom Nutzer gesehenes
+  Video mit einer als vorbildlich empfundenen Einstellungen-UX, aus der
+  er Stichworte mitbrachte (instant-apply Toggles, Save-Bar bei
+  Identitätsfeldern, Gruppierung statt langer Liste, Advanced-Klappe,
+  Suche mit Highlighting, Modified-Badge, Undo, Danger Zone). Der
+  Nutzer verstand das Registry-Prinzip trotz zweier Erklärversuche
+  nicht wirklich — gab aber grünes Licht, nachdem klar war, dass es
+  Industriestandard ist ("wenn das best practice ist ... dann bitte").
+  Generelle Lehre daraus lebt dauerhaft in Claudes Erinnerung,
+  `feedback_defer_to_best_practice_when_confused`, nicht nur hier.
+- **Zwei Nachbesserungen, noch am selben Tag (2026-08-07), Entstehung:**
+  1. Optik-Politur: native Checkboxen/zu schmale Eingabefelder/
+     Monospace-Fließtext wirkten laut Nutzer "klobig" — ersetzt durch
+     den heutigen Pill-Schalter/volle-Breite-Inputs/normale Fließschrift
+     (aktueller Stand: CLAUDE.md).
+  2. Startseite von Balken auf Kacheln umgebaut: die anfängliche
+     Gruppen-Übersicht (4 volle-Breite aufklappbare Balken) fühlte sich
+     laut Nutzer nicht stimmig an ("diese großen Rechtecke... ist nicht
+     meins") — passte auch nicht ins sonstige Kachel-Vokabular der App
+     (Dungeons, Gilde, Inventar, Produkte laufen alle über
+     `.dungeon-tile-grid`/`.dungeon-tile`, "Kachel statt Liste" war
+     schon beim Produktkatalog ausdrücklicher Nutzerwunsch, 2026-08-03).
+     Heutiger Stand (Kachel-Grid, Klick öffnet Gruppen-Modal): CLAUDE.md.
