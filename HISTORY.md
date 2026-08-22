@@ -278,3 +278,103 @@ Erzählung) — der Hauptfund war der Einstellungen-Abschnitt.
      `.dungeon-tile-grid`/`.dungeon-tile`, "Kachel statt Liste" war
      schon beim Produktkatalog ausdrücklicher Nutzerwunsch, 2026-08-03).
      Heutiger Stand (Kachel-Grid, Klick öffnet Gruppen-Modal): CLAUDE.md.
+
+## 2026-08-07/2026-08-11: Sicherheits-Durchgänge (XSS-Escaping, RLS, Advisor)
+
+**Häppchen 4 (Sicherheits-Durchgang XSS-Escaping + Advisor-Nachtrag,
+ursprünglich CLAUDE.md-Zeile 1038–1214), fertig 2026-08-22.** Größter
+Trennaufwand-Gewinn bisher — beide Abschnitte waren fast komplett reine,
+datierte Audit-Berichte. CLAUDE.md behält nur die daraus abgeleiteten,
+dauerhaften Prinzipien/Werkzeuge (Escaping-Regel, RLS-Design-Prinzip,
+`supabase db advisors`-Befehl, Feldlängen-Konvention) — hier die
+vollständigen Audit-Verläufe:
+
+**Sicherheits-Durchgang 2026-08-07** (auf Nutzeranfrage "codebasescan
+für key tokens api ... full security audit" — zwei getrennte Prüfungen
+gemacht statt vorschnell Infrastruktur zu bauen, die laut den
+"Technische Skalierungs-Schwellen" noch nicht gebraucht wird):
+
+1. **Secret-Scan** (`grep -r` nach Service-Role-/Private-/API-Key-
+   Mustern übers ganze Repo): sauber. Der einzige Key im Code ist der
+   Supabase-Anon-Key (absichtlich öffentlich, RLS statt Geheimhaltung).
+2. **XSS-Escaping-Lücke, echt und verbreitet gefunden und behoben:**
+   `escHtml()` wurde an sehr vielen Stellen, an denen Datenbank-Text
+   per `innerHTML` gerendert wird, schlicht vergessen — betraf u.a. den
+   zentralen `field()`-Helfer in der Kontaktdetail-Ansicht (Telefon/
+   E-Mail/Wohnort/Bedarf-Ist/-Wunsch/Notizen auf einen Schlag), die
+   Kontakttabelle, Kanban-Karten, die Handlungen/Chronik-Listen
+   (`action_log.context`), Anruf/Email-Notizen, Termin-Titel, Gilden-/
+   Freundes-Namen, zwei ältere Autocomplete-Boxen und mehr (~20 Stellen
+   insgesamt). Ein böswillig benannter Kontakt (z.B. Vorname
+   `<img src=x onerror="...">`) hätte beim Anzeigen durch jedes
+   Team-Mitglied ausgeführt werden können — echte, ausnutzbare
+   Stored-XSS-Lücke. `escHtml()` selbst war zusätzlich unvollständig
+   (escapte kein `"`/`'`, dadurch in Attribut-Kontexten wie
+   `data-name="${...}"` weiterhin ausbrechbar) — seitdem escapt es auch
+   Anführungszeichen. Per Playwright end-to-end verifiziert: echter
+   Testkontakt mit `<img onerror>`/`<svg onload>`/`<script>`-Payloads
+   in Vorname/Nachname/Notizen angelegt, Payload blieb in Tabelle UND
+   Detailansicht als sichtbarer Text statt auszuführen,
+   `window.__xssFired` blieb bei 0, Testkontakt danach wieder gelöscht.
+   Nebenbei aufgefallen (keine Handlung nötig): drei leicht
+   unterschiedliche Autocomplete-Implementierungen für Kontakt-/Ort-
+   Suche, organisch entstanden — Rule of Three gerade erst erreicht,
+   noch kein Grund zum Vereinheitlichen.
+3. **`maxlength` auf bisher unbegrenzten Freitextfeldern nachgetragen**
+   (noch selber Tag, Nutzerwunsch) — reine UX-Hygiene, kein
+   Sicherheitsmechanismus (aktuelle Werte: CLAUDE.md).
+
+**Nachtrag noch am selben Tag: RLS-Durchgang** (statische Analyse aller
+`sql/*.sql`-Policies + Live-Bestätigung per direktem PostgREST-Aufruf
+mit echtem Session-Token, nicht nur gelesen/vermutet):
+
+- **`sql/patch38_profile_privilege_schutz.sql`, seit 2026-08-07 live:**
+  `profiles_update_own` hatte `using (id = auth.uid())` ohne eigene
+  `with check` — schützte nur `id`, keine andere Spalte. Erstbestätigung:
+  eigener Account per PATCH auf `/rest/v1/profiles` von `role:'admin'`
+  auf `'member'` gesetzt und sofort zurück — ein normaler Nutzer hätte
+  sich selbst zum Admin machen können, ebenso `character_class`/`org_id`
+  frei ändern. Patch 38 fügt einen BEFORE-UPDATE-Trigger hinzu, der
+  diese drei Spalten blockiert, außer der Ausführende ist bereits Admin.
+  Nach dem Einspielen mit einem frischen Wegwerf-Testaccount erneut
+  verifiziert: Selbst-Beförderungsversuch korrekt abgelehnt.
+- **Zweite, verwandte Lücke direkt beim erneuten Testen gefunden —
+  `sql/patch39_profile_insert_privilege_schutz.sql`, seit 2026-08-07
+  live:** Patch 38 deckte nur UPDATE ab, nicht die allererste Zeile.
+  `profiles_insert_self` prüfte beim Anlegen ebenfalls nur
+  `id = auth.uid()` — ein direktes INSERT mit `role:'admin'` legte
+  sofort ein fertiges Admin-Profil an, komplett am
+  Registrierungsbildschirm vorbei, von jedem Internet-Besucher aus
+  nutzbar (offene Selbstregistrierung, kein Einladungszwang). Patch 39
+  erzwingt `role='member'` und die Standard-`org_id` per BEFORE-INSERT-
+  Trigger, unabhängig vom mitgeschickten Wert. Erneut mit einem
+  frischen Wegwerf-Account verifiziert: `role:'admin'` + fremde
+  `org_id` im Payload, gespeicherte Zeile hatte trotzdem `role:'member'`
+  und korrekte Standard-Org.
+- `user_inventory` hatte dieselbe Lücke bei `item_key`/`quantity` —
+  damals noch offen, behoben am 2026-08-15 (siehe "Serverseitige
+  Schreib-Härtung" in CLAUDE.md).
+- Alle Testzeilen/Wegwerf-Testprofile danach vollständig entfernt,
+  zuletzt am 2026-08-10 per `supabase db query --linked` gegengeprüft
+  (0 Treffer).
+
+**Nachtrag 2026-08-11: `locName()`-XSS-Lücke + Datenbank-Advisor-
+Durchgang** (auf die Frage "was könnten wir bei diesem Tempo übersehen
+haben"):
+- `locName()` (Dungeon-/Betriebsname) escapte seinen Rückgabewert
+  nicht — drei Renderstellen betroffen (Kontakte-nach-Dungeon-Kacheln,
+  Kontakttabelle, Kanban-Karten). Gleiche Lückenklasse wie der
+  Sicherheits-Durchgang vom 2026-08-07, dort aber nicht erfasst
+  (Locations waren nicht im Scope). Gefixt.
+- Passwortfeld (`authPassword`) ohne `maxlength` nachgetragen.
+- **`supabase db advisors`-Werkzeug an diesem Tag entdeckt** (aktuelle
+  Nutzungsanleitung: CLAUDE.md). Ergebnis dieses ersten Laufs: 33
+  fehlende Fremdschlüssel-Indizes bei neueren Tabellen gefixt
+  (Migration `20260811202349_fk_indizes_und_search_path_haertung.sql`,
+  plus fester `search_path` auf 7 privilegierte Funktionen), 28 als
+  "von anon/authenticated ausführbar" gemeldete Funktionen geprüft und
+  als unbedenklich eingestuft. **Damals bewusst zurückgestellt, echte
+  "erst bei Skalierung"-Kandidaten** (60× mehrere permissive
+  RLS-Policies pro Tabelle, 54× `auth.uid()` statt
+  `(select auth.uid())`) — **später tatsächlich behoben**, siehe
+  "RLS-Performance-Härtung" weiter unten in CLAUDE.md (2026-08-17).

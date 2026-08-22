@@ -1035,182 +1035,52 @@ Arbeitszeiten-Tagesreihen nutzen ein kompaktes `.az-day-row`-Layout
 (Label links, beide Uhrzeiten rechts als Paar) — bricht auch im
 schmaleren Modal (480px) nicht um.
 
-## Sicherheits-Durchgang: XSS-Escaping nachgerüstet, 2026-08-07
+## Sicherheitsprinzipien: XSS-Escaping + RLS-Schreibschutz
 
-Auf Nutzeranfrage ("codebasescan für key tokens api ... full security audit")
-zwei getrennte Prüfungen gemacht, statt vorschnell Infrastruktur zu bauen,
-die laut den "Technische Skalierungs-Schwellen" (siehe oben) noch nicht
-gebraucht wird — Rate Limiting z.B. bewusst NICHT gebaut (Supabase drosselt
-Login-Versuche bereits selbst, und der dort dokumentierte Auslöser —
-"eine Organisation außerhalb der eigenen bekommt Zugriff" — ist noch nicht
-erreicht).
+**Escaping-Regel, ohne Ausnahme:** jeder neue Rendering-Code, der
+Datenbank-Text per `innerHTML` einfügt, muss `escHtml()` (oder den
+neueren `html`-Tag, siehe Bugfix-Durchgang-Fazit weiter unten)
+verwenden — `escHtml()` escapt sowohl Text- als auch Attribut-Kontexte
+(inkl. Anführungszeichen). Ausnahme: Inhalte aus `rule_configs`
+(Quest-/Aktions-Namen) — kommen nicht aus In-App-Formularen, sondern
+werden vom Admin direkt per SQL gepflegt, vertrauenswürdige
+Konfiguration. Trotz mehrerer großer, gezielter Sicherheitsdurchgänge
+(Entstehung/Funde: HISTORY.md) tauchte diese Lücke bei neuem Code
+wiederholt erneut auf, siehe die Bugfix-Durchgang-Bilanz weiter unten.
 
-1. **Secret-Scan** (`grep -r` nach Service-Role-/Private-/API-Key-Mustern
-   über das ganze Repo): sauber. Der einzige Key im Code ist der
-   Supabase-Anon-Key — der ist absichtlich öffentlich, siehe "Tech-Stack"
-   oben (RLS statt Geheimhaltung). Diese Architektur hat strukturell gar
-   keinen Ort für ein verstecktes Backend-Geheimnis.
-2. **XSS-Escaping-Lücke, echt und verbreitet gefunden und behoben:**
-   `escHtml()` (zentrale Escaping-Helferfunktion) wurde an sehr vielen
-   Stellen, an denen Datenbank-Text per `innerHTML` gerendert wird, schlicht
-   vergessen — betraf u.a. den zentralen `field()`-Helfer in der
-   Kontaktdetail-Ansicht (Telefon/E-Mail/Wohnort/Bedarf-Ist/-Wunsch/Notizen
-   auf einen Schlag), die Kontakttabelle, Kanban-Karten, die
-   Handlungen/Chronik-Listen (`action_log.context` — hängt oft direkt am
-   Kontaktnamen), Anruf/Email-Notizen, Termin-Titel, Gilden-/Freundes-Namen,
-   zwei ältere Autocomplete-Boxen und mehr (~20 Stellen insgesamt). Ein
-   böswillig benannter Kontakt (z.B. Vorname `<img src=x
-   onerror="...">`) hätte beim Anzeigen durch jedes Team-Mitglied
-   ausgeführt werden können — echte, ausnutzbare Stored-XSS-Lücke, kein
-   theoretisches Risiko. `escHtml()` selbst war zusätzlich unvollständig
-   (escapte kein `"`/`'`, dadurch in Attribut-Kontexten wie
-   `data-name="${...}"` weiterhin ausbrechbar) — jetzt escapt es auch
-   Anführungszeichen, sicher für Text- UND Attribut-Kontexte gleichermaßen.
-   **Bei jedem neuen Rendering-Code, der Datenbank-Text per `innerHTML`
-   einfügt: `escHtml()` verwenden, keine Ausnahme** — das war hier die
-   eigentliche Lehre, nicht nur der einmalige Fix.
-   Per Playwright end-to-end gegen den echten Account verifiziert: echter
-   Testkontakt mit `<img onerror>`/`<svg onload>`/`<script>`-Payloads in
-   Vorname/Nachname/Notizen angelegt, Payload blieb in Tabelle UND
-   Detailansicht als sichtbarer Text (`&lt;img ...`) statt auszuführen,
-   `window.__xssFired` blieb bei 0, Testkontakt danach wieder gelöscht.
-   **Bewusst nicht angefasst:** Inhalte aus `rule_configs`
-   (Quest-/Questchain-Namen, Aktions-Labels) — die kommen nicht aus
-   In-App-Formularen, sondern werden vom Admin direkt per Supabase
-   SQL-Editor gepflegt, vertrauenswürdige Konfiguration, kein Nutzer-Input.
-   **Nebenbei aufgefallen, keine Handlung nötig, nur als Beobachtung:** es
-   gibt mittlerweile drei leicht unterschiedliche Autocomplete-Implementierungen
-   für Kontakt-/Ort-Suche in `index.html` (organisch bei verschiedenen
-   Features entstanden) — noch kein Grund zum Vereinheitlichen (Rule of
-   Three ist gerade erst erreicht), aber falls eine vierte dazukommt, lohnt
-   sich ein gemeinsamer Helfer.
-3. **`maxlength` auf bisher unbegrenzten Freitextfeldern nachgetragen**
-   (noch selber Tag, Nutzerwunsch) — keine Abwehr gegen böswillige Nutzer
-   (siehe Begründung oben, dafür fehlt hier das Bedrohungsmodell), sondern
-   reine UX-Hygiene gegen versehentliches Riesig-Reinpasten. Namen/Orte/
-   Titel meist 60–150 Zeichen, Notizfelder 1000–3000, die 5 Tagebuch-Fragen
-   bewusst großzügig **5000 Zeichen** ("lieber ein paar Zeichen mehr als zu
-   wenig", ausdrücklicher Nutzerwunsch — Tagebuch soll sich niemals eng
-   anfühlen). Bewusst NICHT angefasst: reine Such-/Autocomplete-Felder
-   (`contactLocationSearch`, `friendSearchInput`, `termineEntry*Search`,
-   Wert wird nicht direkt gespeichert) und `configEditor` (roher
-   JSON-Editor für `rule_configs`, admin-only, kann legitim mehrere KB groß
-   sein).
+**RLS-Design-Prinzip für neue Tabellen:** eine `using`-Bedingung, die
+direkt die Eigentümer-Spalte referenziert (`owner_id = auth.uid()`),
+ist automatisch sicher gegen Fremdumbiegung dieser Spalte. Hängt die
+Bedingung dagegen an einer ANDEREN Spalte (klassisch: `id = auth.uid()`
+bei `profiles`), sind alle ÜBRIGEN Spalten ungeschützt, sofern keine
+explizite `with check`-Klausel oder ein Trigger das abdeckt — genau
+dieses Muster hat wiederholt echte Rechte-Eskalations-Lücken erzeugt
+(`profiles.role`/`character_class`/`org_id`, `user_inventory`, siehe
+"Serverseitige Schreib-Härtung" weiter unten für die aktuell gültige,
+umfassendere Lösung). Bei jeder neuen Tabelle mit sensiblen Spalten
+diesen Fall gezielt gegenprüfen.
 
-**Nachtrag noch am selben Tag: RLS-Durchgang (statische Analyse aller
-`sql/*.sql`-Policies + Live-Bestätigung per direktem PostgREST-Aufruf mit
-echtem Session-Token, nicht nur gelesen/vermutet):**
-
-- **Gefunden, gefixt, ausgeführt UND nach Ausführung erneut live bestätigt
-  (`sql/patch38_profile_privilege_schutz.sql`, seit 2026-08-07 live):**
-  `profiles_update_own` hat `using (id = auth.uid())` ohne eigene
-  `with check` — Postgres übernimmt dafür automatisch dieselbe Bedingung,
-  die aber nur `id` schützt, keine andere Spalte. Erstbestätigung: eigener
-  Account per PATCH auf `/rest/v1/profiles` von `role:'admin'` auf
-  `'member'` gesetzt und sofort wieder zurück (beides per Read verifiziert)
-  — ein normaler Nutzer könnte sich also selbst zum Admin machen
-  (`is_admin()` liest nur `profiles.role`), ebenso `character_class`
-  (soll laut Konzept "einmalig, dauerhaft" sein) und `org_id` frei ändern.
-  Patch 38 fügt einen BEFORE-UPDATE-Trigger hinzu, der diese drei Spalten
-  blockiert, außer der Ausführende ist bereits Admin. **Nach dem Einspielen
-  erneut getestet, diesmal mit einem frischen Wegwerf-Testaccount statt dem
-  echten Account** (Selbstregistrierung ist offen, siehe Patch 39): als
-  Admin auf `member` herabgestuft (erlaubt), direkt danach als `member`
-  versucht sich selbst zurück auf `admin` zu setzen — vom Trigger korrekt
-  mit der eigenen Fehlermeldung ("Nur Admins dürfen die Rolle ändern.")
-  abgelehnt, Rolle blieb `member`. Schutz bestätigt wirksam.
-- **Zweite, verwandte Lücke direkt beim erneuten Testen gefunden, gefixt,
-  ausgeführt UND nach Ausführung erneut live bestätigt — Patch 38 deckte
-  nur UPDATE ab, nicht die allererste Zeile (`sql/patch39_profile_insert_privilege_schutz.sql`,
-  seit 2026-08-07 live):** `profiles_insert_self` prüft beim Anlegen
-  ebenfalls nur `id = auth.uid()`. Erstbestätigung: ein direktes INSERT mit
-  `role:'admin'` im Payload legt sofort ein fertiges Admin-Profil an —
-  komplett am Registrierungsbildschirm vorbei (der schickt zwar immer
-  `role:'member'`, aber das ist nur eine Konvention der App, keine
-  Absicherung auf Datenbank-Ebene). Da die App offene Selbstregistrierung
-  erlaubt (kein Einladungszwang), war das nicht nur ein Kollegen-Risiko,
-  sondern von jedem Internet-Besucher aus nutzbar, der die URL kennt.
-  Patch 39 erzwingt `role='member'` und die aktuelle Standard-`org_id` per
-  BEFORE-INSERT-Trigger bei jeder neuen Zeile, unabhängig vom
-  mitgeschickten Wert. **Nach dem Einspielen erneut getestet, wieder mit
-  einem frischen Wegwerf-Account**: INSERT-Payload versuchte diesmal
-  `role:'admin'` UND eine komplett fremde `org_id` einzuschleusen — die
-  tatsächlich gespeicherte Zeile hatte trotzdem `role:'member'` und die
-  korrekte Standard-Org, `character_class` blieb wie gewollt frei wählbar.
-  Schutz bestätigt wirksam.
-- ~~Gefunden, noch NICHT gefixt: `user_inventory` hat dieselbe Lücke bei
-  `item_key`/`quantity`~~ — **behoben, 2026-08-15, siehe eigener
-  Abschnitt "Serverseitige Schreib-Härtung" weiter unten.**
-- **Restliche `update`-Policies ohne explizite `with check`** (contacts,
-  termine, termin_series, contact_activities, journal_entries, friends,
-  guild_members) sind trotz desselben Musters **nicht** betroffen — ihre
-  `using`-Bedingung referenziert direkt die Eigentümer-Spalte
-  (`owner_id`/`user_id`), wodurch ein Versuch, diese Spalte auf eine
-  fremde ID umzubiegen, automatisch an derselben Bedingung scheitert.
-  Nur bei `profiles` (Bedingung hängt an `id`, geschützt sind aber ganz
-  andere Spalten) und `user_inventory` (Bedingung hängt an `user_id`,
-  betroffen sind `item_key`/`quantity`) greift der Trick nicht.
-- **Noch nicht geprüft, falls das Thema weitergeht:** ob es im Frontend
-  Stellen gibt, die sich nur auf verstecktes UI verlassen (z.B. ein
-  Admin-Button einfach ausgeblendet), ohne dass eine passende RLS-Policy
-  dahintersteht — sowie Randfälle in der Business-Logik (Kanban-Übergänge,
-  Provisionsberechnung).
-- ~~Aufräumen nötig, vom Testen übrig geblieben~~ — **erledigt.** Die
-  Testzeile in `user_inventory` (`item_key='xss_audit_testitem'`) und die
-  zwei Wegwerf-Testprofile (`PatchAuditTest`/`Patch39AuditTest`) samt
-  ihrer `@example.com`-Auth-Nutzer sind nicht mehr in der DB (zuletzt am
-  2026-08-10 per `supabase db query --linked` gegengeprüft, 0 Treffer).
-
-## Nachtrag: locName()-XSS-Lücke + Datenbank-Advisor-Durchgang (2026-08-11)
-
-Auf die Frage "was könnten wir bei diesem Tempo übersehen haben" zwei
-echte, kleine Funde gemacht und **verifiziert behoben** (nicht nur
-behauptet):
-- `locName()` (Dungeon-/Betriebsname) escapte seinen Rückgabewert nicht —
-  drei Renderstellen betroffen (Kontakte-nach-Dungeon-Kacheln,
-  Kontakttabelle, Kanban-Karten). Gleiche Lückenklasse wie der
-  Sicherheits-Durchgang vom 2026-08-07, dort aber nicht erfasst (Locations
-  waren nicht im Scope, oder Regression durch neueren Code). Gefixt.
-- Passwortfeld (`authPassword`) ohne `maxlength` nachgetragen — reine
-  Hygiene, kein Sicherheitsrisiko.
-
-**Neu entdecktes Werkzeug fürs nächste Mal:** `supabase db advisors
---linked --type all --level info` (Supabases offizieller Security-/
-Performance-Linter gegen die echte, verlinkte DB — lokal per `export
+**Werkzeug für Sicherheits-/Performance-Audits:** `supabase db
+advisors --linked --type all --level info` (Supabases offizieller
+Linter gegen die echte, verlinkte DB — `export
 PATH="$HOME/.local/share/nodejs-portable/bin:$PATH" &&
 ./node_modules/.bin/supabase db advisors --linked ...`, JSON-Output gut
-mit `jq` auswertbar). Deutlich zuverlässiger als eigenes Grep-Raten für
-sowas — bei künftigen ähnlichen Audits zuerst hiermit starten.
+mit `jq` auswertbar). Deutlich zuverlässiger als eigenes Grep-Raten —
+bei künftigen Audits zuerst hiermit starten. `returns trigger`-Funktionen
+können von Postgres strukturell nicht per RPC aufgerufen werden,
+unabhängig von vergebenen Ausführungsrechten — als "von anon/
+authenticated ausführbar" gemeldete Trigger-Funktionen sind deshalb
+i.d.R. unbedenklich.
 
-**Ergebnis dieses Durchgangs:**
-- **Gefixt, live** (Migration `20260811202349_fk_indizes_und_search_path_haertung.sql`):
-  33 fehlende Indizes auf Fremdschlüssel-Spalten bei neueren Tabellen
-  (Kalender, Gilden, Dateien, Chronik — das Muster aus Patch 17/17b wurde
-  bei ihnen nicht mitgezogen), plus fester `search_path` auf 7 Funktionen
-  mit erhöhten Rechten (`is_admin`, `current_org_id`,
-  `contacts_shared_for_org`, u.a. — Härtung gegen search_path-hijacking).
-  Per erneutem Advisor-Lauf verifiziert: 0 verbleibende
-  `unindexed_foreign_keys`-Meldungen.
-- **Geprüft, unbedenklich:** 28 als "von anon/authenticated ausführbar"
-  gemeldete Funktionen. Die vier bedrohlichsten
-  (`handle_member_offboarding`, `sync_contacts_owner_on_location_reassign`,
-  `enforce_profile_insert_defaults`, `protect_privileged_profile_fields`)
-  sind strukturell `returns trigger`-Funktionen — Postgres kann die gar
-  nicht direkt aufrufen lassen, unabhängig von vergebenen Rechten. Der
-  Rest sind RLS-Hilfsfunktionen (müssen breit ausführbar sein) oder
-  RPC-Funktionen mit eigener interner Prüfung (z.B. `admin_emergency_access`
-  prüft `is_admin()` intern).
-- **Bewusst zurückgestellt, echte "erst bei Skalierung"-Kandidaten**
-  (gleiche Logik wie "Technische Skalierungs-Schwellen" oben): 60×
-  mehrere permissive RLS-Policies pro Tabelle, 54× `auth.uid()` statt
-  `(select auth.uid())` in RLS-Policies — beides bekannte
-  Supabase-Performance-Muster, bei der aktuellen Nutzerzahl irrelevant.
-  114 Policy-Stellen jetzt hastig umzuschreiben wäre ein unnötiges
-  Zugriffsmodell-Risiko gewesen. Erst bei echtem Abfrage-Volumen
-  angehen, nicht vorbeugend. 8 ungenutzte Indizes (Rauschen bei geringer
-  Last, keine Handlung). "Leaked Password Protection" im
-  Supabase-Dashboard ist aus — reiner Klick, kein SQL, noch nicht
-  angeschaltet, bei Gelegenheit selbst aktivierbar.
+**Feldlängen-Konvention** für neue Freitextfelder (reine UX-Hygiene,
+kein Sicherheitsmechanismus): Namen/Orte/Titel 60–150 Zeichen,
+Notizfelder 1000–3000, bewusst großzügige Felder (z.B. die 5
+Tagebuch-Fragen) bis 5000. Reine Such-/Autocomplete-Felder und der
+admin-only `configEditor` (roher JSON) bleiben unbegrenzt.
+
+**Bekannte, noch offene Kleinigkeit:** "Leaked Password Protection" im
+Supabase-Dashboard ist aus — reiner Klick, kein SQL, noch nicht
+aktiviert.
 
 ## Abenteuerlog-Seite (Kalender/Tagebuch/Foto), seit 2026-08-04 neu sortiert
 
