@@ -4591,8 +4591,72 @@ zusammenlegen) wurde bewusst NICHT umgesetzt.
 Kein SQL nötig, alle Fixes rein clientseitig, Commit `f348a3f`. **Kanban
 (Häppchen 11a+11b) damit komplett fertig.** Stand nach diesem Häppchen:
 11 von 12 fertig, 50 echte Bugs insgesamt, keine offenen SQL-Fixes.
-Letztes offenes Häppchen: 12 (Produkte, Einstellungen, Sicherheitswarnungen,
-Fehlerprotokoll, Notfallzugriff, Seitennavigation).
+
+**Häppchen 12 (Produkte, Einstellungen, Sicherheitswarnungen,
+Fehlerprotokoll, Notfallzugriff, Seitennavigation, Z. 8865-9719) —
+letztes Häppchen, 2026-08-22:** 5 parallele Agenten — sieben echte Bugs:
+Stored-XSS bei `products.subcategory` (`renderProductsPage()`, Zeile
+~8902) — die Gruppenüberschrift rendert `category + ' — ' + subcategory`
+ungeescaped, obwohl `p.name` zwei Zeilen darunter korrekt escaped wird,
+von 2 unabhängigen Agenten gefunden, mit echtem `<img onerror>`-
+Testprodukt live verifiziert (0 Ausführungen, Text blieb sichtbar
+escaped); fehlender Doppelklick-Schutz bei `prodAddBtn` (live per
+simultanem Doppelklick verifiziert: nur 1 statt 2 Produkte) und
+`eaRequestBtn` (CLAUDE.md dokumentiert "bewusst nur EIN Log-Eintrag pro
+Auslösung" — ein Doppelklick hätte das gebrochen; Fix nach Code-Review
+angewendet, nicht live gegen einen echten Kollegen getestet, um dessen
+private Daten nicht unnötig per Notfallzugriff abzurufen); Race
+Condition in `searchEaCandidates()` (Notfallzugriff-Personensuche) ohne
+Staleness-Guard — der bestehende Debounce verhindert nur mehrfaches
+Timer-Feuern, bricht aber keine bereits laufende Anfrage ab, eine
+langsame ältere Suche konnte eine schnellere neuere überschreiben (neue
+`eaSearchRequestId`-Variable, gleiches Muster wie
+`kanbanPreviewRequestId`/`currentContactPageId` aus früheren Häppchen);
+stiller `NaN`→`null`-Datenverlust bei `settingsSaveBarSave()` —
+Dezimal-/Zahlenfelder in den Einstellungen (z.B. "Leben-Satz (%)") sind
+`type="text"`, eine ungültige Eingabe (`parseFloat("abc")`) wurde
+bisher kommentarlos als `null` gespeichert statt eine Fehlermeldung zu
+zeigen, jetzt live verifiziert (Meldung "Ungültige Zahl bei ... — bitte
+korrigieren", kein Speichervorgang); `SECURITY_EVENT_LABELS` fehlte der
+am 2026-08-22 (Häppchen 8) neu hinzugekommene `location_owner_tamper`-
+Event-Typ — wäre nur als roher Schlüssel statt deutschem Label
+angezeigt worden, ergänzt; Hash blieb nach einem Berechtigungs-Redirect
+in `showPage()` dauerhaft falsch stehen — `routeToHash()`/
+`restoreLastPage()` rufen `showPage(..., false)` auf, um einen
+gespeicherten Hash nicht zu überschreiben, aber genau dieser Hash war
+gerade als ungültig/verboten erkannt worden (z.B. `#notfallzugriff` als
+Nicht-Admin per Bookmark/Direktaufruf) — die Adressleiste blieb dann
+dauerhaft falsch stehen, bis zum nächsten echten Nav-Klick, obwohl
+intern schon die Charakter-Seite gezeigt wurde. Fix: Hash wird jetzt
+zusätzlich zu `updateHash!==false` auch dann geschrieben, wenn ein
+Redirect stattgefunden hat (nicht live mit einem Nicht-Admin-
+Zweitaccount getestet, nur code-seitig verifiziert — Aufwand/Risiko
+eines Wegwerf-Onboarding-Durchlaufs für diesen kosmetischen URL-Bug
+bewusst nicht betrieben). Zwei Aufräumfunde: veralteter Kommentar bei
+`PRODUCT_ART_CONFIG` (behauptete, `D` [Darlehen] sei "noch nicht
+aufgenommen", obwohl der Eintrag längst existiert) korrigiert; toter
+Ternary in `settingsTileSubtitle()` (beide Zweige lieferten identisch
+`' geändert'`) vereinfacht. Effizienzfunde direkt mitgefixt:
+Doppelklick-Schutz zusätzlich bei `productDetailSaveBtn`/`toggleBtn`/
+`tzSaveBtn`/`azSaveBtn` (Updates sind zwar idempotent, aber unnötiger
+doppelter Netzwerk-Schreibzugriff, inkonsistent mit dem sonst im
+Projekt etablierten Muster); doppelte DOM-Lookups in
+`wireArbeitszeitenExtras()`s Mo–Fr-Übernehmen-Schleife und
+`openProductDetailModal()` (Modal-Element dreifach gesucht) in lokale
+Variablen gecacht. Cross-File-Agent bestätigte ansonsten volle
+Konsistenz zwischen `index.html` und den SQL-Migrationen (inkl. der
+bereits am 2026-08-21 live gepushten `products_provision_mode`-PMA-
+Erweiterung). Kein neuer SQL-Fix nötig. Per Playwright gegen den echten
+Account verifiziert (XSS-Testprodukt, Doppelklick-Anlage bei prodAddBtn,
+NaN-Validierung, Regressionstest eines gültigen Speichervorgangs, 0
+Konsolenfehler) — Testprodukt danach vollständig gelöscht, Test-
+Einstellungswert exakt auf den Ausgangszustand (leer) zurückgesetzt.
+
+**Damit ist der gesamte 12-teilige systematische Bugfix-Durchgang
+(Häppchen 1-12) über die komplette `index.html` abgeschlossen** —
+Gesamtbilanz: 57 echte Bugs gefunden und behoben, alle SQL-Fixes live,
+kein offenes Häppchen mehr. Details siehe Claudes Erinnerung
+`project_full_bugfix_sweep`.
 
 ## Zeitzonen-Inkonsistenz `dateKeyLocal()` vs. `todayKey()`, vollständig behoben (2026-08-21)
 
