@@ -1312,14 +1312,7 @@ Admin-Klassenschalter. Die drei Icons sind handgezeichnete Pixel-Art
 (96×96, wie die übrigen `item_*`-Icons — Entstehung/Asset-Pipeline:
 HISTORY.md).
 
-## Changelog-Popup für angewendete SQL-Patches (Patch 32, 2026-08-04)
-
-**Status: live, seit 2026-08-04.** `sql/patch32_changelog.sql` wurde vom
-Nutzer im Supabase SQL-Editor ausgeführt und per Playwright end-to-end gegen
-die echte Datenbank verifiziert (nicht nur gemockt) — `last_seen_patch_number`
-testweise auf 0 zurückgesetzt, echter Reload, Popup erschien korrekt mit
-"Patch 32 — Changelog-Popup für angewendete SQL-Patches", App hat den Stand
-danach selbst wieder korrekt auf 32 gesetzt.
+## Changelog-Popup für angewendete SQL-Patches
 
 **Konzept:** immer wenn ein neuer SQL-Patch angewendet wird, trägt sich der
 Patch selbst in `schema_patches` ein (letzte Zeile jeder Patch-Datei,
@@ -1352,19 +1345,13 @@ bereits bekannten Lücke bei der Multi-Org-Loskopplung (`DEFAULT_ORG_ID`,
 siehe "Technische Skalierungs-Schwellen") — kein neues Problem, nicht vorab
 lösen.
 
-## Sprite-Labor: Asset-Erstellungs-Werkzeug für neue Items (seit 2026-08-03 gebaut)
+## Sprite-Labor: Asset-Erstellungs-Werkzeug für neue Items
 
-Der Bogen (siehe "Schützen-Bogen" weiter oben) brauchte in einer früheren
-Session drei Runden Live-Testen im echten, deployten Programm, bis Größe/
-Spiegelung/Ankerpunkt stimmten — jedes Mal: Bild bauen, committen, pushen,
-Nutzer lädt neu, meldet zurück, was noch falsch aussieht. Zu langsam für ein
-rein visuelles Problem. Als Lösung dafür existiert jetzt **`Design/
-sprite_lab.html`** — ein lokales, nicht versioniertes Werkzeug (liegt im
-gitignoreten `Design/`-Ordner, wie die Export-Skripte), über Live Server
-geöffnet (wie die Dummy-Dateien). Ursprünglich war dafür ein Claude-Code-
-"Artifact" angedacht (siehe Git-Historie) — verworfen, weil Artifacts keinen
-Schreibzugriff auf lokale Ordner haben und Bild-Assets nicht extern nachladen
-dürfen (strikte CSP); ein lokales Live-Server-Tool kann beides.
+**`Design/sprite_lab.html`** — ein lokales, nicht versioniertes Werkzeug
+(liegt im gitignoreten `Design/`-Ordner wie die Export-Skripte), über
+Live Server geöffnet. Löst das Problem, dass neue Item-Sprites (Größe/
+Spiegelung/Ankerpunkt) sonst nur per Live-Testen im deployten Programm
+abstimmbar wären (Entstehung: HISTORY.md).
 
 **Funktionsweise:** zeigt den echten, animierten Laufzyklus (gleiche Technik
 wie `createSpriteRenderer()` in `index.html`) mit wählbarem Referenz-Item
@@ -1391,22 +1378,15 @@ Downloads-Ordner-Raten, kein Copy-Paste nötig, Claude Code liest die Datei
 direkt von der Platte. Zwischenablage-Kopie bleibt als Rückfalloption für
 Browser ohne File-System-Access-Unterstützung.
 
-**Vom Export zum echten Sheet:** `Design/bake_sprite_lab_export.py` (neu,
-2026-08-03) nimmt `sprite_lab_export.json` + das Kandidaten-PNG und backt
-daraus das echte 800×448-`outfit_*`-Sheet — ersetzt die frühere, nur für den
-Bogen passende formelbasierte `make_bow_sprite()`/`build_bow_sheet()`-
-Erzeugung in `export_full_sheets.py` (jetzt deaktiviert, siehe dort) durch
-einen item-unabhängigen, wiederverwendbaren Weg. **Wichtiger technischer
-Stolperstein:** PIL's `Image.rotate(winkel)` dreht im bildschirmtypischen
-y-nach-unten-Koordinatensystem optisch GEGENLÄUFIG zu Canvas'
-`ctx.rotate()` (dieselbe Konvention, die das Sprite-Labor und `index.html`
-verwenden) — im Skript deshalb bewusst mit umgedrehtem Vorzeichen
-(`rotate(-winkel)`), gegen einen Canvas-Referenzlauf abgeglichen. Beim
-allerersten Bogen-Bake (siehe unten) wurde zusätzlich sicherheitshalber
-direkt per Canvas (Playwright-Skript, nicht Python) gebacken, um jedes
-Risiko einer Python/Canvas-Konventions-Abweichung für das erste echte
-Ergebnis auszuschließen — das Python-Skript wurde daran kalibriert/verifiziert
-und ist jetzt der Standardweg für zukünftige Items.
+**Vom Export zum echten Sheet:** `Design/bake_sprite_lab_export.py`
+nimmt `sprite_lab_export.json` + das Kandidaten-PNG und backt daraus
+das echte 800×448-`outfit_*`-Sheet — item-unabhängig, wiederverwendbar
+für jedes neue Item. **Wichtiger technischer Stolperstein:** PIL's
+`Image.rotate(winkel)` dreht im bildschirmtypischen y-nach-unten-
+Koordinatensystem optisch GEGENLÄUFIG zu Canvas' `ctx.rotate()`
+(dieselbe Konvention, die das Sprite-Labor und `index.html` verwenden)
+— im Skript deshalb bewusst mit umgedrehtem Vorzeichen
+(`rotate(-winkel)`), gegen einen Canvas-Referenzlauf abgeglichen.
 
 **Vor dem Zeichnen eines neuen Kandidaten weiterhin gültig:** Ankerpunkt
 NICHT die Bounding-Box-Mitte der gesamten Form (kann deutlich neben dem
@@ -1414,18 +1394,15 @@ tatsächlichen Handgriff liegen), Mirror-Frage früh an einem einzelnen Frame
 prüfen statt erst am fertigen Sheet — beides jetzt interaktiv im Sprite-Labor
 prüfbar statt im Kopf vorausgeplant werden zu müssen.
 
-## Pixel-Art-Referenzmasken-System, seit 2026-08-09
+## Pixel-Art-Referenzmasken-System
 
-Ausgangslage: der Nutzer kündigte einen großen Ausbau an (3 Charaktere,
-~30 neue Kleidungsteile je Körperteil, "vieles mehr") und äußerte dabei
-explizit Misstrauen ("du bist sehr unzuverlässig in diesem Thema … du
-brauchst irgendein Raster, ein Gitter, eine Basis, eine Struktur"). Der
-Sprite-Bogen (siehe oben) hatte vorher gezeigt, dass freihändig pro Frame
-platzierte Pixel-Art mehrere Korrekturrunden braucht — Claude "sieht" ein
-gezeichnetes Ergebnis nicht automatisch richtig, ohne es aktiv nachzumessen.
+Löst das Problem, dass freihändig pro Frame platzierte Pixel-Art
+mehrere Korrekturrunden braucht — Claude "sieht" ein gezeichnetes
+Ergebnis nicht automatisch richtig, ohne es aktiv nachzumessen
+(Entstehung: HISTORY.md, ausführlichere Doku auch in Claudes
+Erinnerung `project_pixelart_reference_mask_system`).
 
-**Kernidee, als drei Python-Module fest in `Design/` verankert** (nicht
-mehr Wegwerf-`python3 -c`-Einzeiler wie im ersten Versuch):
+**Kernidee, als drei Python-Module fest in `Design/` verankert:**
 
 - **`Design/reference_masks.py`** — zieht aus bereits korrekt sitzenden
   Original-Assets (Hemd/Corset, Hose/Rock, Stiefel/Socken, Handschuhe, je
@@ -1449,19 +1426,7 @@ mehr Wegwerf-`python3 -c`-Einzeiler wie im ersten Versuch):
   `run_cycle_strip()` zeigt alle 8 Frames nebeneinander für den schnellen
   Sitz-Vergleich (vorher/nachher).
 
-**Zwei Testläufe gegen den männlichen Basiskörper durchgeführt (Ergebnis dem
-Nutzer als Artifact gezeigt, 2026-08-09):**
-1. **Umfärbung bei identischer Maske** (Hemd beige→dunkelgrün) — sitzt
-   erwartungsgemäß perfekt über alle 8 Frames, bestätigt nur, dass die
-   Maskenextraktion/Pipeline technisch funktioniert.
-2. **Neue Silhouette** (Hemd→lange Tunika, Saum entlang der bereits
-   korrekten Hosen-Maske bis kurz vor die Stiefel verlängert) — **beide
-   automatischen Checks bestanden in allen 8 Frames** (Schulteransatz
-   unverändert, kein Hineinschneiden in die Stiefel), aber der sichtbare
-   Effekt war schwächer als erhofft (nur ein kleiner Zipfel an der Hüfte,
-   weil der Saum bewusst konservativ vor den Stiefeln gestoppt wurde).
-
-**Ehrlicher Status, nicht beschönigen:**
+**Ehrlicher Status, nicht beschönigen** (Testläufe/Herleitung: HISTORY.md):
 - **Zuverlässig:** Umfärbungen/Muster bei gleicher Maske, und Formen, die
   sich direkt aus einer bereits korrekten Nachbarmaske ableiten lassen
   (länger/kürzer entlang einer bestehenden Kontur) — automatisch geprüfbar.

@@ -499,3 +499,60 @@ einem 24×24-Raster, per Nearest-Neighbor auf 96×96 hochskaliert) statt
 gezeichneter SVGs — die erste Fassung ohne Referenzbilder wirkte laut
 Nutzer "nicht ganz rund", danach erst die vier Screenshots angefordert
 und die Formensprache (nicht die Bilder selbst) übernommen.
+
+## 2026-08-03/04/09: Changelog-Popup, Sprite-Labor, Pixel-Art-Referenzmasken
+
+**Häppchen 6 (Changelog-Popup bis Pixel-Art-Referenzmasken-System,
+ursprünglich CLAUDE.md-Zeile 1315–1483), fertig 2026-08-22.** Drei
+Tool-/Feature-Referenz-Abschnitte, deren Kernarchitektur größtenteils in
+CLAUDE.md bleibt (aktiv genutzte Werkzeuge/Regeln) — nur die
+Entstehungs-/Test-Erzählung wandert hierher.
+
+**Changelog-Popup, Live-Verifikation (Patch 32, 2026-08-04):** per
+Playwright end-to-end gegen die echte Datenbank verifiziert (nicht nur
+gemockt) — `last_seen_patch_number` testweise auf 0 zurückgesetzt,
+echter Reload, Popup erschien korrekt mit "Patch 32 — Changelog-Popup
+für angewendete SQL-Patches", App hat den Stand danach selbst wieder
+korrekt auf 32 gesetzt.
+
+**Sprite-Labor, Entstehung (seit 2026-08-03):** der Schützen-Bogen
+brauchte in einer früheren Session drei Runden Live-Testen im echten,
+deployten Programm, bis Größe/Spiegelung/Ankerpunkt stimmten — jedes
+Mal: Bild bauen, committen, pushen, Nutzer lädt neu, meldet zurück, was
+noch falsch aussieht. Zu langsam für ein rein visuelles Problem, daraus
+entstand `Design/sprite_lab.html` (aktuelle Funktionsweise: CLAUDE.md).
+Ursprünglich war dafür ein Claude-Code-"Artifact" angedacht — verworfen,
+weil Artifacts keinen Schreibzugriff auf lokale Ordner haben und
+Bild-Assets nicht extern nachladen dürfen (strikte CSP); ein lokales
+Live-Server-Tool kann beides (generelle Lehre dazu:
+`feedback_local_tools_need_direct_pipe` in Claudes Erinnerung).
+Beim allerersten Bogen-Bake wurde zusätzlich sicherheitshalber direkt
+per Canvas (Playwright-Skript, nicht Python) gebacken, um jedes Risiko
+einer Python/Canvas-Konventions-Abweichung für das erste echte Ergebnis
+auszuschließen — das Python-Skript (`bake_sprite_lab_export.py`) wurde
+daran kalibriert/verifiziert und ist seitdem der Standardweg.
+
+**Pixel-Art-Referenzmasken-System, Entstehung (2026-08-09):** der
+Nutzer kündigte einen großen Ausbau an (3 Charaktere, ~30 neue
+Kleidungsteile je Körperteil) und äußerte dabei explizit Misstrauen
+("du bist sehr unzuverlässig in diesem Thema … du brauchst irgendein
+Raster, ein Gitter, eine Basis, eine Struktur"). Der Sprite-Bogen hatte
+vorher gezeigt, dass freihändig pro Frame platzierte Pixel-Art mehrere
+Korrekturrunden braucht. Zwei Testläufe gegen den männlichen
+Basiskörper (Ergebnis dem Nutzer als Artifact gezeigt):
+1. Umfärbung bei identischer Maske (Hemd beige→dunkelgrün) — sitzt
+   erwartungsgemäß perfekt über alle 8 Frames, bestätigt nur, dass die
+   Maskenextraktion/Pipeline technisch funktioniert.
+2. Neue Silhouette (Hemd→lange Tunika, Saum entlang der bereits
+   korrekten Hosen-Maske bis kurz vor die Stiefel verlängert) — beide
+   automatischen Checks bestanden in allen 8 Frames, aber der sichtbare
+   Effekt war schwächer als erhofft (nur ein kleiner Zipfel an der
+   Hüfte, weil der Saum bewusst konservativ vor den Stiefeln gestoppt
+   wurde).
+
+Aktueller Fähigkeits-Status (was zuverlässig automatisch geprüft werden
+kann vs. was weiterhin Handarbeit mit Sichtprüfung bleibt) und die
+daraus abgeleitete verbindliche Arbeitsregel: CLAUDE.md. Ausführlichere
+Projekt-Doku zu diesem System auch in Claudes Erinnerung,
+`project_pixelart_reference_mask_system`/
+`feedback_pixelart_verify_dont_eyeball`.
