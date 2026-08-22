@@ -556,3 +556,92 @@ daraus abgeleitete verbindliche Arbeitsregel: CLAUDE.md. Ausführlichere
 Projekt-Doku zu diesem System auch in Claudes Erinnerung,
 `project_pixelart_reference_mask_system`/
 `feedback_pixelart_verify_dont_eyeball`.
+
+## 2026-08-08/09/10: Gilden-Sichtbarkeit (Phase 1-3) + Questbaum-Übersetzung Start
+
+**Häppchen 7 (aktiver Nebenstrang/Questbaum-Übersetzung erster Schritt
+bis Admin-Notfallzugriff Phase 3, ursprünglich CLAUDE.md-Zeile
+1874–2158), fertig 2026-08-22.** Kernsicherheits-/Business-Architektur
+(Gilden-Sichtbarkeitsmodell) — bewusst konservativ gekürzt wie Häppchen
+5, da an vielen späteren Stellen vorausgesetzt. Nur Entstehungs-,
+Debugging- und Verifikations-Erzählung wandert hierher.
+
+**"Ein aktiver, paralleler Nebenstrang"-Bündel, Abschluss 2026-08-15:**
+drei ursprünglich gebündelte Punkte (Item-/Mengen-System-Umbau, wartete
+auf die Questbaum-Übersetzung) alle erledigt:
+1. Manatrank-Vergabe an Quests geknüpft — `grantDailyManatrank()` (der
+   automatische Gratis-Trank pro Kalendertag) komplett entfernt,
+   hängt jetzt an der täglichen Quest `daily1`.
+2. `reward_item_key`+`qty`-Feld für Quests befüllt — `checkAndAwardRecurringQuests()`
+   unterstützte `q.itemReward` bereits (ungenutzt seit dem
+   Krankenhausakquise-Pilot), war nur nie befüllt.
+3. `user_inventory`-RLS-Lücke behoben (siehe "Serverseitige
+   Schreib-Härtung" weiter unten in CLAUDE.md).
+
+**Questbaum-Übersetzung, Session-Kontext (Patch 40, 2026-08-09):** der
+Obsidian-Questbaum (`Questbaum.canvas`) wurde gemeinsam mit dem Nutzer
+auf Messbarkeit gegen das echte System geprüft — die meisten Äste
+(Sach-/Leben-/Kranken-/Finanzierung-Abschlüsse, Krankenhausakquise,
+Empfehlungsmanagement, Bestandskundenausbau) waren schon vorher 1:1 aus
+bestehenden Daten ableitbar, nur `termine.kanal` und die Konstanz-
+Anzeige waren echte Lücken (aktuelle Funktionsweise: CLAUDE.md). Der
+"Vertriebstrichter" (10 Ansprachen→6 Termine→3 Abschlüsse) wurde
+bewusst NICHT übersetzt — reine persönliche Planungs-Daumenregel, kein
+Spielziel (siehe `feedback_heuristic_vs_quest`). End-to-end mit
+Playwright verifiziert (Kanal speichern → korrekter DB-Wert → Icon in
+der Wochenansicht → Vorbelegung beim erneuten Öffnen), Testtermin
+danach aufgeräumt.
+
+**Gilden-basierte Sichtbarkeit Phase 1, Entstehung (seit 2026-08-08
+live):** löste die Lücke "jedes Org-Mitglied sieht alle Dungeons" —
+Auslöser war ein echtes, beobachtetes Problem (neu angemeldete
+Kolleg:innen sahen sofort alle Dungeons/Kontakte des Nutzers). Entstand
+aus einer sehr ausführlichen Grundsatz-Konversation. **Wichtige
+Korrektur während der Konzeptions-Diskussion:** Kontakte waren
+ursprünglich fälschlich als von Dungeons abhängig modelliert (Kontakt
+erbt Sichtbarkeit vom Dungeon) — falsch, weil dungeon-lose Kontakte
+(z.B. niedergelassene Ärzte ohne Krankenhaus-Dungeon) sonst nie hätten
+geteilt werden können; das aktuell korrekte Modell (kein `guild_id` an
+Kontakten, Prüfung über Eigentümer+Gilde) steht in CLAUDE.md.
+
+**Wichtiger RLS-Stolperstein, viel Debugging gekostet** (die daraus
+gezogene generelle Lehre steht kompakt in CLAUDE.md): eine `FOR UPDATE`-
+Policy mit korrektem `USING`/`WITH CHECK` reichte nicht aus, solange die
+Zeile nicht zusätzlich über eine bestehende `SELECT`-Policy sichtbar
+war — selbst eine testweise auf `USING(true) WITH CHECK(true)`
+vereinfachte Update-Policy schlug fehl (0 betroffene Zeilen, kein
+Fehler), bis `locations_select_org` um dieselbe
+`guild_founder_of_member()`-Bedingung erweitert wurde. Per Wegwerf-
+Testaccounts (Signup, Profile, Kontakt/Dungeon, Cross-User-
+Zugriffsversuche) sauber isoliert und verifiziert, inklusive mehrerer
+Zwischenschritte mit temporären Diagnose-Funktionen (`debug_*`, alle
+wieder entfernt).
+
+**Bewegter Avatar + Sigil auf Freundes-/Gilden-Kacheln, direkter
+Folgeauftrag noch am selben Tag:** löste einen offenen Punkt aus der
+Konzepts-Konversation selbst ein ("wenn man auf den Freund klickt,
+sieht man auch das Sigil der Fähigkeiten"). Live mit drei Wegwerf-
+Testaccounts verifiziert: Freund bekommt korrekte Skill-Summen (inkl.
+`skill2`-40%-Anteil) über `friend_skill_totals()`, ein unbeteiligter
+Dritter bekommt eine leere Liste (aktuelle Funktionsweise: CLAUDE.md).
+
+**Gilden-Notfall-Nachfolgekette Phase 2, Verifikation (seit 2026-08-08
+abends live):** end-to-end mit Wegwerf-SQL-Testdaten gegen die echte DB
+verifiziert — drei Szenarien: Teamleiter rückt korrekt vor längerem
+Nicht-Teamleiter nach; Fallback aufs insgesamt längste Mitglied ohne
+`team_rights`; Gildenführer war letztes Mitglied → Gilde bleibt
+bestehen, `founder_id` wird `NULL` statt die Gilde zu löschen.
+**Nachtrag 2026-08-09:** End-to-End-Test des eigentlichen Mitarbeiter-
+Offboardings nachgeholt (war bis dahin nur per Schema-Existenz geprüft)
+— drei Szenarien verifiziert (gildenlos: alles per CASCADE weg;
+normales Mitglied: Kontakt/Dungeon landen im Pool, `sales.created_by`
+wird NULL; Gildenführer mit eigenen Kontakten: Nachfolge UND Pooling im
+selben Trigger-Durchlauf). Testdaten vollständig aufgeräumt.
+
+**Admin-Notfallzugriff Phase 3, Verifikation (seit 2026-08-08 abends
+live):** end-to-end gegen die echte DB verifiziert per `supabase db
+query` + `set_config('request.jwt.claim.sub', ...)` (echten Admin-RPC-
+Aufruf simuliert, ohne echten Login/Playwright-Lauf) — positiver
+Zugriff liefert korrekt Kontakt+Dungeon der Zielperson UND schreibt den
+Audit-Log-Eintrag, Aufruf durch Nicht-Admin wird abgewiesen, leerer
+Grund wird abgewiesen. Testdaten danach vollständig aufgeräumt.

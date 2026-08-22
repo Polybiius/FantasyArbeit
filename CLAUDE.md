@@ -1875,45 +1875,24 @@ das Ergebnis dem Nutzer zeigen. Kein Rückfall auf reines Augenmaß.
 
 Der Nutzer baut **außerhalb dieses Chats** parallel an einem größeren
 Quest-Baum (Quest-Ketten wie "Krankenhaus-Meister", aber viel mehr davon) —
-vermutlich in Obsidian Canvas oder einer Tabelle. Wenn der Nutzer eine
-Quest-Baum-Datei mitbringt, geht es darum, sie ins `recurringQuests`/
-`questChains`-JSON-Schema im Regelwerk zu übersetzen — Format siehe
-bestehende Beispiele in `sql/patch2_journal.sql` ff. bzw. direkt in der
-Supabase-Tabelle `rule_configs`. **Erster echter Schritt dieser
-Übersetzung seit 2026-08-09 abends live**, siehe nächster Abschnitt.
+in Obsidian Canvas (`Questbaum.canvas`,
+[[reference_obsidian_vault_questbaum]] in Claudes Erinnerung). Bringt der
+Nutzer eine Quest-Baum-Änderung mit, geht es darum, sie ins
+`recurringQuests`/`questChains`-JSON-Schema im Regelwerk zu übersetzen —
+Format siehe bestehende Beispiele direkt in der Supabase-Tabelle
+`rule_configs`. Der Questbaum ist seit 2026-08-15 vollständig übersetzt
+(siehe [[project_questbaum_schema_design]]) — der tägliche Manatrank
+hängt seitdem an der täglichen Quest `daily1` statt an einem separaten
+Kalendertag-Mechanismus, jede erfüllte `recurringQuest` zeigt einen
+Belohnungs-Toast (`showQuestRewardToast()`, Entstehung dieses ganzen
+Bündels: HISTORY.md).
 
-**Unterpunkt, festgelegt 2026-08-10 — Item-/Mengen-System-Umbau folgt
-NACH diesem Nebenstrang, nicht parallel.** Der Questbaum ist seit
-2026-08-15 vollständig in die App übersetzt (siehe
-[[project_questbaum_schema_design]]), damit ist die Wartebedingung
-erfüllt. Von den drei ursprünglich gebündelten Punkten sind die ersten
-beiden noch am selben Tag erledigt worden:
-1. ~~**Manatrank-Vergabe an Quests knüpfen**~~ — **erledigt,
-   2026-08-15.** `grantDailyManatrank()` (der automatische
-   Gratis-Trank pro Kalendertag) ist komplett entfernt. Stattdessen
-   hängt der Manatrank jetzt an der täglichen Quest `daily1` (3
-   Ansprachen + 1 Termin vereinbart) — `config.recurringQuests`
-   bekam ein `itemReward:{key:"mana_trank",qty:1}`-Feld.
-2. ~~**`reward_item_key`+`qty`-Feld für Quests**~~ — **erledigt im
-   selben Zug.** `checkAndAwardRecurringQuests()` unterstützte
-   `q.itemReward` bereits (ungenutzt seit dem Krankenhausakquise-Pilot),
-   war nur nie befüllt — reine Datenänderung, kein neuer Code nötig.
-   Neuer Belohnungs-Toast (`showQuestRewardToast()`, unten links XP,
-   unten rechts Icon+Name des Items) zeigt jede erfüllte
-   `recurringQuest` an, nicht nur die mit Item-Belohnung.
-3. ~~**`user_inventory`-RLS-Lücke**~~ — **behoben, 2026-08-15 abends**,
-   siehe Abschnitt "Serverseitige Schreib-Härtung" weiter unten. Damit
-   ist dieses Bündel komplett abgeschlossen.
+## Questbaum-Übersetzung, erster Schritt: Termin-Kanal + Vertriebsserien (Patch 40)
 
-## Questbaum-Übersetzung, erster Schritt: Termin-Kanal + Vertriebsserien (Patch 40, 2026-08-09)
-
-Der Obsidian-Questbaum (siehe `Questbaum.canvas`,
-[[reference_obsidian_vault_questbaum]] in Claudes Erinnerung) wurde in
-derselben Session gemeinsam mit dem Nutzer auf Messbarkeit gegen das echte
-System geprüft — die meisten Äste (Sach-/Leben-/Kranken-/Finanzierung-
-Abschlüsse, Krankenhausakquise, Empfehlungsmanagement, Bestandskundenausbau)
-waren schon vorher 1:1 aus bestehenden Daten ableitbar. Zwei konkrete
-Lücken wurden in diesem Patch geschlossen:
+Der Obsidian-Questbaum wurde gemeinsam mit dem Nutzer auf Messbarkeit
+gegen das echte System geprüft — die meisten Äste waren schon vorher
+1:1 aus bestehenden Daten ableitbar (Entstehung/Session-Kontext:
+HISTORY.md). Zwei konkrete Lücken wurden geschlossen:
 
 **1. `termine.kanal`/`termin_series.kanal`** (nullable, Werte
 `'online'|'buero'|'betrieb'`, kein DB-Constraint — gleiches Muster wie
@@ -1954,21 +1933,11 @@ Questbaum ist eine reine persönliche Planungs-Daumenregel, kein
 Spielziel — wurde deshalb aus dem Obsidian-Baum wieder entfernt statt
 übersetzt zu werden, siehe Erinnerung `feedback_heuristic_vs_quest`.
 
-End-to-end mit Playwright gegen den echten Account verifiziert
-(`~/.local/share/playwright-portable/check_termin_kanal.mjs`): Kanal
-speichern → korrekter DB-Wert → Icon in der Wochenansicht →
-Vorbelegung beim erneuten Öffnen zum Bearbeiten, Testtermin danach
-aufgeräumt.
+## Gilden-basierte Sichtbarkeit, Phase 1
 
-## Gilden-basierte Sichtbarkeit, Phase 1 (seit 2026-08-08 live)
-
-Löst die früher hier gelistete Lücke ("jedes Org-Mitglied sieht alle
-Dungeons") und ersetzt für Kontakte den alten organisationsweiten
-`contactsVisibility`-Schalter als primären Mechanismus. Entstanden aus
-einer sehr ausführlichen Grundsatz-Konversation mit dem Nutzer (siehe
-Git-Historie desselben Tages) — Auslöser war ein echtes, beobachtetes
-Problem: Kolleg:innen, die sich neu anmeldeten, sahen sofort alle
-Dungeons/Kontakte des Nutzers.
+Ersetzt für Kontakte den alten organisationsweiten
+`contactsVisibility`-Schalter als primären Mechanismus (Entstehung:
+HISTORY.md).
 
 **Grundprinzip:** Bottom-up, jeder Mitarbeiter startet komplett privat
 ("wie sein eigenes Programm"), auch für den Admin unsichtbar im Alltag.
@@ -1982,13 +1951,11 @@ Standard `'read'` bei Einladung), **plus `team_rights`** (bool, für
 spätere Mitverwaltung, in Phase 1 noch nicht ausgewertet):
 - **Kontakte** sind der eigentliche Kern (das CRM) — Freigabe gilt
   pauschal für ALLE Kontakte eines Mitglieds auf einmal, unabhängig davon,
-  ob sie einem Dungeon zugeordnet sind oder nicht. **Wichtige Korrektur
-  während der Konzeptions-Diskussion:** ursprünglich fälschlich als von
-  Dungeons abhängig modelliert (Kontakt erbt Sichtbarkeit vom Dungeon) —
-  falsch, weil dungeon-lose Kontakte (z.B. niedergelassene Ärzte in
-  eigener Praxis, kein Krankenhaus-Dungeon) sonst nie hätten geteilt
-  werden können. Kontakte haben deshalb **kein eigenes `guild_id`-Feld**,
-  die Prüfung läuft direkt über Eigentümer+Gilde (`guild_contact_permission()`).
+  ob sie einem Dungeon zugeordnet sind oder nicht (auch dungeon-lose
+  Kontakte, z.B. niedergelassene Ärzte ohne Krankenhaus-Dungeon, müssen
+  teilbar sein). Kontakte haben deshalb **kein eigenes `guild_id`-Feld**,
+  die Prüfung läuft direkt über Eigentümer+Gilde (`guild_contact_permission()`,
+  Entstehung/Modellierungs-Korrektur: HISTORY.md).
 - **Dungeons** sind bewusst nur die spielerische Organisationsschicht
   obendrüber ("Gimmick", O-Ton Nutzer) — `locations.guild_id` (NULL =
   privat). Neue Dungeons eines Mitglieds mit `dungeons_access='write'`
@@ -2009,59 +1976,39 @@ setzt automatisch die eigenen Rechte auf voll (`write`/`write`/`true`) und
 übernimmt eigene bestehende Dungeons automatisch in den neuen Pool (keine
 Prüfung nötig, es ist die eigene Welt des Gründers).
 
-**Wichtiger RLS-Stolperstein, der viel Debugging gekostet hat (unbedingt
-bei künftigen ähnlichen Policies im Kopf behalten):** eine `FOR UPDATE`-
-Policy mit korrektem `USING`/`WITH CHECK` reicht NICHT aus, wenn die Zeile
-nicht ZUSÄTZLICH auch über eine bestehende `SELECT`-Policy sichtbar ist —
-Postgres verlangt beides, die UPDATE-eigene `USING`-Klausel ersetzt die
-Sichtbarkeits-Prüfung nicht. Selbst eine testweise auf `USING(true) WITH
-CHECK(true)` vereinfachte Update-Policy schlug fehl (0 betroffene Zeilen,
-kein Fehler), bis `locations_select_org` um dieselbe
-`guild_founder_of_member()`-Bedingung erweitert wurde, die die
-Aufnahme-Policy schon nutzte — der Gildenführer musste den noch nicht
-aufgenommenen, privaten Dungeon eines Mitglieds erst SEHEN können, bevor
-er ihn per UPDATE aufnehmen konnte. Per Wegwerf-Testaccounts (Signup,
-Profile, Kontakt/Dungeon, Cross-User-Zugriffsversuche) sauber isoliert und
-verifiziert, inklusive mehrerer Zwischenschritte mit temporären
-Diagnose-Funktionen (`debug_*`, alle wieder entfernt).
+**Wichtiges RLS-Design-Prinzip, aus echtem Debugging gelernt:** eine
+`FOR UPDATE`-Policy mit korrektem `USING`/`WITH CHECK` reicht NICHT aus,
+wenn die Zeile nicht ZUSÄTZLICH auch über eine bestehende `SELECT`-
+Policy sichtbar ist — Postgres verlangt beides, die UPDATE-eigene
+`USING`-Klausel ersetzt die Sichtbarkeits-Prüfung nicht (Debugging-
+Verlauf: HISTORY.md). Bei künftigen ähnlichen Policies im Kopf behalten.
 
 **Phase 2 (Notfall-Nachfolgekette) und Phase 3 (protokollierter
-Admin-Notfallzugriff) sind seit 2026-08-08 abends ebenfalls live** —
-eigene Abschnitte weiter unten ("Gilden-Notfall-Nachfolgekette, Phase 2"
-und "Admin-Notfallzugriff, Phase 3"). Damit ist das Gilden-
-Sichtbarkeits-Projekt komplett, kein offener Punkt mehr in diesem
-Strang. Provisions-/Statistik-Aufteilung bei gemeinsam bearbeiteten Kontakten
-war zunächst nur zurückgestellt, ist aber am 2026-08-09 auf Nutzerwunsch
-("zu weit in der Zukunft") komplett gestrichen worden — läuft einfach auf
-den, der den Abschluss tatsächlich macht, keine Idee mehr für später.
+Admin-Notfallzugriff) sind ebenfalls live** — eigene Abschnitte weiter
+unten. Provisions-/Statistik-Aufteilung bei gemeinsam bearbeiteten
+Kontakten wurde bewusst komplett gestrichen ("zu weit in der Zukunft")
+— läuft einfach auf den, der den Abschluss tatsächlich macht.
 
-**Direkter Folgeauftrag, noch am selben Tag: bewegter Avatar + Sigil auf
-Freundes-/Gilden-Kacheln.** Löst einen offenen Punkt aus der
-Konzepts-Konversation selbst ein ("wenn man auf den Freund klickt, sieht
-man auch das Sigil der Fähigkeiten"). Die Kacheln in `friendGrid` UND
-`guildGrid` (`renderFriendGrid()`/`renderGuildMembers()`) zeigen jetzt
-`<canvas class="gt-avatar">` statt des statischen Klassen-Emojis —
-dieselbe `createSpriteRenderer()`/`layersForCharacterProfile()`-Technik
-wie auf der eigenen Charakterseite, gespeist aus den ohnehin schon
-organisationsweit lesbaren `profiles`-Feldern (Aussehen ist nie geheim
-gewesen). Klick auf den Avatar (`mountAvatarTile()` → `openFriendSigil()`)
-öffnet ein neues `friendSigilModal` mit eigenem `<svg id="friendSigilSvg">`
-— `drawSigil()` bekam dafür einen vierten, optionalen Parameter (Ziel-SVG-
-Id, Default weiterhin `'sigil'`), keine Verhaltensänderung auf der eigenen
-Charakterseite.
+**Bewegter Avatar + Sigil auf Freundes-/Gilden-Kacheln:** die Kacheln in
+`friendGrid` UND `guildGrid` (`renderFriendGrid()`/`renderGuildMembers()`)
+zeigen `<canvas class="gt-avatar">` statt eines statischen Klassen-
+Emojis — dieselbe `createSpriteRenderer()`/`layersForCharacterProfile()`-
+Technik wie auf der eigenen Charakterseite, gespeist aus den ohnehin
+schon organisationsweit lesbaren `profiles`-Feldern. Klick auf den
+Avatar (`mountAvatarTile()` → `openFriendSigil()`) öffnet ein
+`friendSigilModal` mit eigenem `<svg id="friendSigilSvg">` —
+`drawSigil()` hat dafür einen vierten, optionalen Parameter (Ziel-SVG-
+Id, Default `'sigil'`).
 
 Für die Skill-Zahlen selbst reicht Sichtbarkeit von Level/Klasse nicht —
 die liegen im privaten `action_log`. Bewusst **keine** breite SELECT-Policy
 auf `action_log` (würde auch `context`/`meta`/`location_id`/`contact_id`
-offenlegen, potenziell CRM-Notizen) — stattdessen eine schmale neue
-RPC-Funktion `friend_skill_totals(target_user)`, die nur die aggregierten
+offenlegen, potenziell CRM-Notizen) — stattdessen eine schmale RPC-
+Funktion `friend_skill_totals(target_user)`, die nur die aggregierten
 Skill-Summen zurückgibt, geschützt durch `socially_visible()` (Freund
-[`friends.status='accepted'`] ODER gemeinsame Gilde ODER man selbst). Live
-mit drei Wegwerf-Testaccounts verifiziert: Freund bekommt korrekte Summen
-(inkl. `skill2`-40%-Anteil), ein unbeteiligter Dritter bekommt eine leere
-Liste.
+[`friends.status='accepted'`] ODER gemeinsame Gilde ODER man selbst).
 
-## Gilden-Notfall-Nachfolgekette, Phase 2 (seit 2026-08-08 abends live)
+## Gilden-Notfall-Nachfolgekette, Phase 2
 
 Löst die in Phase 1 offen gelassene Frage: fällt ein Gildenführer durch
 Account-Löschung aus, wer übernimmt die Gilde? Kriterium bewusst simpel
@@ -2073,44 +2020,20 @@ führerlos werden, solange noch irgendwer drin ist. Der Nachfolger erbt
 automatisch volle Rechte (`write`/`write`/`team_rights=true`), genau wie
 ein Gildengründer.
 
-Sitzt in `handle_member_offboarding()` (`supabase/migrations/
-20260808213214_gilden_notfall_nachfolge.sql`), läuft VOR der
-bestehenden Pool-/Löschlogik im selben `BEFORE DELETE`-Trigger auf
-`auth.users`. **Wichtige technische Korrektur dabei:**
-`guilds.founder_id` war bisher `NOT NULL` mit `ON DELETE CASCADE` auf
-`profiles` — hätte beim Löschen eines Gildenführer-Accounts die
-komplette Gilde samt aller Mitgliedschaften mitgerissen (echtes
-Datenverlust-Risiko: "das sind Unternehmensdaten, tausende Kunden",
-ausdrückliche Nutzer-Vorgabe). Jetzt nullable + `ON DELETE SET NULL`
-als zusätzliches Sicherheitsnetz: bleibt im Extremfall (Gildenführer war
-das letzte Mitglied) niemand zum Nachrücken übrig, wird `founder_id`
-einfach `NULL` — die Gilde samt allen Pool-Kontakten/-Dungeons bleibt
-trotzdem bestehen, nur vorübergehend ohne Führer (siehe Phase 3 für den
-Zugriff auf so eine Gilde). Frontend brauchte keine Änderung, `founder_id`
-wird überall live gelesen.
+Sitzt in `handle_member_offboarding()` (läuft VOR der bestehenden Pool-/
+Löschlogik im selben `BEFORE DELETE`-Trigger auf `auth.users`).
+`guilds.founder_id` ist nullable mit `ON DELETE SET NULL` (bewusst
+NICHT `CASCADE` — würde beim Löschen eines Gildenführer-Accounts sonst
+die komplette Gilde samt aller Mitgliedschaften mitreißen, echtes
+Datenverlust-Risiko: "das sind Unternehmensdaten, tausende Kunden").
+Bleibt im Extremfall (Gildenführer war das letzte Mitglied) niemand zum
+Nachrücken übrig, wird `founder_id` einfach `NULL` — die Gilde samt
+allen Pool-Kontakten/-Dungeons bleibt trotzdem bestehen, nur
+vorübergehend ohne Führer (Zugriff auf so eine Gilde: siehe Phase 3).
+Verifikations-Verlauf (inkl. Mitarbeiter-Offboarding-Nachtest):
+HISTORY.md.
 
-End-to-end mit Wegwerf-SQL-Testdaten gegen die echte DB verifiziert (drei
-Szenarien: Teamleiter rückt korrekt vor längerem Nicht-Teamleiter nach;
-Fallback aufs insgesamt längste Mitglied ohne `team_rights`; Gildenführer
-war letztes Mitglied → Gilde bleibt bestehen, `founder_id` wird `NULL`
-statt die Gilde zu löschen). Testdaten danach vollständig aufgeräumt.
-
-**Nachtrag 2026-08-09: End-to-End-Test des eigentlichen Offboardings
-(Mitarbeiter-Abgang, `supabase/migrations/
-20260808211342_mitarbeiter_offboarding_gildenpool.sql`) nachgeholt** — war
-bis dahin nur per Schema-Existenz geprüft, nicht per echter
-`auth.users`-Löschung. Per Wegwerf-SQL-Testdaten (`supabase db query
---linked -f ...`) drei Szenarien verifiziert, alle korrekt: gildenlos
-(Kontakte/Dungeons/Verkäufe komplett weg, per CASCADE über den gelöschten
-Kontakt), normales Gildenmitglied (Kontakt/Dungeon landen im Pool,
-`sales.created_by` wird `NULL`, Verkauf selbst bleibt bestehen), und —
-das eigentlich ungetestete Zusammenspiel — Gildenführer mit eigenen
-Kontakten: Nachfolge UND Pooling der eigenen Daten laufen korrekt im
-selben Trigger-Durchlauf. Testdaten vollständig aufgeräumt, 0 Reste
-verifiziert. Damit ist der Mitarbeiter-Offboarding-Strang komplett
-getestet, kein offener Punkt mehr.
-
-## Admin-Notfallzugriff, Phase 3 (seit 2026-08-08 abends live)
+## Admin-Notfallzugriff, Phase 3
 
 Phase 1 hat Admins bewusst von der Standard-Sichtbarkeit ausgeschlossen
 ("komplett privat, auch für Admins unsichtbar im Alltag"). Phase 3 gibt
@@ -2145,16 +2068,10 @@ Protokoll-Liste aller bisherigen Notfallzugriffe (für alle Admins
 einsehbar, admin_id/target_user_id via PostgREST-Embedding auf
 `profiles.display_name` aufgelöst).
 
-End-to-end gegen die echte DB verifiziert — per `supabase db query` +
-`set_config('request.jwt.claim.sub', ...)`, um einen echten
-Admin-RPC-Aufruf zu simulieren, ohne einen echten Login/Playwright-Lauf
-zu brauchen: positiver Zugriff liefert korrekt Kontakt+Dungeon der
-Zielperson UND schreibt den Audit-Log-Eintrag; Aufruf durch einen
-Nicht-Admin wird abgewiesen; leerer Grund wird abgewiesen. Testdaten
-danach vollständig aufgeräumt.
+Verifikations-Verlauf: HISTORY.md.
 
-**Damit ist das gesamte Gilden-Sichtbarkeits-Projekt (Phase 1+2+3) vom
-2026-08-08 fertig**, kein bekannter offener Punkt mehr in diesem Strang.
+**Damit ist das gesamte Gilden-Sichtbarkeits-Projekt (Phase 1+2+3)
+fertig**, kein bekannter offener Punkt mehr in diesem Strang.
 
 ## Vertragsnummer-Feld an `sales` (Patch 41, 2026-08-10)
 
