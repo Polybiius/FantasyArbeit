@@ -2439,158 +2439,89 @@ Advisor-Durchgang 2026-08-11).
 
 Verifikations-Verlauf: HISTORY.md.
 
-## Questbaum: Jahres-Reset + Bonus-XP für den gesamten Baum, Patch 50 (2026-08-17)
+## Questbaum: Jahres-Reset + Bonus-XP für den gesamten Baum, Patch 50
 
-Löst den seit der Krankenhaus-Meister-Migration (Patch 49) offenen Punkt:
-bis dahin gaben nur zwei Questbaum-Stufen echte Bonus-XP, der Rest nur
-Titel. Auf Nutzerwunsch jetzt konsequent zu Ende gebracht — **mit einer
-wichtigen Kurskorrektur mitten in der Absprache**: Questbaum-Stufen sind
-**Jahresquests**, nicht einmalige Lebensleistungen. Geschäftsjahr =
-Kalenderjahr (deckt sich mit den bestehenden Jahr/Monat-Reitern im
-Kompendium).
+Questbaum-Stufen sind **Jahresquests**, nicht einmalige
+Lebensleistungen — Geschäftsjahr = Kalenderjahr (deckt sich mit den
+Jahr/Monat-Reitern im Kompendium). `evaluateLadderQuest`/
+`evaluateSalesLadderQuest`/`evaluateRatioQuest`/`evaluateStreakQuest`
+(in `index.html`) werten nur Ereignisse/Verkäufe des **laufenden
+Kalenderjahres** aus (`currentBusinessYear()`/`logInCurrentYear()`) —
+Stufen resetten automatisch zum 1. Januar, ein Streak kann strukturell
+nicht über den Jahreswechsel hinweg laufen.
 
-**Design-Prozess:** zwei Artifact-Runden (gleiche URL, v1→v2) mit dem
-Nutzer durchgesprochen — v1 kalkulierte jede Stufe als einmalige
-Lebensleistung (levelBase 4,70→5,02, +6,8%), nach dem Jahresquest-
-Hinweis wurde daraus v2 mit geschätzter Häufigkeit pro Stufe über 10
-Jahre (Einstiegsstufe ~9-10/10 Jahre, Top-Stufe ~1-2/10) — Ergebnis
-`levelBase` 4,70→**5,80** (+23,3% Gesamt-XP bis Level 100, siehe
-Abschnitt "Level-/XP-System" oben für die genaue Methodik). Die
-einzelnen Bonus-XP-**Werte** pro Stufe/Epic (15-450 gestaffelt nach
-Ladder-Länge/Position, Epics 100-800 je nach Anzahl/Schwere der
-Voraussetzungen) blieben zwischen v1 und v2 unverändert — nur die
-Interpretation "einmal vs. jährlich wiederholbar" änderte sich.
+**Epics geben echte Bonus-XP** (nicht nur Titel + Feier-Toast):
+`checkAndAwardEpics()` ruft bei neu erfülltem Epic
+`grant_quest_bonus_to_self()` mit `p_stage_id = p_quest_id` auf (ein
+Epic hat kein `stages`-Array, nutzt seine eigene id doppelt als
+Erkennungsmerkmal — wichtig für den Schatzraum, siehe unten).
+`grant_quest_bonus_to_self()` verlangt im `questtree`-Zweig zwingend
+`p_period_key` (das Jahr, gleiches Prinzip wie beim `recurring`-Zweig)
+und verzweigt bei `type='epic'` auf ein flaches `bonus`-Feld am Epic
+selbst statt in ein `stages`-Array zu schauen. Duplikat-Schutz: pro
+Stufe **und Jahr** einmal (`meta.year` zusätzlich zu `questTreeId`/
+`stageId` in der Prüfung).
 
-**Technik:**
-- `evaluateLadderQuest`/`evaluateSalesLadderQuest`/`evaluateRatioQuest`/
-  `evaluateStreakQuest` (in `index.html`) werten jetzt nur noch
-  Ereignisse/Verkäufe des **laufenden Kalenderjahres** aus (neue Helfer
-  `currentBusinessYear()`/`logInCurrentYear()`), nicht mehr die komplette
-  Lebenszeit — Stufen resetten damit automatisch zum 1. Januar, ein
-  Streak kann strukturell nicht über den Jahreswechsel hinweg laufen.
-- **Epics geben jetzt echte Bonus-XP** (vorher nur Titel + Feier-Toast):
-  `checkAndAwardEpics()` ist async geworden, ruft bei neu erfülltem Epic
-  `grant_quest_bonus_to_self()` mit `p_stage_id = p_quest_id` auf (ein
-  Epic hat kein `stages`-Array, nutzt seine eigene id doppelt als
-  Erkennungsmerkmal — wichtig für spätere Auswertungen wie den
-  Schatzraum, siehe unten).
-- `grant_quest_bonus_to_self()` (SQL): der `questtree`-Zweig verlangt
-  jetzt zwingend `p_period_key` (das Jahr, gleiches Prinzip wie beim
-  `recurring`-Zweig) und verzweigt bei `type='epic'` auf ein flaches
-  `bonus`-Feld am Epic selbst statt in ein `stages`-Array zu schauen.
-  Duplikat-Schutz erweitert von "pro Stufe einmal" auf "pro Stufe **und
-  Jahr** einmal" (`meta.year` zusätzlich zu `questTreeId`/`stageId` in
-  der Duplikat-Prüfung).
-- Migration `supabase/migrations/20260817120000_questbaum_jahresreset_bonus_xp.sql`
-  — die komplette neue `questTree`-JSON wurde **programmatisch erzeugt**
-  (Node-Skript liest die echte Live-DB-JSON, mappt Bonus-Werte per
-  Stufen-/Epic-id, schreibt zurück) statt von Hand transkribiert, bei
-  87 einzelnen Feldern bewusst kein Handarbeits-Risiko eingegangen.
+Aktuelle Kalibrierung: `levelBase`=5,80 (siehe "Level-/XP-System"
+oben), 78 Stufen + 11 Epics mit `bonus`-Feld (15-450 XP je Stufe,
+100-800 je Epic, gestaffelt nach Ladder-Länge/Position bzw. Anzahl/
+Schwere der Voraussetzungen).
 
-**Dreifach verifiziert, dann per Nutzer-Go gepusht:** SQL-Dry-Run
-(`begin`/`rollback`, 10 Einzeltests: korrekte Auszahlung, doppelte
-Vergabe im selben Jahr blockiert, dieselbe Stufe im Folgejahr erneut
-auszahlbar, Epic-Pfad, diverse Fehlerfälle), ESLint sauber, Playwright-
-Simulation (synthetische Vorjahresdaten wurden korrekt ignoriert). Nach
-`supabase db push`: `levelBase`=5,80, 78 Stufen + 11 Epics mit
-`bonus`-Feld live bestätigt, Patch 50 in `schema_patches`. Beim ersten
-echten Login danach wurden über 15 bereits erfüllte Stufen automatisch
-nachgezahlt (funktioniert wie beim Krankenhaus-Meister-Vorbild).
+## Schatzraum: Reliquienkammer / Ruhmeshalle / Jagdkammer
 
-## Schatzraum: Reliquienkammer / Ruhmeshalle / Jagdkammer (2026-08-17)
+Zeigt Vorjahres-Questbaum-Leistungen, die beim Jahres-Reset (siehe
+oben) sonst spurlos aus der laufenden Questbaum-Ansicht verschwinden
+würden.
 
-Direkter Folgeauftrag aus dem Jahres-Reset oben: sobald jede Stufe zum
-1. Januar zurückspringt, verschwindet eine Vorjahres-Leistung sonst
-spurlos aus der laufenden Questbaum-Ansicht. Der Schatzraum ist der Ort,
-an dem sie sichtbar bleibt.
-
-**Zwei Baurunden — die erste landete nicht, Nutzer-Feedback war
-präzise genug für eine direkte Korrektur ohne neuen Artifact-Vorlauf:**
-
-*Erster Entwurf* (inline aufklappende Kachel im Kompendium/Kriegskasse/
-Trophäenkammer, ähnlich dem Zauberbuch-Muster): zeigte ALLE
-`questtree_bonus`-Log-Einträge (auch einzelne Ladder-Stufen wie
-"20% Türöffner-Quote") als flache `.log-entry`-Liste. Nutzer-O-Ton: "in
-der jetzigen Form ist das nicht wertschätzend."
-
-*Korrigierte Fassung, live:*
-- **Öffnet als Vollbild-Unterseite** (`#trophyRoomModal`, `.qt-fullscreen`,
-  identisches Muster wie `#questTreeModal` inkl. `history.pushState`/
-  `popstate`-Handling — Browser-Zurück schließt nur den Raum) statt
-  inline aufzuklappen. Die Kachel im Kompendium bleibt als reiner
-  Türöffner bestehen.
-- **Zeigt nur Epics** ("Trophäen"/Titel), keine einzelnen Ladder-/Ratio-/
-  Streak-Stufen mehr. Ein Epic-Bonus ist am `action_log`-Eintrag daran
-  erkennbar, dass `meta.stageId === meta.questTreeId` (`trophyEpicInfo()`
-  filtert danach).
+- **Öffnet als Vollbild-Unterseite** (`#trophyRoomModal`,
+  `.qt-fullscreen`, gleiches Muster wie `#questTreeModal` inkl.
+  `history.pushState`/`popstate` — Browser-Zurück schließt nur den
+  Raum), erreichbar über eine Kachel im Kompendium/Kriegskasse/
+  Trophäenkammer.
+- **Zeigt nur Epics** ("Trophäen"/Titel), keine einzelnen Ladder-/
+  Ratio-/Streak-Stufen. Ein Epic-Bonus ist am `action_log`-Eintrag
+  daran erkennbar, dass `meta.stageId === meta.questTreeId`
+  (`trophyEpicInfo()` filtert danach).
 - **"In Ebenen" gruppiert:** eine Sektion pro Questbaum-**Kategorie**
   (Reihenfolge folgt `config.questTree`, nur sichtbar wenn dort im
   gewählten Jahr wirklich etwas erlangt wurde), jede Trophäe eine
   goldgerahmte `.trophy-card` (🏅-Icon, Titel, Label, Datum, XP — Optik
-  1:1 vom bestehenden `.epic-toast` übernommen, keine neue Bildsprache
-  erfunden).
+  1:1 vom bestehenden `.epic-toast`).
 - **Jahr prominent verankert:** groß und zentral, mit explizitem Tag
-  "Laufendes Jahr" (grün) vs. "Archiviert" (amber). Der automatische
-  Sprung ins neue Jahr am 1. Januar braucht keinen Cron/Trigger —
-  `trophyRoomYear` initialisiert auf `new Date().getFullYear()`, die
-  Obergrenze in `trophyRoomYearBounds()` ist immer
-  `currentBusinessYear()`, ergibt sich rein aus dem Ladezeitpunkt.
-- Darunter unverändert: kompakte Zusammenfassung der 5 bestehenden
-  Kompendium-Kennzahlen fürs gewählte Jahr (neue `salesForYear(year)`-
-  Funktion, füttert die bestehende `aggregateStats()`).
-- Klassen-Namen (Nutzer wollte explizit 2 Vorschläge je Klasse zur
-  Auswahl, kein gemeinsamer Name wie beim Zunftbuch-Präzedenzfall):
-  **Reliquienkammer** (Zauberer, 💎), **Ruhmeshalle** (Krieger, 🏆),
-  **Jagdkammer** (Schütze, 🏹).
+  "Laufendes Jahr" (grün) vs. "Archiviert" (amber). Springt beim Laden
+  automatisch aufs aktuelle Jahr (`trophyRoomYear` initialisiert auf
+  `new Date().getFullYear()`, Obergrenze in `trophyRoomYearBounds()`
+  ist immer `currentBusinessYear()`) — kein Cron/Trigger nötig.
+- Darunter: kompakte Zusammenfassung der 5 Kompendium-Kennzahlen fürs
+  gewählte Jahr (`salesForYear(year)`, füttert `aggregateStats()`).
+- Klassen-Namen: **Reliquienkammer** (Zauberer, 💎), **Ruhmeshalle**
+  (Krieger, 🏆), **Jagdkammer** (Schütze, 🏹).
 
-Kein neues DB-Feld/keine neue Tabelle nötig — reine Ableitung aus
-bereits vorhandenem `action_log` (das Jahr steckt seit Patch 50 in
-`meta.year`) + `mySalesCache`. Per Playwright verifiziert (Desktop +
-Mobile 390px, Negativtest dass eine Nicht-Epic-Stufe wirklich nicht
-auftaucht, Jahres-Navigation vor/zurück inkl. Vorjahres-Trophäe, kein
-horizontales Overflow, keine Konsolenfehler).
+Kein neues DB-Feld/keine neue Tabelle — reine Ableitung aus bereits
+vorhandenem `action_log` (das Jahr steckt seit Patch 50 in
+`meta.year`) + `mySalesCache`.
 
-## RLS-Performance-Härtung (2026-08-17)
+## RLS-Performance-Härtung
 
-Löst den in der "Nachtrag: locName()-XSS-Lücke + Datenbank-Advisor-
-Durchgang (2026-08-11)"-Notiz oben bewusst zurückgestellten Punkt
-("erst bei echtem Abfrage-Volumen angehen") — auf Nutzerwunsch jetzt
-vorgezogen, nachdem der Advisor-Stand seit 2026-08-11 spürbar gewachsen
-war (60 `multiple_permissive_policies`, 52 `auth_rls_initplan`). Reine
-Effizienz-Migration, **keine** Verhaltensänderung — wer was sehen/
-bearbeiten darf, ist exakt gleich geblieben.
-
-Migration `supabase/migrations/20260817210000_rls_performance_haertung.sql`.
-Zwei Muster:
+Zwei wiederverwendbare Muster für RLS-Policy-Performance, angewendet
+über praktisch das ganze Schema (reine Effizienz, keine
+Verhaltensänderung — wer was sehen/bearbeiten darf, bleibt exakt
+gleich):
 1. `auth.uid()` wird zu `(select auth.uid())` gewrappt, damit Postgres
-   es einmal pro Abfrage statt einmal pro Zeile auswertet — an der
-   Quelle in den 7 zentralen Hilfsfunktionen (`current_org_id`/
-   `is_admin`/`guild_contact_permission`/`guild_dungeon_permission`/
+   es einmal pro Abfrage statt einmal pro Zeile auswertet — gilt in
+   den zentralen Hilfsfunktionen (`current_org_id`/`is_admin`/
+   `guild_contact_permission`/`guild_dungeon_permission`/
    `guild_founder_of_member`/`guild_leadership_permission`/
-   `socially_visible`, die praktisch jede Policy im Schema nutzt) sowie
-   in 39 einzelnen Policies mit direktem `auth.uid()`-Aufruf.
-2. 10 Tabellen mit mehreren permissiven Policies je Aktion (21
-   Original-Policies: action_log/contact_activities/contacts×2/friends/
-   guild_members/locations/profiles×2/termine SELECT) wurden zu je
-   einer Policy zusammengelegt — mathematisch exakt dieselbe
+   `socially_visible`, die praktisch jede Policy im Schema nutzt) und
+   in jeder Policy mit direktem `auth.uid()`-Aufruf.
+2. Mehrere permissive Policies je Tabelle/Aktion werden zu einer
+   einzigen zusammengelegt (USING-Klauseln per OR verknüpft, WITH
+   CHECK-Klauseln separat) — mathematisch exakt dieselbe
    ODER-Verknüpfung, die Postgres bei mehreren permissiven Policies
-   ohnehin schon bildet (USING-Klauseln separat, WITH CHECK-Klauseln
-   separat), nur als eine statt mehrerer Prüfungen pro Zeile.
-   Policy-Zahl insgesamt: 75→64.
+   ohnehin bildet, nur als eine statt mehrerer Prüfungen pro Zeile.
 
-**Vor dem Schreiben der Migrationsdatei in einer `begin`/`rollback`-
-Transaktion gegen die echte DB getestet** (nichts blieb hängen): 35
-Sichtbarkeits-Snapshots (7 echte Kolleg:innen-Accounts × die 5 am
-stärksten betroffenen Tabellen) vorher/nachher exakt identisch, plus 7
-gezielte Schreibproben für die kniffligsten Fälle (Kontakt-Gildenpool-
-Zuweisung, Gildenführer aktualisiert Location eines Gildenmitglieds,
-alle zugehörigen Verweigerungsfälle) — dabei ein eigener Testaufbau-
-Fehler gefunden und korrigiert (`guild_leadership_permission()`
-verlangt `team_rights=true`, nicht nur Schreibzugriff — kein Bug in der
-Migration, nur ein zu lax konfigurierter Wegwerf-Testnutzer). Nach dem
-`supabase db push` per erneutem Advisor-Lauf bestätigt: 0 verbleibende
-`auth_rls_initplan`/`multiple_permissive_policies`-Funde (vorher
-52/60), `migration list --linked` zeigt local==remote.
+**Bei jeder neuen Policy/Hilfsfunktion beide Muster von Anfang an
+anwenden**, nicht erst nachträglich optimieren.
 
 ## Kanban-Kurzvorschau + Termin-Einladungen für Gildenmitglieder (2026-08-18)
 

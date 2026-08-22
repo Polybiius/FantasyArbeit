@@ -799,3 +799,84 @@ aber auf Minimalrechte zurückgesetzt, ein Alarm protokolliert; direkter
 RPC-Aufruf von `log_security_alert()` als normaler Nutzer →
 `permission denied`. Testdaten danach vollständig entfernt (0 Reste
 verifiziert).
+
+## 2026-08-17: Questbaum-Jahresreset, Schatzraum, RLS-Performance-Härtung
+
+**Questbaum Jahres-Reset (Patch 50), Design-Prozess:** löste den seit
+der Krankenhaus-Meister-Migration (Patch 49) offenen Punkt, dass nur
+zwei Questbaum-Stufen echte Bonus-XP gaben, der Rest nur Titel. Zwei
+Artifact-Runden (gleiche URL, v1→v2) mit dem Nutzer durchgesprochen —
+v1 kalkulierte jede Stufe als einmalige Lebensleistung (`levelBase`
+4,70→5,02, +6,8%), **mit einer wichtigen Kurskorrektur mitten in der
+Absprache**: Questbaum-Stufen sind eigentlich Jahresquests, nicht
+einmalige Lebensleistungen (Geschäftsjahr = Kalenderjahr, deckt sich
+mit den Jahr/Monat-Reitern im Kompendium). Daraus wurde v2 mit
+geschätzter Häufigkeit pro Stufe über 10 Jahre (Einstiegsstufe ~9-10/10
+Jahre, Top-Stufe ~1-2/10) — Ergebnis `levelBase` 4,70→**5,80** (+23,3%
+Gesamt-XP bis Level 100). Die einzelnen Bonus-XP-Werte pro Stufe/Epic
+blieben zwischen v1 und v2 unverändert, nur die Interpretation
+"einmal vs. jährlich wiederholbar" änderte sich. Migration
+`supabase/migrations/20260817120000_questbaum_jahresreset_bonus_xp.sql`
+— die komplette neue `questTree`-JSON wurde programmatisch erzeugt
+(Node-Skript liest die echte Live-DB-JSON, mappt Bonus-Werte per
+Stufen-/Epic-id, schreibt zurück) statt von Hand transkribiert, bei 87
+einzelnen Feldern bewusst kein Handarbeits-Risiko eingegangen.
+
+**Verifikation:** dreifach — SQL-Dry-Run (`begin`/`rollback`, 10
+Einzeltests: korrekte Auszahlung, doppelte Vergabe im selben Jahr
+blockiert, dieselbe Stufe im Folgejahr erneut auszahlbar, Epic-Pfad,
+diverse Fehlerfälle), ESLint sauber, Playwright-Simulation
+(synthetische Vorjahresdaten wurden korrekt ignoriert). Nach `supabase
+db push`: `levelBase`=5,80, 78 Stufen + 11 Epics mit `bonus`-Feld live
+bestätigt, Patch 50 in `schema_patches`. Beim ersten echten Login
+danach wurden über 15 bereits erfüllte Stufen automatisch nachgezahlt
+(funktioniert wie beim Krankenhaus-Meister-Vorbild).
+
+**Schatzraum (Reliquienkammer/Ruhmeshalle/Jagdkammer), zwei Baurunden:**
+direkter Folgeauftrag aus dem Jahres-Reset — sobald jede Stufe zum 1.
+Januar zurückspringt, verschwindet eine Vorjahres-Leistung sonst
+spurlos aus der laufenden Questbaum-Ansicht. Erster Entwurf (inline
+aufklappende Kachel im Kompendium, ähnlich dem Zauberbuch-Muster)
+zeigte ALLE `questtree_bonus`-Log-Einträge (auch einzelne Ladder-Stufen
+wie "20% Türöffner-Quote") als flache `.log-entry`-Liste. Nutzer-O-Ton:
+"in der jetzigen Form ist das nicht wertschätzend." Nutzer-Feedback war
+präzise genug für eine direkte Korrektur ohne neuen Artifact-Vorlauf —
+die korrigierte, live gegangene Fassung (Vollbild-Unterseite, nur
+Epics, Gruppierung nach Kategorie) steht in CLAUDE.md.
+
+Kein neues DB-Feld/keine neue Tabelle nötig — reine Ableitung aus
+bereits vorhandenem `action_log` (das Jahr steckt seit Patch 50 in
+`meta.year`) + `mySalesCache`. Per Playwright verifiziert (Desktop +
+Mobile 390px, Negativtest dass eine Nicht-Epic-Stufe wirklich nicht
+auftaucht, Jahres-Navigation vor/zurück inkl. Vorjahres-Trophäe, kein
+horizontales Overflow, keine Konsolenfehler).
+
+**RLS-Performance-Härtung:** löste den in der Nachtrag-Notiz zum
+Datenbank-Advisor-Durchgang vom 2026-08-11 bewusst zurückgestellten
+Punkt ("erst bei echtem Abfrage-Volumen angehen") — auf Nutzerwunsch
+jetzt vorgezogen, nachdem der Advisor-Stand seit 2026-08-11 spürbar
+gewachsen war (60 `multiple_permissive_policies`, 52
+`auth_rls_initplan`). Reine Effizienz-Migration, keine
+Verhaltensänderung — wer was sehen/bearbeiten darf, blieb exakt
+gleich. Migration
+`supabase/migrations/20260817210000_rls_performance_haertung.sql`
+wendete die zwei in CLAUDE.md dokumentierten Muster an: `auth.uid()`
+zu `(select auth.uid())` gewrappt (7 zentrale Hilfsfunktionen + 39
+einzelne Policies), und 10 Tabellen mit mehreren permissiven Policies
+je Aktion (21 Original-Policies) zu je einer zusammengelegt —
+Policy-Zahl insgesamt 75→64.
+
+**Verifikation, vor dem Schreiben der Migrationsdatei in einer
+`begin`/`rollback`-Transaktion gegen die echte DB getestet** (nichts
+blieb hängen): 35 Sichtbarkeits-Snapshots (7 echte Kolleg:innen-
+Accounts × die 5 am stärksten betroffenen Tabellen) vorher/nachher
+exakt identisch, plus 7 gezielte Schreibproben für die kniffligsten
+Fälle (Kontakt-Gildenpool-Zuweisung, Gildenführer aktualisiert Location
+eines Gildenmitglieds, alle zugehörigen Verweigerungsfälle) — dabei ein
+eigener Testaufbau-Fehler gefunden und korrigiert
+(`guild_leadership_permission()` verlangt `team_rights=true`, nicht nur
+Schreibzugriff — kein Bug in der Migration, nur ein zu lax
+konfigurierter Wegwerf-Testnutzer). Nach dem `supabase db push` per
+erneutem Advisor-Lauf bestätigt: 0 verbleibende `auth_rls_initplan`/
+`multiple_permissive_policies`-Funde (vorher 52/60), `migration list
+--linked` zeigt local==remote.
