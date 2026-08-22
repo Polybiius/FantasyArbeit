@@ -4539,6 +4539,61 @@ nach diesem Häppchen: 10/12 + 11a fertig, 47 echte Bugs insgesamt, keine
 offenen SQL-Fixes. Nächstes Häppchen: 11b (Kanban, zweite Hälfte:
 Aktionen-Logging/Verkauf/Win-Loss/Move-Logik).
 
+**Häppchen 11b (Kanban, zweite Hälfte: Aktionen-Logging/Verkauf/Win-Loss/
+Move-Logik/Neuer-Lead, Zeilen 8493-8804) — 2026-08-22:** drei echte Bugs.
+`recordWinOrLoss()` (gemeinsame Funktion für Kanban-Drop UND den normalen
+Kontakt-Aktionsdialog) setzte `contacts.status` auf 'kunde'/'verloren'
+**unbedingt** — auch wenn das Verkaufs-Popup (`recordLostSale()`/
+`recordWonSalesLoop()`) mit "✕" geschlossen wurde, ohne je ein Produkt
+einzutragen. Ein Kontakt konnte dadurch als "Kunde" mit 0 Verträgen in der
+Verträge-Zone landen — beim Testen live bestätigt (ein Testkontakt aus
+einer früheren Session hatte genau diesen Fehlerzustand: `status='kunde'`
+bei 0 `sales`-Zeilen). Fix: beide Verkaufs-Popups geben jetzt zurück, ob
+wirklich mindestens ein Produkt erfasst wurde, `recordWinOrLoss()`
+überspringt den Statuswechsel sonst — live verifiziert (Status blieb nach
+Abbruch ohne Produkt korrekt auf dem alten Wert). `populateCategorySelect()`
+(Kategorie-Dropdown in beiden Verkaufs-Popups) escapte die admin-editierbare
+Produktkategorie nicht — echte Stored-XSS-Lücke, derselbe Bug-Typ wie in
+Häppchen 6a bei `renderStatCategoryChart()` gefunden, dort aber nur diese
+eine Nachbarstelle gefixt, `populateCategorySelect()` blieb übersehen.
+Live mit echtem `<img src=x onerror=alert(1)>`-Testprodukt verifiziert:
+0 Ausführungen, Kategorie blieb als sichtbarer Text escaped. Dritter Bug:
+`kanbanTerminKanal` (die Kanal-Auswahl im Ersttermin-Popup während eines
+Kanban-Übergangs) wurde beim Öffnen zurückgesetzt, aber nicht beim
+Abbrechen (✕ statt Speichern) — wählte der Nutzer einen Kanal und brach
+dann ab, blieb der Wert stehen und wurde trotzdem per
+`attachKanalToLoggedAction()` an den `termin_vereinbart`/`kundenausbau`-
+Log-Eintrag gehängt, obwohl gar kein Termin existierte, dem er zuzuordnen
+gewesen wäre. Fix: `promptKanbanTermin()` gibt jetzt den tatsächlich
+verwendeten Kanal zurück (`null` bei Abbruch), der Aufrufer verlässt sich
+nicht mehr auf die geteilte Variable — live verifiziert (`action_log.meta`
+blieb korrekt `null` nach Kanal-Klick + Abbruch, vorher hätte der Kanal
+fälschlich gestanden). Ein vierter, von mehreren Agenten gemeldeter
+vermeintlicher Fund (Zweittermin bekommt nie einen Kanal ins `action_log`,
+anders als Ersttermin) wurde geprüft und als **bewusstes Design**
+verworfen: `questMatchesKanal()` dokumentiert im Code explizit, dass der
+Kanal nur bei der Aktion `termin_vereinbart` mitgeschrieben wird, nicht
+bei `pitch` (das Zweittermin loggt) — kein Fund, keine Änderung.
+Effizienzfunde direkt mitgefixt: Doppelklick-Schutz für
+`kanbanNewLeadSaveBtn`, `recordLostSale()`s Bestätigen-Button,
+`recordWonSalesLoop()`s "+ Produkt hinzufügen"/"Fertig" (ein gemeinsamer
+Sperr-Zustand für beide, da beide auf `sales` schreiben und ein Klick auf
+"Fertig" während laufendem "+ Produkt hinzufügen" sonst ebenfalls hätte
+kollidieren können), `offerExtraAction()`s Zusatzaktions-Buttons (bekamen
+zusätzlich die schon an anderer Stelle etablierte Energie-Sperre
+`refreshActionGridEnergyState()`, vorher blieben sie bei leerer
+Tagesenergie klickbar) — alle live per simultanem Doppelklick verifiziert
+(nur 1 statt 2 Schreibvorgänge). Ein von einem Agenten selbst als "nicht
+risikofrei" eingestufter Merge-Vorschlag (zwei sequenzielle
+`contacts`-Updates in `moveKanbanCard()`/`recordWinOrLoss()`
+zusammenlegen) wurde bewusst NICHT umgesetzt.
+
+Kein SQL nötig, alle Fixes rein clientseitig, Commit `f348a3f`. **Kanban
+(Häppchen 11a+11b) damit komplett fertig.** Stand nach diesem Häppchen:
+11 von 12 fertig, 50 echte Bugs insgesamt, keine offenen SQL-Fixes.
+Letztes offenes Häppchen: 12 (Produkte, Einstellungen, Sicherheitswarnungen,
+Fehlerprotokoll, Notfallzugriff, Seitennavigation).
+
 ## Zeitzonen-Inkonsistenz `dateKeyLocal()` vs. `todayKey()`, vollständig behoben (2026-08-21)
 
 Löst den seit dem Code-Review-Durchgang vom 2026-08-20 bekannten, damals
