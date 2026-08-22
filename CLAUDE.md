@@ -81,15 +81,14 @@ begründen (Business/Motivation-Engine-Trennung, PvE, Gilden-Größe, SDT).
   Prüfen, VS-Code-Erweiterung "ESLint" zeigt Warnungen live beim Tippen an.
   Absichtlich schlanker Regelsatz bisher (nur `no-unused-vars`/`no-undef`) —
   erst bei echtem Bedarf erweitern, nicht vorab.
-- **Radius-/Schatten-System** (seit 2026-08-02): einheitliche CSS-Variablen im
-  `:root`-Block von `index.html` statt roher Werte — `--radius-xs/sm/md/lg/pill`
+- **Radius-/Schatten-System**: einheitliche CSS-Variablen im `:root`-Block
+  von `index.html` statt roher Werte — `--radius-xs/sm/md/lg/pill`
   (4/8/12/14/999px, nach Element-Größe: kleine Bedienelemente=sm,
   Karten/Kacheln=md, große Container/Panels=lg) und `--shadow-rest`/
   `--shadow-raised` (dezenter Schatten im Ruhezustand auf Panels/Karten,
-  kräftigerer beim Hover auf klickbaren Kacheln). Vorher liefen `border-radius`
-  auf 9 verschiedenen unsystematischen Werten und Schatten fast nirgends außer
-  bei den Dungeon-Kacheln. **Neue UI-Elemente sollten diese Variablen
-  weiterverwenden statt neue Radius-/Schatten-Werte zu erfinden.**
+  kräftigerer beim Hover auf klickbaren Kacheln). **Neue UI-Elemente sollten
+  diese Variablen weiterverwenden statt neue Radius-/Schatten-Werte zu
+  erfinden.**
 - **Visuelle Prüfung durch Claude Code** (seit 2026-08-02): Playwright +
   Chromium liegen portabel unter `~/.local/share/playwright-portable`
   (eigenes kleines `npm`-Projekt dort, nicht Teil des Repos/`package.json`
@@ -116,15 +115,13 @@ begründen (Business/Motivation-Engine-Trennung, PvE, Gilden-Größe, SDT).
   RLS-Testmuster mit `supabase db query --linked`. Aufruf: vorher
   `python3 -m http.server <port>` im Repo-Ordner starten, dann
   `node regression_suite.mjs <port>`.
-  **Geplante Erweiterung, angestoßen 2026-08-20, noch NICHT umgesetzt:**
-  Nutzerfrage "hast du alle Funktionen getestet, oder nur die von heute"
-  machte den aktuellen Umfang (nur die drei o.g. Kernpfade) sichtbar zu
-  schmal, besonders wenn eine Änderung an zentralen, überall
-  mitgenutzten Stellen ansetzt (z.B. `showPage()`/`routeToHash()`/
-  `initJournal()`, wie beim Aufgaben-System-Umbau am selben Tag). Nutzer
-  möchte die Suite künftig auf die ganze App ausweiten, nicht nur die
-  drei bisherigen Pfade — noch kein konkreter Umsetzungsplan, nur als
-  Vorhaben vermerkt.
+  **Geplante Erweiterung, noch NICHT umgesetzt:** der aktuelle Umfang
+  (nur die drei o.g. Kernpfade) ist zu schmal, besonders bei Änderungen
+  an zentralen, überall mitgenutzten Stellen (z.B. `showPage()`/
+  `routeToHash()`/`initJournal()`). Soll künftig auf die ganze App
+  ausgeweitet werden — noch kein konkreter Umsetzungsplan, nur als
+  Vorhaben vermerkt (siehe Erinnerung `project-roadmap-prioritaeten`,
+  Punkt Regressions-Suite).
 - **Lokales Öffnen von HTML-Dateien beim Nutzer** (seit 2026-08-02): Brave
   läuft bei ihm sandboxed (vermutlich Flatpak) — ein direkter `file://`-Zugriff
   auf den Projektordner schlägt fehl (`ERR_FILE_NOT_FOUND`), und Dateien über
@@ -138,39 +135,23 @@ begründen (Business/Motivation-Engine-Trennung, PvE, Gilden-Größe, SDT).
   Sandbox-Einschränkung komplett (Netzwerkzugriff ist uneingeschränkt) und
   lädt bei jedem Speichern automatisch neu. Das ist jetzt der Standardweg für
   den Nutzer, um lokale HTML-Dateien (Produkt oder Dummy) im Browser zu sehen.
-- **Bisheriger Workflow**: Der Nutzer hat NICHT lokal mit Git gearbeitet, sondern
-  jede neue `index.html`-Version über den GitHub-Web-Upload hochgeladen, und jeden
-  SQL-Patch manuell im Supabase SQL-Editor ausgeführt. Das ändert sich jetzt mit
-  Claude Code: Commits/Pushes laufen seit 2026-07-31 automatisch durch Claude
-  Code (ein GitHub Personal Access Token liegt im `credential.helper store` des
-  Nutzers, dadurch kein `ksshaskpass`-Problem mehr). **SQL-Patches liefen bis
-  2026-08-08 manuell** über den Supabase SQL-Editor beim Nutzer — seitdem gibt
-  es eine echte Migrations-Toolchain, siehe eigener Abschnitt
-  "Supabase-CLI-Migrationstoolchain" unten.
-- **Frontend-Framework-Frage (React/Vue/etc.), geklärt am 2026-08-03:** die
-  "eine `index.html`, kein Framework"-Linie oben war ursprünglich eine
-  praktische Zwangslage aus der Zeit vor Claude Code (Copy-Paste in GitHubs
-  Web-Upload), keine Grundsatzentscheidung — aber auch nach dieser Erkenntnis
-  gilt weiterhin "nicht vorbeugend wechseln, erst bei echtem Auslöser"
-  (Rule-of-Three-Prinzip auf Tooling übertragen). Der Nutzer wollte dabei
-  ausdrücklich **groß denken**: viele B2B-Kunden werden künftig
-  unterschiedliche Bausteine brauchen (Kanban, Kundendatenbank, Gamification,
-  Statistik, Tagebuch, Dungeon, Questbaum — manche projektorientiert ohne
-  Dungeon, manche statistiklastig ohne Kanban). **Wichtige Klarstellung, die
-  an diesem Tag herausgearbeitet wurde:** das ist eine Frage der
-  **Konfigurierbarkeit** (welche Bausteine sind je Organisation aktiv — löst
-  sich über `rule_configs`, z.B. ein `enabledModules`-Schlüssel, unabhängig
-  vom Framework) und NICHT automatisch dasselbe wie die Frage "Framework
-  oder nicht" (die betrifft nur, wie wartbar/wiederverwendbar der Code
-  innerhalb eines Bausteins ist). Ein Framework schaltet keine Module für
-  Kunde A ab und für Kunde B an — das bleibt Config-Arbeit, so oder so.
-  Baseline-Messung an diesem Tag: `index.html` 3.845 Zeilen/208 KB,
-  139 benannte Funktionen, `.contact-card`-Markup real nur an EINER Stelle
-  verwendet (Kanban/Dungeon-Liste bauen ihre Kontakt-Darstellung noch
-  separat) — also aktuell noch kein echtes Duplikations-Problem, das für
-  React sprechen würde. **Konkrete Alarmglocken-Schwellen, ab denen das
-  Framework-Thema aktiv wieder aufgegriffen werden sollte** (nicht vorher,
-  nicht von selbst):
+- **Workflow**: Commits/Pushes laufen automatisch durch Claude Code (ein
+  GitHub Personal Access Token liegt im `credential.helper store` des
+  Nutzers). SQL-Schema-Änderungen laufen über die echte Migrations-
+  Toolchain, siehe eigener Abschnitt "Supabase-CLI-Migrationstoolchain"
+  unten (Details zum davor genutzten manuellen Workflow: HISTORY.md).
+- **Frontend-Framework-Frage (React/Vue/etc.):** die "eine `index.html`,
+  kein Framework"-Linie ist eine bewusste Entscheidung nach dem
+  Rule-of-Three-Prinzip ("nicht vorbeugend wechseln, erst bei echtem
+  Auslöser"), keine technische Zwangslage. **Wichtige Klarstellung:**
+  Konfigurierbarkeit (welche Bausteine sind je Organisation aktiv — löst
+  sich über `rule_configs`, z.B. ein `enabledModules`-Schlüssel) und die
+  Frage "Framework oder nicht" (betrifft nur, wie wartbar/wiederverwendbar
+  der Code innerhalb eines Bausteins ist) sind zwei unabhängige Fragen —
+  ein Framework schaltet keine Module für Kunde A ab und für Kunde B an,
+  das bleibt so oder so Config-Arbeit. **Konkrete Alarmglocken-Schwellen,
+  ab denen das Framework-Thema aktiv wieder aufgegriffen werden sollte**
+  (nicht vorher, nicht von selbst; Entstehung/Baseline-Messung: HISTORY.md):
   1. Der `<script>`-Block nähert sich **~8.000–10.000 Zeilen**.
   2. Dieselbe Karten-/Listen-Darstellung (Kontakt-Karte, Dungeon-Karte, o.ä.)
      wird über **3 oder mehr** `render*`-Funktionen hinweg kopiert statt an
@@ -186,12 +167,9 @@ begründen (Business/Motivation-Engine-Trennung, PvE, Gilden-Größe, SDT).
 
 ## Technische Skalierungs-Schwellen ("Enterprise"-Infrastruktur)
 
-Festgelegt am 2026-08-04, auf ausdrücklichen Nutzerwunsch, nach einer
-Diskussion über einen "Vibe Coding"-Kritik-Post (Buzzword-Liste:
-Kubernetes, Docker, S3, SQS, CI/CD, Terraform, Rate Limiting, Load
-Balancer, High Availability, RPC, u.a.). Ziel: dasselbe Prinzip wie bei der
-Frontend-Framework-Schwelle oben (konkrete, prüfbare Auslöser statt
-vagem "irgendwann später") auch auf die übrige Infrastruktur ausweiten.
+Dasselbe Prinzip wie bei der Frontend-Framework-Schwelle oben (konkrete,
+prüfbare Auslöser statt vagem "irgendwann später"), angewendet auf die
+übrige Infrastruktur (Entstehung: HISTORY.md).
 **Aktueller Stand bewusst: fast nichts davon ist gebaut, und das ist
 richtig so** — Supabase/GitHub Pages übernehmen Server-Betrieb, Skalierung,
 Firewall, Storage (S3-kompatibel) bereits managed. Nicht vorbeugend bauen,
@@ -262,27 +240,18 @@ Diese Liste ist absichtlich nicht abschließend — ein neues Thema verdient
 erst dann eine eigene Schwelle, wenn es wichtig genug wird, statt vage
 "später" zu bleiben.
 
-## Datenbank — aktueller Stand (Annahme: Patch 1–25 eingespielt)
+## Datenbank — aktueller Stand
 
-**Wenn das nicht stimmt, sofort korrigieren, bevor irgendetwas gebaut wird** — sonst
-versucht Claude Code eventuell, Dinge doppelt anzulegen oder Migrationen in falscher
-Reihenfolge zu bauen. Patch 24 (`patch24_profil_onboarding.sql`,
-`real_name`/`gender`/`company`) und Patch 25 (`patch25_aussehen.sql`,
-`skin_tone`/`hair_style`) wurden vom Nutzer am 2026-08-02 im Supabase
-SQL-Editor ausgeführt.
-
-**Wichtig zu Patch 25:** die Datenbank-Spalten `profiles.skin_tone`/`hair_style`
-existieren seit 2026-08-02 live; der zugehörige Screen ("Aussehen", siehe
-unten) wurde seit 2026-08-03 ins echte `index.html` übertragen und schreibt
-seitdem auch tatsächlich hinein. **SQL-Patches werden künftig erst nach
-explizitem Go von Claude Code ausgeführt** (nicht mehr sobald die Datei
-existiert) — siehe Absprache vom 2026-08-02.
-
-Alle SQL-Patches liegen im Ordner `sql/` (chronologisch benannt, `schema.sql` +
-`patch.sql` sind die ursprüngliche Basis, danach `patch2_...` bis `patch24_...`).
-Sie wurden bisher **einzeln, nacheinander, manuell** im Supabase SQL-Editor
-ausgeführt — nicht über eine Migrations-Toolchain. `PATCH_LOG.md` listet die
-genaue Reihenfolge und was jeder Patch bewirkt.
+**Falls der unten beschriebene Zustand nicht mit der echten DB übereinstimmt,
+sofort korrigieren, bevor irgendetwas gebaut wird** — sonst versucht Claude
+Code eventuell, Dinge doppelt anzulegen oder Migrationen in falscher
+Reihenfolge zu bauen. Aktuelle Schema-Änderungen laufen über
+`supabase/migrations/` (siehe "Supabase-CLI-Migrationstoolchain" unten,
+`supabase migration list --linked` zeigt den echten Stand). Die alten
+`sql/patchN_....sql`-Dateien + `PATCH_LOG.md` sind ein eingefrorenes
+Archiv der ursprünglichen, manuellen Patches 1–39 — nicht mehr der
+aktive Ablageort für Neues (Entstehungsgeschichte des alten Workflows:
+HISTORY.md).
 
 Seit Patch 17/17b gibt es außerdem: eine zentrale `error_log`-Tabelle (jeder
 fehlgeschlagene Datenbank-Aufruf im Frontend wird dort protokolliert, sichtbar
@@ -452,49 +421,21 @@ Funktionen benutzen statt eigene Fehlerbehandlung zu erfinden.**
   "erledigt"-Zustand** — Abhaken löscht die Zeile direkt, bewusst anders
   als der Rest des Projekts (kein `done_at`-Feld).
 
-### Supabase-CLI-Migrationstoolchain, seit 2026-08-08
+### Supabase-CLI-Migrationstoolchain
 
-Löst das in CLAUDE.md selbst lange angekündigte Ziel ein ("dieses Muster
-[nummerierte SQL-Dateien + manueller SQL-Editor] beibehalten, bis eine
-echte Migrations-Toolchain eingeführt wird") — auf Nutzerwunsch
-eingerichtet, nachdem die Dashboard-Warnung `42P01: relation
-"supabase_migrations.schema_migrations" does not exist` den Anstoß gab.
+Supabase-CLI liegt als normale Dev-Abhängigkeit im `package.json`
+(`npm install` holt sie automatisch mit). Projekt ist per `supabase
+link --project-ref aaqbbkcghxldsbhqwcyh` verknüpft, Login-Zugang liegt
+lokal beim Nutzer (kein Token je durch den Chat geschickt).
 
-**Setup:** Supabase-CLI liegt als normale Dev-Abhängigkeit im
-`package.json` (`npm install` holt sie automatisch mit, wie ESLint —
-bewusst NICHT wie Playwright als separates portables Tool außerhalb des
-Repos, weil dies echtes Projekt-Werkzeug ist, kein reines
-Claude-Code-Testwerkzeug). Projekt ist per `supabase link --project-ref
-aaqbbkcghxldsbhqwcyh` verknüpft. Login lief einmalig über `supabase
-login` im echten Terminal des Nutzers (öffnet Browser-OAuth) — der
-dabei lokal gespeicherte Zugang wird von der Claude-Code-Sandbox
-automatisch mitverwendet (gleiches Benutzerkonto, gleiches `$HOME`),
-kein Token wurde je durch den Chat geschickt.
+**Wichtige technische Einschränkung:** `supabase db pull`/`db diff`
+brauchen im Hintergrund Docker (lokale Schatten-Datenbank zum Diffen) —
+in der Claude-Code-Sandbox nicht erreichbar, nur im echten Terminal des
+Nutzers möglich. **`supabase db push` braucht dagegen KEIN Docker** (nur
+eine direkte Postgres-Verbindung) — funktioniert deshalb direkt aus der
+Sandbox heraus. Entstehungsgeschichte/Baseline-Migration: HISTORY.md.
 
-**Baseline:** der komplette bisherige DB-Stand (20 Tabellen, entspricht
-Patch 1–39) wurde per `supabase db pull` einmalig als erste Migration
-eingefroren (`supabase/migrations/20260808145403_remote_schema.sql`),
-danach die Frage "Update remote migration history table?" mit Ja
-bestätigt — das trägt in der bisher fehlenden
-`supabase_migrations.schema_migrations`-Tabelle nur einen Vermerk
-"dieser Stand ist bereits abgedeckt" ein, ändert keine echten Daten.
-Behebt nebenbei die eingangs erwähnte Dashboard-Warnung.
-
-**Wichtiger technischer Stolperstein:** `supabase db pull`/`db diff`
-brauchen im Hintergrund Docker (lokale Schatten-Datenbank zum
-Diffen) — das ist in der Claude-Code-Sandbox (VS-Code-Flatpak) nicht
-erreichbar, selbst wenn Docker/Podman auf dem eigentlichen System
-läuft (gleiche Einschränkung wie beim `flatpak`-Befehl selbst). Der
-Nutzer hat deshalb den einmaligen `db pull` in seinem eigenen echten
-Terminal ausgeführt, dort ist Docker vorhanden (Docker 29.6.2 UND
-Podman 5.8.4 laut Nutzer-Check).
-**`supabase db push` braucht dagegen KEIN Docker** (nur eine direkte
-Postgres-Verbindung, keine lokale Diff-Datenbank) — funktioniert
-deshalb direkt aus der Claude-Code-Sandbox heraus, per Testmigration
-verifiziert (`20260808150221_claude_push_test.sql`, folgenlos, nur
-`SELECT 1`).
-
-**Neuer Workflow für künftige Schema-Änderungen:**
+**Workflow für Schema-Änderungen:**
 `supabase migration new <name>` legt eine zeitgestempelte Datei unter
 `supabase/migrations/` an (ersetzt `sql/patchN_....sql` als Ablageort
 für alles Neue — die alten `sql/`-Dateien + `PATCH_LOG.md` bleiben als
@@ -542,19 +483,14 @@ vom Plan). Dieser Absatz ist der Beleg dafür, kein technischer Auftrag.
   kalibrieren** — Methode: wöchentliches XP-Budget aus angenommener
   Aktivität hochrechnen, `levelBase` so wählen, dass die Summe aller
   Level-Schwellen 1–99 dem 10-Jahres-Gesamt-XP entspricht.
-- **Größte bisherige Neukalibrierung (Patch 50, 2026-08-17):** alle
-  76 Questbaum-Stufen + 11 Epics bekamen ein `bonus`-Feld, gleichzeitig
-  wurde klargestellt, dass Questbaum-Stufen **Jahresquests** sind
-  (Geschäftsjahr = Kalenderjahr, siehe eigener Abschnitt
-  "Questbaum: Jahres-Reset..." unten) — dieselbe Stufe ist damit pro Jahr
-  einmal, aber über mehrere Jahre hinweg mehrfach verdienbar. Weil das
-  reale zusätzliche Lebenszeit-XP bedeutet (nicht nur eine Verschiebung
-  wie bei der Krankenhaus-Meister-Migration), stieg `levelBase` von 4,70
-  auf 5,80 (+23,3% Gesamt-XP bis Level 100: 185.656→228.876). Methodik-
-  Detail: pro Stufe wurde geschätzt, in wie vielen der 10 Jahre eine
-  konstant gute Person sie realistisch erreicht (Einstiegsstufe ~9-10/10,
-  Top-Stufe ~1-2/10), diese erwarteten Lebenszeit-Summen wurden zur
-  Gesamt-Zielsumme addiert, dann `levelBase` neu gelöst.
+- **Größte bisherige Neukalibrierung (Patch 50):** alle 76 Questbaum-
+  Stufen + 11 Epics bekamen ein `bonus`-Feld, gleichzeitig wurde
+  klargestellt, dass Questbaum-Stufen **Jahresquests** sind
+  (Geschäftsjahr = Kalenderjahr, siehe "Questbaum: Jahres-Reset..."
+  unten) — dieselbe Stufe ist damit pro Jahr einmal, aber über mehrere
+  Jahre hinweg mehrfach verdienbar. `levelBase` stieg deshalb von 4,70
+  auf 5,80 (+23,3% Gesamt-XP bis Level 100). Volle Methodik als
+  Rechenbeispiel: HISTORY.md.
 - Ein neuer Mechanismus (Patch 12): **Konversions-Bonus/-Malus** — Termin
   wahrgenommen gibt zusätzlich +5 XP (Bestätigung guter Ansprache), Termin
   NICHT wahrgenommen gibt −2 XP. **Dieser Mechanismus hängt an einem Kanban,
@@ -1193,7 +1129,7 @@ erreicht).
    oben (RLS statt Geheimhaltung). Diese Architektur hat strukturell gar
    keinen Ort für ein verstecktes Backend-Geheimnis.
 2. **XSS-Escaping-Lücke, echt und verbreitet gefunden und behoben:**
-   `escHtml()` (Helferfunktion ganz oben im Skript) wurde an sehr vielen
+   `escHtml()` (zentrale Escaping-Helferfunktion) wurde an sehr vielen
    Stellen, an denen Datenbank-Text per `innerHTML` gerendert wird, schlicht
    vergessen — betraf u.a. den zentralen `field()`-Helfer in der
    Kontaktdetail-Ansicht (Telefon/E-Mail/Wohnort/Bedarf-Ist/-Wunsch/Notizen
