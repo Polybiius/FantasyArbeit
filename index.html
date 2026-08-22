@@ -6092,12 +6092,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     grid.innerHTML = entries.map(([key,a])=>
       `<button class="abtn" data-contactaction="${key}">${a.label}<span class="xp">${fmtXp(a.xp)} XP · ${a.energy} Energie</span></button>`
     ).join('');
+    refreshActionGridEnergyState(grid, 'contactaction');
     grid.querySelectorAll('[data-contactaction]').forEach(btn=>{
       btn.addEventListener('click', ()=>{
         grid.querySelectorAll('[data-contactaction]').forEach(b=>b.disabled=true);
-        logActionForContact(btn.dataset.contactaction, contact).finally(()=>{
-          grid.querySelectorAll('[data-contactaction]').forEach(b=>b.disabled=false);
-        });
+        logActionForContact(btn.dataset.contactaction, contact).finally(()=> refreshActionGridEnergyState(grid, 'contactaction'));
       });
     });
     document.getElementById('locActionModal').style.display='flex';
@@ -6717,39 +6716,52 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   let dungeonMapInitialized = false;
   let dungeonMarkers = [];
 
+  // Kartenerzeugung (dungeonMapInitialized-Guard) und Datenstand (Standorte
+  // + Account-Pool) sind bewusst getrennt: die Karte selbst darf nur einmal
+  // pro Sitzung entstehen, der Datenstand soll aber bei JEDEM Besuch der
+  // Seite frisch geladen werden (vorher blieb er beim zweiten Besuch auf
+  // dem Stand des ersten Aufrufs stehen, siehe Bugfix-Durchgang Häppchen 8).
   async function ensureDungeonMap(){
-    if(dungeonMapInitialized) return;
-    dungeonMapInitialized = true;
+    if(!dungeonMapInitialized){
+      dungeonMapInitialized = true;
 
-    dungeonMap = L.map('dungeonMap').setView([51.1657, 10.4515], 6); // Mitte Deutschlands als Start
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OpenStreetMap &copy; CARTO',
-      maxZoom: 19
-    }).addTo(dungeonMap);
+      dungeonMap = L.map('dungeonMap').setView([51.1657, 10.4515], 6); // Mitte Deutschlands als Start
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OpenStreetMap &copy; CARTO',
+        maxZoom: 19
+      }).addTo(dungeonMap);
 
-    const typeSelect = document.getElementById('locTypeSelect');
-    const types = config.locationTypes || {};
-    typeSelect.innerHTML = Object.entries(types).map(([key,t])=>`<option value="${key}">${t.icon} ${t.label}</option>`).join('');
+      const typeSelect = document.getElementById('locTypeSelect');
+      const types = config.locationTypes || {};
+      typeSelect.innerHTML = Object.entries(types).map(([key,t])=>`<option value="${key}">${t.icon} ${t.label}</option>`).join('');
 
-    if(profile.role==='admin'){
-      document.getElementById('dungeonAddRow').style.display='flex';
-      document.getElementById('accountPoolCard').style.display='block';
-      await renderAccountPool();
+      if(profile.role==='admin'){
+        document.getElementById('dungeonAddRow').style.display='flex';
+        document.getElementById('accountPoolCard').style.display='block';
+      }
     }
 
-    await loadAndRenderLocations();
+    await refreshDungeonData();
     setTimeout(()=> dungeonMap.invalidateSize(), 200);
   }
 
-  async function renderAccountPool(){
+  // Lädt Standorte + (für Admins) den Account-Pool neu -- gemeinsamer
+  // Helfer statt zweier unabhängiger locations-Abfragen (loadAndRenderLocations
+  // liest ohnehin schon alle Spalten inkl. owner_id, renderAccountPool nutzt
+  // dieselben Zeilen weiter statt sie ein zweites Mal zu holen).
+  async function refreshDungeonData(){
+    const locs = await loadAndRenderLocations();
+    if(profile.role==='admin') await renderAccountPool(locs);
+  }
+
+  async function renderAccountPool(locs){
     const listEl = document.getElementById('accountPoolList');
-    const { data: locs, error } = await sb.from('locations').select('id,name,owner_id').eq('org_id', profile.org_id).order('name');
-    if(error) logSilentError('Account-Pool laden', error);
     const { data: members, error: memErr } = await sb.from('profiles').select('id,display_name').eq('org_id', profile.org_id);
     if(memErr) logSilentError('Team-Mitglieder laden', memErr);
     if(!locs || locs.length===0){ listEl.innerHTML = '<div class="empty-page-hint">Noch keine Accounts angelegt.</div>'; return; }
+    const sortedLocs = [...locs].sort((a,b)=>a.name.localeCompare(b.name));
     const memberOptions = (members||[]).map(m=>`<option value="${m.id}">${escHtml(m.display_name)}</option>`).join('');
-    listEl.innerHTML = locs.map(l=>`
+    listEl.innerHTML = sortedLocs.map(l=>`
       <div class="account-row">
         <span>${escHtml(l.name)}</span>
         <select data-assign="${l.id}">
@@ -6787,15 +6799,18 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(locations && locations.length>0){
       dungeonMap.fitBounds(locations.map(l=>[l.lat,l.lng]), { padding:[40,40], maxZoom:12 });
     }
+    return locations || [];
   }
 
-  document.getElementById('locAddBtn').addEventListener('click', async ()=>{
+  document.getElementById('locAddBtn').addEventListener('click', async (e)=>{
+    const btn = e.currentTarget;
     const name = document.getElementById('locNameInput').value.trim();
     const address = document.getElementById('locAddressInput').value.trim();
     const type = document.getElementById('locTypeSelect').value;
     const statusEl = document.getElementById('dungeonAddStatus');
     if(!name || !address){ statusEl.textContent = 'Bitte Name und Adresse eingeben.'; return; }
     statusEl.textContent = 'Suche Koordinaten …';
+    btn.disabled = true;
     try{
       const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(address)}`);
       const results = await res.json();
@@ -6810,10 +6825,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       document.getElementById('locNameInput').value = '';
       document.getElementById('locAddressInput').value = '';
       statusEl.textContent = `"${name}" wurde hinzugefügt.`;
-      await loadAndRenderLocations();
-      if(profile.role==='admin') await renderAccountPool();
+      await refreshDungeonData();
     }catch(err){
       statusEl.textContent = 'Fehler bei der Adresssuche: '+err.message;
+    }finally{
+      btn.disabled = false;
     }
   });
 
@@ -6823,6 +6839,23 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // über den Kontakt-Aktionsdialog (CONTACT_RELEVANT_ACTIONS) bzw. das
   // Kanban, nicht mehr hier.
   const DUNGEON_RELEVANT_ACTIONS = ['ansprache','termin_vereinbart','gruppentermin','boss'];
+
+  // Setzt den Energie-Sperrzustand aller Aktions-Buttons in einem
+  // Handlungsraster neu (gleiches .abtn:disabled-Muster wie im Haupt-
+  // Aktionsraster, render() weiter oben) -- von openLocationActionModal UND
+  // openContactActionModal genutzt, die sich beide dasselbe locActionModal
+  // teilen. Ohne das blieben beide Button-Sätze bei leerer Tagesenergie
+  // klickbar (der globale Disable-Loop in render() greift nur bei
+  // data-action, nicht bei data-locaction/data-contactaction) -- ein Klick
+  // wurde von logActionAtLocation()/logActionForContact() zwar serverseitig
+  // abgelehnt, aber komplett ohne Rückmeldung.
+  function refreshActionGridEnergyState(grid, dataAttr){
+    const remaining = config.energyMax - energyUsedToday();
+    grid.querySelectorAll(`[data-${dataAttr}]`).forEach(btn=>{
+      const a = config.actions[btn.dataset[dataAttr]];
+      btn.disabled = a ? a.energy > remaining : false;
+    });
+  }
 
   function openLocationActionModal(loc){
     document.getElementById('locModalTitle').textContent = loc.name;
@@ -6834,8 +6867,16 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       const bossIcon = key==='boss' ? '🐲 ' : '';
       return `<button class="abtn${bossClass}" data-locaction="${key}">${bossIcon}${a.label}<span class="xp">${fmtXp(a.xp)} XP · ${a.energy} Energie</span></button>`;
     }).join('');
+    refreshActionGridEnergyState(grid, 'locaction');
     grid.querySelectorAll('[data-locaction]').forEach(btn=>{
-      btn.addEventListener('click', ()=> logActionAtLocation(btn.dataset.locaction, loc));
+      // Doppelklick-Schutz: das ganze Raster sperren, bis logActionAtLocation()
+      // fertig ist -- sonst kann ein zweiter Klick während des laufenden
+      // RPC-Aufrufs denselben, noch nicht im lokalen log-Array
+      // aufgetauchten Energiestand sehen und die Aktion doppelt buchen.
+      btn.addEventListener('click', ()=>{
+        grid.querySelectorAll('[data-locaction]').forEach(b=>b.disabled=true);
+        logActionAtLocation(btn.dataset.locaction, loc).finally(()=> refreshActionGridEnergyState(grid, 'locaction'));
+      });
     });
     document.getElementById('locActionModal').style.display='flex';
   }
@@ -6899,36 +6940,62 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         const datum = datumEl.value;
         if(!vorname && !nachname){ statusEl.textContent = 'Bitte Vor- oder Nachname eingeben.'; return; }
         if(!datum){ statusEl.textContent = 'Bitte Datum des Ersttermins eingeben.'; return; }
-        const { data: contact, error: cErr } = await sb.from('contacts').insert({
-          org_id:profile.org_id, owner_id:profile.id, vorname, nachname,
-          location_id: loc.id, kanban_stage:'ersttermin_vereinbart', naechster_kontakt: datum
-        }).select().single();
-        if(cErr){ reportError('Kontakt anlegen', cErr, statusEl); return; }
-        await syncWiedervorlageTask(contact.id, contact.name, contact.naechster_kontakt);
-        await logKanbanAction(contact, 'termin_vereinbart', terminLeadKanal ? {kanal:terminLeadKanal} : null);
-        await insertTermineIfTimeGiven(contact, 'Ersttermin', datum, startEl.value, endeEl.value, terminLeadKanal);
-        await renderContactsPage();
-        finish();
+        // Vor dem Anlegen des Kontakts prüfen, nicht erst danach -- sonst
+        // würde bei ungültiger Zeitspanne trotzdem "hinzugefügt" gemeldet
+        // und der Kontakt/Kanban-Übergang fertig gebucht, nur der eigentlich
+        // gewünschte Kalendertermin würde (ohne jede Rückmeldung) fehlen.
+        if(computeTerminRange(datum, startEl.value, endeEl.value)==='invalid'){
+          statusEl.textContent = 'Ende muss nach dem Start liegen.'; return;
+        }
+        saveBtn.disabled = true;
+        try{
+          const { data: contact, error: cErr } = await sb.from('contacts').insert({
+            org_id:profile.org_id, owner_id:profile.id, vorname, nachname,
+            location_id: loc.id, kanban_stage:'ersttermin_vereinbart', naechster_kontakt: datum
+          }).select().single();
+          if(cErr){ reportError('Kontakt anlegen', cErr, statusEl); return; }
+          await syncWiedervorlageTask(contact.id, contact.name, contact.naechster_kontakt);
+          await logKanbanAction(contact, 'termin_vereinbart', terminLeadKanal ? {kanal:terminLeadKanal} : null);
+          await insertTermineIfTimeGiven(contact, 'Ersttermin', datum, startEl.value, endeEl.value, terminLeadKanal);
+          await renderContactsPage();
+          finish();
+        }finally{
+          saveBtn.disabled = false;
+        }
       };
       closeBtn.onclick = finish;
     });
   }
 
-  // Wird von createLeadAndLogTerminVereinbart genutzt — Zeit ist optional
-  // (überspringbar), nur wenn Start UND Ende ausgefüllt sind, entsteht ein
-  // Kalendertermin. Ohne Zeit bleibt nur das Datum wie bisher an
-  // contacts.naechster_kontakt hängen.
-  async function insertTermineIfTimeGiven(contact, label, datum, startStr, endeStr, kanal){
-    if(!datum || !startStr || !endeStr) return;
+  // Baut aus Datum+Uhrzeiten den UTC-Zeitraum eines Termins -- gemeinsam von
+  // insertTermineIfTimeGiven() und promptKanbanTermin() genutzt, statt die
+  // Umrechnung/Validierung an beiden Stellen unabhängig zu pflegen. Gibt
+  // `null` zurück, wenn die Zeit bewusst übersprungen wurde (Start/Ende
+  // leer -- kein Fehler), `'invalid'` bei einer Endzeit vor/gleich der
+  // Startzeit, sonst `{startAt, endAt}`.
+  function computeTerminRange(datum, startStr, endeStr){
+    if(!datum || !startStr || !endeStr) return null;
     const [y,m,d] = datum.split('-').map(Number);
     const [sh,sm] = startStr.split(':').map(Number);
     const [eh,em] = endeStr.split(':').map(Number);
     const startAt = zonedTimeToUtc(y, m, d, sh, sm, tz());
     const endAt = zonedTimeToUtc(y, m, d, eh, em, tz());
-    if(endAt<=startAt) return;
+    if(endAt<=startAt) return 'invalid';
+    return { startAt, endAt };
+  }
+
+  // Wird von createLeadAndLogTerminVereinbart genutzt — Zeit ist optional
+  // (überspringbar), nur wenn Start UND Ende ausgefüllt sind, entsteht ein
+  // Kalendertermin. Ohne Zeit bleibt nur das Datum wie bisher an
+  // contacts.naechster_kontakt hängen. Ungültige Zeitspannen werden bereits
+  // vom Aufrufer vor dem Anlegen des Kontakts abgefangen (siehe oben) --
+  // hier bleibt es defensiv beim stillen Überspringen.
+  async function insertTermineIfTimeGiven(contact, label, datum, startStr, endeStr, kanal){
+    const range = computeTerminRange(datum, startStr, endeStr);
+    if(!range || range==='invalid') return;
     const { error } = await sb.from('termine').insert({
       org_id:profile.org_id, owner_id:profile.id, contact_id:contact.id,
-      title:`${label}: ${contact.name}`, start_at:startAt.toISOString(), end_at:endAt.toISOString(), kanal:kanal||null
+      title:`${label}: ${contact.name}`, start_at:range.startAt.toISOString(), end_at:range.endAt.toISOString(), kanal:kanal||null
     });
     if(error) logSilentError('Termin aus Kanban speichern', error);
   }
@@ -6962,18 +7029,19 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       saveBtn.onclick = async ()=>{
         const datum = datumEl.value;
         if(!datum || !startEl.value || !endeEl.value){ statusEl.textContent = 'Bitte Datum, Start- und Endzeit eingeben.'; return; }
-        const [y,m,d] = datum.split('-').map(Number);
-        const [sh,sm] = startEl.value.split(':').map(Number);
-        const [eh,em] = endeEl.value.split(':').map(Number);
-        const startAt = zonedTimeToUtc(y, m, d, sh, sm, tz());
-        const endAt = zonedTimeToUtc(y, m, d, eh, em, tz());
-        if(endAt<=startAt){ statusEl.textContent = 'Ende muss nach dem Start liegen.'; return; }
-        const { error } = await sb.from('termine').insert({
-          org_id:profile.org_id, owner_id:profile.id, contact_id:contact.id,
-          title:`${label}: ${contact.name}`, start_at:startAt.toISOString(), end_at:endAt.toISOString(), kanal:kanbanTerminKanal||null
-        });
-        if(error){ reportError('Termin speichern', error, statusEl); return; }
-        finish();
+        const range = computeTerminRange(datum, startEl.value, endeEl.value);
+        if(range==='invalid'){ statusEl.textContent = 'Ende muss nach dem Start liegen.'; return; }
+        saveBtn.disabled = true;
+        try{
+          const { error } = await sb.from('termine').insert({
+            org_id:profile.org_id, owner_id:profile.id, contact_id:contact.id,
+            title:`${label}: ${contact.name}`, start_at:range.startAt.toISOString(), end_at:range.endAt.toISOString(), kanal:kanbanTerminKanal||null
+          });
+          if(error){ reportError('Termin speichern', error, statusEl); return; }
+          finish();
+        }finally{
+          saveBtn.disabled = false;
+        }
       };
       closeBtn.onclick = finish;
     });

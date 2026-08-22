@@ -4222,6 +4222,158 @@ zusätzlich gepushte `products_provision_mode_check`-Migration (Fund 1
 oben) wurde im selben Zug per Nutzer-Go angewendet, Commit `e6d5f4b`
 (nachträglich, war zunächst nur gepusht, nicht committet — nachgeholt).
 
+**Häppchen 6b-1 (Kontakte-Kernseite, Grundgerüst-Hälfte, Commit `43d15dd`,
+2026-08-21) — Zeilen 5291-5695:** vier echte Bugs: Stored-XSS in
+`searchLocationSuggestions()` (Betriebs-Suchtext floss ungeescapt in
+`innerHTML`, `escHtml()` fehlte genau in der Zeile direkt unter einer
+Nachbarzeile, die es korrekt macht); `jumpToJournalDay()` ließ
+`calFocusDate`/den Kalender-Hash unangetastet, brach damit das seit dem
+"Dritter Nachtrag" (siehe Aufgaben-System-Abschnitt oben) etablierte
+Navigations-Muster; `openContactPage()` hatte keinen Staleness-Guard nach
+dem asynchronen `loadContactsBundle()` — eine schnelle Doppelnavigation
+zwischen zwei Kontakten konnte Anzeige/Edit-Buttons auf den falschen
+Kontakt binden; aktiver Detail-Reiter (Chronik/Dateien/Tagebucheintrag)
+sprang bei jedem Refresh der Kontaktseite zurück auf "Übersicht",
+entgegen der am Refresh-Aufruf dokumentierten Absicht — neue Variable
+`currentContactDetailTab` merkt sich den zuletzt gewählten Reiter, wird
+nur bei echtem Kontaktwechsel auf "Übersicht" zurückgesetzt. Dazu ein
+Listener-Stacking-Fund (`initContactFormToggle()`/
+`initContactLocationAutocomplete()` bei jedem `initContacts()`-Aufruf,
+erreichbar über den Admin-Debug-Knopf "Neu erschaffen") und drei
+Effizienzfunde (`loadContactsBundle()` per `Promise.all`, doppelte
+`contact_files`-Zählabfrage entfernt, `betriebCreateBtn`-Doppelklick-
+Schutz).
+
+**Häppchen 6b-2 (Kontakte-Kernseite, Tabs/Bearbeiten/Aktionsdialog-
+Hälfte, Commit `55b712f`, 2026-08-21) — Zeilen 5702-6138:** fünf echte
+Bugs: derselbe Stored-XSS-Fehltyp beim Produktnamen (`products.name`) an
+zwei Stellen (Verträge-Zone, Chronik-Verkaufszeilen); `logActionForContact()`/
+`openContactActionModal()` hatten keinen Doppelklick-Schutz — ein
+schneller Doppelklick konnte die Tages-Energie-Prüfung umgehen (beide
+Klicks lasen denselben, noch nicht aktualisierten `log`-Array-Stand) und
+dieselbe Aktion doppelt loggen, per Playwright bestätigt behoben
+(Energie sank nach Doppelklick nur um den einfachen Wert); `contactAddBtn`
+hatte denselben fehlenden Schutz, konnte bei Neuanlage zwei identische
+Kontakte erzeugen; Formular-Reset nach dem Speichern vergaß drei
+Auswahlfelder (Rolle/Status/Kanban-Stufe) — nach einer Bearbeitung
+blieben deren Werte stehen und flossen unbemerkt in den nächsten neu
+angelegten Kontakt; toter Copy-Paste-Rest (`bossClass`/`bossIcon`, nie
+erreichbar) entfernt. Effizienz: dreifach duplizierter "Kontaktliste +
+Detailseite neu rendern"-Ablauf zu einem gemeinsamen
+`refreshContactsAndDetail()`-Helfer zusammengefasst (läuft seitdem
+parallel statt sequenziell, an mehreren Stellen im Projekt weiter
+genutzt); Datei-Uploads bei Mehrfachauswahl laufen jetzt parallel statt
+nacheinander. **Häppchen 6 (6a+6b-1+6b-2) damit komplett fertig** — die
+gesamte Kontakte-Kernseite ist durch.
+
+**Häppchen 7 (Anruf/Email am Kontakt loggen + Gilden-Rechte-Modal,
+Commit `346fcba`, 2026-08-21) — Zeilen 6158-6668:** drei echte Bugs:
+`guildNoGuildView` (Beitrittsliste) wurde nie wieder ausgeblendet,
+sobald eine Mitgliedschaft entstand (Gilde beitreten/Einladung
+annehmen) — "Keine Gilde"-Ansicht und Mitgliedsansicht liefen dadurch
+gleichzeitig sichtbar übereinander; `activitySaveBtn` (Anruf/Email
+loggen) hatte keinen Doppelklick-Schutz — `log_action_for_self()` hat
+für normale Aktionen bewusst KEINEN serverseitigen Duplikat-Schutz (nur
+Quest-Boni haben einen), ein schneller Doppelklick konnte dieselbe
+Aktivität doppelt loggen, per Playwright über drei Testläufe hinweg
+konsistent bestätigt behoben; Reiter-Default "Mitglieder" beim Betreten
+der Gildenansicht war fälschlich an den Einmal-Listener-Guard
+(`wireGuildAreaTabsOnce`) gekoppelt und griff nach einem Verlassen+Neu-
+Beitreten derselben Sitzung nicht mehr — als eigene, bei jedem
+`loadGuildState()`-Aufruf laufende Funktion
+(`resetGuildAreaTabToMitglieder()`) herausgelöst (die konkrete
+Leave/Rejoin-Randbedingung selbst bewusst nicht live simuliert, hätte
+echte Gildenmitgliedschaft mutieren müssen). Zusätzlich
+`guildCreateBtn`/`guildRightsSaveBtn`/`joinGuild` um denselben
+Doppelklick-Schutz ergänzt. Fünf Effizienzfunde (unabhängige,
+sequenzielle Supabase-Abfragen in `initGuild()`, dem Einladung-annehmen-
+Handler, `renderJoinableGuilds()`, `searchGuildCandidates()` und
+`loadGuildState()`s Mitglieder-/Team-Ziele-Laden) auf `Promise.all`
+umgestellt. **Ein bekannter, bewusst nicht behobener Grenzfall:**
+schlägt der `contact_activities`-Insert NACH erfolgreicher XP-Buchung
+fehl, bleibt die XP-Gutschrift ohne Kompensationslogik bestehen —
+bräuchte eine neue SQL-Funktion (kombinierte RPC oder Rollback), kein
+reiner UI-Fix, daher nur dokumentiert.
+
+Alle drei Häppchen liefen nach demselben Muster (5 parallele Review-
+Agenten: Korrektheit/Effizienz/Cross-File-JS↔SQL/Zeile-für-Zeile/totes
+Verhalten, jeder Fund selbst gegen den Code verifiziert, keiner blind
+übernommen), jeweils per Playwright gegen den echten Account bestätigt,
+0 Konsolenfehler, Testdaten (soweit erzeugt) wieder aufgeräumt — Details
+und der laufende Fortschritt über alle 12 Häppchen in Claudes Erinnerung
+(`project_full_bugfix_sweep`), nicht hier dupliziert. Stand nach diesem
+Durchgang: 7 von 12 Häppchen fertig, 27 echte Bugs insgesamt gefunden
+und behoben.
+
+**Häppchen 8 (Dungeons/Karte, Leaflet, Zeilen 6715-6981) — 2026-08-22:**
+fünf echte Bugs: `locAddBtn`/`terminLeadSaveBtn`/`kanbanTerminSaveBtn`
+hatten keinen Doppelklick-Schutz (konnten doppelte Dungeons, doppelte
+Kontakte+doppeltes XP-Log+doppelte Termine bzw. doppelte Termine
+erzeugen); die Aktions-Buttons im Dungeon-Modal (`data-locaction`) UND
+im Kontakt-Aktionsdialog (`data-contactaction` — geteiltes `locActionModal`,
+derselbe Bugtyp, mitgefixt) wurden von der globalen Energie-Sperre in
+`render()` nie erfasst (die liest nur `data-action`) — bei leerer
+Tagesenergie blieben beide Button-Sätze klickbar, ein Klick wurde
+serverseitig zwar abgelehnt, aber komplett ohne Rückmeldung; die
+Lead-Anlage am Dungeon verschluckte eine ungültige Zeitspanne
+(Ende vor Start) still — der Kontakt wurde trotzdem angelegt und als
+"hinzugefügt" gemeldet, nur der gewünschte Kalendertermin fehlte
+unbemerkt (`promptKanbanTermin()` zeigte für denselben Fall dagegen
+korrekt eine Fehlermeldung). Neuer gemeinsamer Helfer
+`computeTerminRange()` (Datum+Uhrzeiten → UTC-Zeitraum, `'invalid'` bei
+Ende≤Start) läuft jetzt in beiden Termin-Funktionen statt doppelt
+gepflegter Umrechnungslogik, `refreshActionGridEnergyState()` deckt
+beide Aktionsraster-Varianten ab. Ein sechster, echter Bug betraf die
+Seite selbst: `ensureDungeonMap()` lud Standorte/Account-Pool nur beim
+allerersten Besuch der Sitzung — kehrte man zur Karte zurück, blieb der
+Stand vom ersten Aufruf stehen, auch wenn zwischenzeitlich ein neuer
+Dungeon angelegt oder ein Account umverteilt wurde. Kartenerzeugung
+(einmalig) und Datenstand (bei jedem Besuch) sind jetzt sauber getrennt
+(`refreshDungeonData()`), was nebenbei auch den vom Effizienz-Agenten
+gefundenen doppelten `locations`-Abruf behebt (`renderAccountPool()`
+bekommt die von `loadAndRenderLocations()` ohnehin schon geladenen Zeilen
+übergeben, statt sie ein zweites Mal zu holen).
+
+**Siebter Fund, SQL-seitig, wartet auf Nutzer-Go:** der Cross-File-Agent
+fand eine seit 2026-08-08 bestehende, bisher nicht dokumentierte
+RLS-Lücke bei `locations.owner_id` — die konsolidierte
+`locations_update_visible`-Policy (RLS-Performance-Härtung,
+2026-08-17) prüft in ihrer `WITH CHECK`-Klausel für Nicht-Admins nur
+`guild_id`, nicht `owner_id`. Ein Gildenführer konnte dadurch per
+direktem API-Aufruf `owner_id` eines Dungeons, den ein eigenes
+Gildenmitglied besitzt, auf einen beliebigen Wert setzen (inkl. sich
+selbst) — obwohl "Umverteilen bleibt Admin-exklusiv" (Patch 14,
+`renderAccountPool()` ist auch nur für Admins sichtbar) das explizit
+verhindern sollte. Die Lücke steckte bereits in der ursprünglichen
+`locations_update_guild_admission`-Policy vom 2026-08-08, die
+Performance-Härtung hat sie nur unverändert mit übernommen. Migration
+`supabase/migrations/20260822120000_locations_owner_tamper_schutz.sql`
+liegt bereit — gleiches "korrigieren statt ablehnen"-Muster wie
+`protect_privileged_profile_fields()` (Patch 38/47): ein
+BEFORE-UPDATE-Trigger setzt `owner_id` bei Nicht-Admins still auf den
+alten Wert zurück und protokolliert den Versuch über
+`log_security_alert()`. Per `begin`/`rollback`-Dry-Run mit zwei echten,
+guildenlosen Nicht-Admin-Testprofilen (Enerfuqi als Gildenführer, kf als
+Mitglied/Dungeon-Eigentümer) gegen die echte DB verifiziert: Kaperversuch
+wird zuverlässig zurückgesetzt UND protokolliert (auch kombiniert mit
+einer legitimen Namensänderung im selben Update — die geht durch, nur
+`owner_id` bleibt geschützt), Admin-Umverteilung bleibt unverändert
+erlaubt. **Noch nicht gepusht, wartet auf Nutzer-Go.**
+
+Fünf parallele Review-Agenten (Korrektheit/Effizienz/Cross-File-JS↔SQL/
+Zeile-für-Zeile/totes Verhalten), jeder Fund selbst verifiziert (u.a.
+Zeile-für-Zeile-Agent fand nichts Neues, Effizienz-Agent bestätigt durch
+den Datenfluss-Umbau miterledigt). Per Playwright gegen den echten
+Account verifiziert: `locations`-Netzwerkabfragen verdoppeln sich beim
+zweiten Seitenbesuch (Beweis für den Reload-Fix), Doppelklick auf einen
+Dungeon-Aktions-Button senkt die Energie nur um den einfachen Wert,
+ungültige Zeitspanne wird jetzt korrekt gemeldet UND blockiert die
+Kontaktanlage, gültiges Speichern trotz Doppelklick funktioniert normal
+und schließt das Modal, 0 Konsolenfehler, Testkontakt danach entfernt.
+Stand nach diesem Durchgang: 8 von 12 Häppchen fertig, 33 echte Bugs
+insgesamt gefunden und behoben (plus 1 SQL-Fix, der auf Go wartet).
+Nächstes Häppchen: 9 (Termin-Kalender: Wochenansicht + Serientermine).
+
 ## Zeitzonen-Inkonsistenz `dateKeyLocal()` vs. `todayKey()`, vollständig behoben (2026-08-21)
 
 Löst den seit dem Code-Review-Durchgang vom 2026-08-20 bekannten, damals
