@@ -7034,10 +7034,17 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       resetKanalSwitch('kanbanTerminKanalSwitch'); kanbanTerminKanal = null;
       modal.style.display = 'flex';
 
-      function finish(){
+      // Gibt den tatsächlich verwendeten Kanal zurück (null bei Abbruch ohne
+      // Speichern) -- der Aufrufer (moveKanbanCard) trägt ihn per
+      // attachKanalToLoggedAction() nach. Vorher wurde stattdessen das
+      // gemeinsame kanbanTerminKanal lange nach dem Schließen ausgelesen:
+      // wählte der Nutzer einen Kanal, klickte dann aber "✕" statt zu
+      // speichern, blieb der Wert stehen und wurde trotzdem einem
+      // action_log-Eintrag zugeordnet, für den nie ein Termin angelegt wurde.
+      function finish(usedKanal){
         modal.style.display = 'none';
         saveBtn.onclick = null; closeBtn.onclick = null;
-        resolve();
+        resolve(usedKanal || null);
       }
       saveBtn.onclick = async ()=>{
         const datum = datumEl.value;
@@ -7051,12 +7058,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
             title:`${label}: ${contact.name}`, start_at:range.startAt.toISOString(), end_at:range.endAt.toISOString(), kanal:kanbanTerminKanal||null
           });
           if(error){ reportError('Termin speichern', error, statusEl); return; }
-          finish();
+          finish(kanbanTerminKanal);
         }finally{
           saveBtn.disabled = false;
         }
       };
-      closeBtn.onclick = finish;
+      closeBtn.onclick = ()=> finish(null);
     });
   }
 
@@ -8531,7 +8538,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   function populateCategorySelect(selectEl){
     const groups = [...new Set(activeProducts().map(productGroupKey))].sort();
     selectEl.innerHTML = groups.length
-      ? groups.map(g=>`<option value="${g}">${g}</option>`).join('')
+      ? groups.map(g=>`<option value="${escHtml(g)}">${escHtml(g)}</option>`).join('')
       : '<option value="">Keine Produkte im Katalog</option>';
   }
   function populateProductSelect(catSelectEl, prodSelectEl){
@@ -8540,8 +8547,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   async function recordSaleForKanban(contact, status){
-    if(status==='gewonnen'){ await recordWonSalesLoop(contact); return; }
-    await recordLostSale(contact);
+    if(status==='gewonnen') return await recordWonSalesLoop(contact);
+    return await recordLostSale(contact);
   }
 
   function recordLostSale(contact){
@@ -8559,21 +8566,27 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       catEl.onchange = ()=> populateProductSelect(catEl, prodEl);
       modal.style.display = 'flex';
 
-      function finish(){
+      function finish(saleRecorded){
         modal.style.display = 'none';
         confirmBtn.onclick = null; closeBtn.onclick = null;
-        resolve();
+        resolve(!!saleRecorded);
       }
       confirmBtn.onclick = async ()=>{
+        if(confirmBtn.disabled) return;
         if(!prodEl.value){ statusEl.textContent = 'Bitte Produkt auswählen.'; return; }
-        const { error } = await sb.from('sales').insert({
-          contact_id: contact.id, org_id: profile.org_id, product_id: prodEl.value,
-          status: 'verloren', created_by: profile.id
-        });
-        if(error){ reportError('Verkauf eintragen', error, statusEl); return; }
-        finish();
+        confirmBtn.disabled = true;
+        try{
+          const { error } = await sb.from('sales').insert({
+            contact_id: contact.id, org_id: profile.org_id, product_id: prodEl.value,
+            status: 'verloren', created_by: profile.id
+          });
+          if(error){ reportError('Verkauf eintragen', error, statusEl); return; }
+          finish(true);
+        } finally {
+          confirmBtn.disabled = false;
+        }
       };
-      closeBtn.onclick = finish;
+      closeBtn.onclick = ()=> finish(false);
     });
   }
 
@@ -8654,29 +8667,49 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         vertragsnummerEl.value = ''; beitragEl.value = ''; beginnEl.value = ''; statusEl.textContent = '';
         updateBwsPreview();
       }
+      // Gemeinsamer Sperr-Zustand für "+ Produkt hinzufügen" UND "Fertig" --
+      // beide schreiben auf sales, ein Doppelklick auf denselben Button ODER
+      // ein Klick auf "Fertig" während addProduct() noch läuft könnte sonst
+      // denselben Vertrag doppelt anlegen.
+      let busy = false;
       async function finish(){
-        // Ein ausgefülltes, aber nicht per "+ Produkt hinzufügen" bestätigtes
-        // Produkt beim Schließen automatisch mit übernehmen -- sonst geht der
-        // Verkauf bei nur einem Produkt stillschweigend verloren, wenn direkt
-        // "Fertig" geklickt wird (echter Bug, 2026-08-14 gemeldet: Verkauf
-        // eingetragen, aber sales blieb leer).
-        if(beginnEl.value){
-          await addProduct();
-          if(statusEl.textContent) return;
-        }
-        if(wiedervorlageEl.value){
-          const { error } = await sb.from('contacts').update({ naechster_kontakt: wiedervorlageEl.value }).eq('id', contact.id);
-          if(error) logSilentError('Wiedervorlage speichern', error);
-          else {
-            contact.naechster_kontakt = wiedervorlageEl.value;
-            await syncWiedervorlageTask(contact.id, contact.name, contact.naechster_kontakt);
+        if(busy) return;
+        busy = true; addBtn.disabled = true; doneBtn.disabled = true;
+        try{
+          // Ein ausgefülltes, aber nicht per "+ Produkt hinzufügen" bestätigtes
+          // Produkt beim Schließen automatisch mit übernehmen -- sonst geht der
+          // Verkauf bei nur einem Produkt stillschweigend verloren, wenn direkt
+          // "Fertig" geklickt wird (echter Bug, 2026-08-14 gemeldet: Verkauf
+          // eingetragen, aber sales blieb leer).
+          if(beginnEl.value){
+            await addProduct();
+            if(statusEl.textContent) return;
           }
+          if(wiedervorlageEl.value){
+            const { error } = await sb.from('contacts').update({ naechster_kontakt: wiedervorlageEl.value }).eq('id', contact.id);
+            if(error) logSilentError('Wiedervorlage speichern', error);
+            else {
+              contact.naechster_kontakt = wiedervorlageEl.value;
+              await syncWiedervorlageTask(contact.id, contact.name, contact.naechster_kontakt);
+            }
+          }
+          modal.style.display = 'none';
+          addBtn.onclick = null; doneBtn.onclick = null; closeBtn.onclick = null;
+          // Ob überhaupt ein Verkauf erfasst wurde (mind. ein Produkt) --
+          // recordWinOrLoss() setzt contacts.status nur, wenn hier true
+          // zurückkommt, damit ein Kontakt nie ohne echten Verkauf als
+          // "kunde" markiert wird (Popup direkt mit "✕" geschlossen, ohne
+          // je ein Produkt einzutragen).
+          resolve(added.length > 0);
+        } finally {
+          busy = false; addBtn.disabled = false; doneBtn.disabled = false;
         }
-        modal.style.display = 'none';
-        addBtn.onclick = null; doneBtn.onclick = null; closeBtn.onclick = null;
-        resolve();
       }
-      addBtn.onclick = addProduct;
+      addBtn.onclick = async ()=>{
+        if(busy) return;
+        busy = true; addBtn.disabled = true; doneBtn.disabled = true;
+        try{ await addProduct(); } finally { busy = false; addBtn.disabled = false; doneBtn.disabled = false; }
+      };
       doneBtn.onclick = finish;
       closeBtn.onclick = finish;
     });
@@ -8687,7 +8720,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // über den Abschluss-Button im Kontakt-Aktionsdialog (logActionForContact)
   // ausgelöst.
   async function recordWinOrLoss(contact, status){
-    await recordSaleForKanban(contact, status);
+    // Wurde das Popup ohne jemals ein Produkt einzutragen mit "✕"
+    // geschlossen (sales bleibt leer), darf der Kontakt nicht trotzdem als
+    // "kunde"/"verloren" markiert werden -- sonst zeigt die Kontakt-Seite
+    // einen "Kunden" mit 0 Verträgen.
+    const saleRecorded = await recordSaleForKanban(contact, status);
+    if(!saleRecorded) return;
     const { error } = await sb.from('contacts').update({status: status==='gewonnen' ? 'kunde' : 'verloren'}).eq('id', contact.id);
     if(error) logSilentError('Kontaktstatus aktualisieren', error);
   }
@@ -8703,12 +8741,23 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         const a = config.actions[o.key];
         return `<button class="abtn" data-extra="${o.key}">${o.label}${a?`<span class="xp">${fmtXp(a.xp)} XP · ${a.energy} Energie</span>`:''}</button>`;
       }).join('');
+      // Ohne diese Sperre blieben Buttons bei leerer Tagesenergie klickbar --
+      // dasselbe, in Häppchen 8 für data-locaction/data-contactaction bereits
+      // gefixte Muster.
+      refreshActionGridEnergyState(grid, 'extra');
       const modal = document.getElementById('kanbanExtraActionModal');
       modal.style.display = 'flex';
       const closeBtn = document.getElementById('kanbanExtraActionClose');
       function finish(){ modal.style.display='none'; closeBtn.onclick=null; resolve(); }
       grid.querySelectorAll('[data-extra]').forEach(btn=>{
-        btn.addEventListener('click', async ()=>{ await logKanbanAction(contact, btn.dataset.extra); finish(); });
+        btn.addEventListener('click', async ()=>{
+          // Doppelklick-Schutz: ganzes Raster sperren, bevor die Aktion
+          // geloggt wird -- ein schneller Doppelklick auf denselben Button
+          // konnte dieselbe Zusatzaktion sonst doppelt buchen (doppelte XP).
+          grid.querySelectorAll('[data-extra]').forEach(b=>b.disabled=true);
+          await logKanbanAction(contact, btn.dataset.extra);
+          finish();
+        });
       });
       closeBtn.onclick = finish;
     });
@@ -8761,11 +8810,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     // überspringbares Datum/Zeit-Fenster, das einen Kalendertermin anlegt —
     // "Angebot versendet" ist kein Treffen, bekommt deshalb keins.
     if(toStage==='ersttermin_vereinbart'){
-      await promptKanbanTermin(contact, 'Ersttermin');
       // Kanal war beim ursprünglichen logKanbanAction() oben noch nicht
       // bekannt (kommt erst aus diesem Popup) - deshalb hier nachtragen,
       // `ok` ist an dieser Stelle die zurückgegebene action_log-ID.
-      await attachKanalToLoggedAction(ok, kanbanTerminKanal);
+      // promptKanbanTermin() liefert den tatsächlich verwendeten Kanal
+      // zurück (null bei Abbruch ohne Speichern) statt der gemeinsam
+      // genutzten kanbanTerminKanal-Variable, die nach einem Abbruch noch
+      // den zuletzt angeklickten, nie gespeicherten Wert trug.
+      const usedKanal = await promptKanbanTermin(contact, 'Ersttermin');
+      await attachKanalToLoggedAction(ok, usedKanal);
     }
     if(toStage==='zweittermin'){
       await promptKanbanTermin(contact, 'Zweittermin');
@@ -8787,19 +8840,26 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     form.style.display = form.style.display==='none' ? 'flex' : 'none';
   });
   document.getElementById('kanbanNewLeadSaveBtn').addEventListener('click', async ()=>{
+    const saveBtn = document.getElementById('kanbanNewLeadSaveBtn');
+    if(saveBtn.disabled) return;
     const vorname = document.getElementById('kanbanNewLeadVorname').value.trim();
     const nachname = document.getElementById('kanbanNewLeadNachname').value.trim();
     const statusEl = document.getElementById('kanbanNewLeadStatus');
     if(!vorname && !nachname){ statusEl.textContent = 'Bitte mindestens Vor- oder Nachname eingeben.'; return; }
-    const { error } = await sb.from('contacts').insert({
-      org_id:profile.org_id, owner_id:profile.id, vorname, nachname, kanban_stage:'neuer_lead'
-    });
-    if(error){ reportError('Neuen Lead anlegen', error, statusEl); return; }
-    document.getElementById('kanbanNewLeadVorname').value = '';
-    document.getElementById('kanbanNewLeadNachname').value = '';
-    statusEl.textContent = '';
-    document.getElementById('kanbanNewLeadForm').style.display = 'none';
-    await renderKanbanBoard();
+    saveBtn.disabled = true;
+    try{
+      const { error } = await sb.from('contacts').insert({
+        org_id:profile.org_id, owner_id:profile.id, vorname, nachname, kanban_stage:'neuer_lead'
+      });
+      if(error){ reportError('Neuen Lead anlegen', error, statusEl); return; }
+      document.getElementById('kanbanNewLeadVorname').value = '';
+      document.getElementById('kanbanNewLeadNachname').value = '';
+      statusEl.textContent = '';
+      document.getElementById('kanbanNewLeadForm').style.display = 'none';
+      await renderKanbanBoard();
+    } finally {
+      saveBtn.disabled = false;
+    }
   });
 
   // ---- Produkte-Seite (nur Admins) ----
