@@ -4499,6 +4499,46 @@ Kein SQL nötig, alle Fixes rein clientseitig, Commit `30f4dc3`. Stand
 nach diesem Häppchen: 10 von 12 fertig, 42 echte Bugs insgesamt, keine
 offenen SQL-Fixes. Nächstes Häppchen: 11 (Kanban).
 
+**Häppchen 11a (Kanban, erste Hälfte: Board-Rendering/Vorschau/
+Einladungen/Drag&Drop, Zeilen 8030-8417) — 2026-08-22:** das Kanban-Board
+war mit 700 Zeilen deutlich größer als übliche Häppchen, deshalb wie schon
+bei Häppchen 6 in zwei Hälften gesplittet. Vier echte Bugs: die Kanban-
+Kurzvorschau (`openKanbanPreview()`) und die Termin-Einladungen-Karte
+(`loadTerminInvitesCard()`) zeigten den Termin-Zeitpunkt Browser-lokal
+statt über die aufgelöste Zeitzone (`tz()`/`fullPartsInTZ()`) — derselbe
+Bug-Typ wie die große Zeitzonen-Vereinheitlichung vom 2026-08-21, hier an
+zwei Stellen nicht mitgezogen. Neuer gemeinsamer Helfer `terminRangeLabel()`,
+live mit `profiles.timezone='Pacific/Honolulu'` (Gerät auf Europe/Berlin)
+verifiziert: zeigte danach korrekt die Honolulu-Zeit statt der
+Berlin-Zeit. `openKanbanPreview()` hatte außerdem KEINEN Staleness-Guard —
+eine spät ankommende Antwort für Kontakt A konnte die inzwischen für
+Kontakt B geöffnete Vorschau überschreiben, dabei sogar den "Einladen"-
+Button fälschlich an den Termin von A binden (3 von 5 Agenten unabhängig
+gefunden). Neue Variablen `kanbanPreviewRequestId`/`kanbanPreviewOpenTerminId`,
+gleiches Muster wie `currentContactPageId` aus Häppchen 6b-1. Dritter Bug:
+`openTerminInviteModal()` (der Einladen-Picker) zeigte NUR Gildenmitglieder,
+obwohl die Backend-Funktion `invite_to_termin()` über `socially_visible()`
+laut CLAUDE.md ausdrücklich auch Freunde erlaubt — ein Nutzer ohne Gilde,
+aber mit Freunden, konnte dadurch niemanden einladen. Fix: Gildenmitglieder
+UND Freunde werden jetzt zusammengeführt und dedupliziert, live verifiziert
+(ein Freund, der zufällig auch Gildenmitglied ist, erscheint korrekt nur
+einmal). Vierter Bug: nach erfolgreicher Einladung aktualisierte sich die
+dahinterliegende Kanban-Vorschau nicht automatisch — jetzt über
+`refreshKanbanPreviewInviteZone()` behoben. Zusätzlich ein Doppelklick-
+Schutz im Verschieben-Menü (Touch-Ersatz fürs Ziehen) ergänzt, live per
+Netzwerk-Mitschnitt verifiziert (nur noch 1 statt 2 `contacts`-PATCH-
+Aufrufe bei simultanem Doppelklick). Effizienzfund direkt mitgefixt:
+`renderKanbanBoard()` lud Kontakt-Bundle + geteilte Karten jetzt per
+`Promise.all` parallel statt sequenziell. Kleinere Funde: geteilte
+Kanban-Karten zeigten den Betriebsnamen nicht, obwohl geladen (jetzt
+Feature-Parität zu eigenen Karten); ein in diesem Kontext nie erreichbarer
+`storniert`-Eintrag in `INVITATION_STATUS_LABELS` entfernt.
+
+Kein SQL nötig, alle Fixes rein clientseitig, Commit `cb6eabf`. Stand
+nach diesem Häppchen: 10/12 + 11a fertig, 47 echte Bugs insgesamt, keine
+offenen SQL-Fixes. Nächstes Häppchen: 11b (Kanban, zweite Hälfte:
+Aktionen-Logging/Verkauf/Win-Loss/Move-Logik).
+
 ## Zeitzonen-Inkonsistenz `dateKeyLocal()` vs. `todayKey()`, vollständig behoben (2026-08-21)
 
 Löst den seit dem Code-Review-Durchgang vom 2026-08-20 bekannten, damals
