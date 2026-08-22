@@ -8048,7 +8048,16 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   let kanbanBundleCache = null;
 
   async function renderKanbanBoard(){
-    const bundle = await loadContactsBundle();
+    // Zwei unabhängige Ladevorgänge (eigenes Kontakt-Bundle, geteilte
+    // Kanban-Karten über termin_invitations) -- parallel starten statt
+    // nacheinander abzuwarten, gleiches Muster wie renderWeekView()/
+    // renderDayView().
+    const [bundle, sharedRes] = await Promise.all([
+      loadContactsBundle(),
+      sb.from('termin_invitations')
+        .select('id, contact:contact_id(id,name,kanban_stage,location_id), organizer:organizer_id(display_name,real_name)')
+        .eq('invited_user_id', profile.id).eq('status','angenommen').not('contact_id','is',null)
+    ]);
     if(bundle.error){
       logSilentError('Kanban laden', bundle.error);
       KANBAN_STAGES.forEach(s=>{ document.getElementById('kanbanCards_'+s).innerHTML = '<div class="empty-page-hint">Fehler beim Laden.</div>'; });
@@ -8078,10 +8087,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     // Status). Ohne Leserecht auf den Kontakt (z.B. Einladung nur über
     // eine Freundschaft ohne gemeinsame Gilde) liefert der Join schlicht
     // nichts -- kein Sonderfall im Code nötig, RLS regelt das von allein.
-    const { data: sharedInvites, error: sharedErr } = await sb.from('termin_invitations')
-      .select('id, contact:contact_id(id,name,kanban_stage,location_id), organizer:organizer_id(display_name,real_name)')
-      .eq('invited_user_id', profile.id).eq('status','angenommen').not('contact_id','is',null);
-    if(sharedErr) logSilentError('Geteilte Kanban-Karten laden', sharedErr);
+    if(sharedRes.error) logSilentError('Geteilte Kanban-Karten laden', sharedRes.error);
+    const sharedInvites = sharedRes.data;
     const groupedShared = {};
     KANBAN_STAGES.forEach(s=>groupedShared[s]=[]);
     (sharedInvites||[]).forEach(inv=>{
@@ -8104,6 +8111,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         <div class="kanban-card kanban-card-shared" data-invitation="${inv.id}">
           <button type="button" class="kc-decline-btn" title="Termin absagen">✕</button>
           <a class="kc-name" href="#kontakt/${inv.contact.id}">${escHtml(inv.contact.name)}</a>
+          ${inv.contact.location_id ? `<span class="kc-meta">${escHtml(locName(bundle,inv.contact.location_id))}</span>` : ''}
           <span class="kc-meta">👥 geteilt von ${organizerName}</span>
         </div>`;
       }).join('');
@@ -8132,11 +8140,50 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     });
   }
 
+  // Datum+Uhrzeitspanne eines echten Zeitstempel-Termins in der aufgelösten
+  // Zeitzone (eigene, sonst Org) formatieren -- statt Browser-lokal, gleiches
+  // Prinzip wie timeHHMM()/fmtTime(). Gemeinsam genutzt von der Kanban-
+  // Vorschau und der Termin-Einladungen-Karte.
+  function terminRangeLabel(startTs, endTs){
+    const tzName = tz();
+    const sp = fullPartsInTZ(startTs, tzName);
+    const ep = fullPartsInTZ(endTs, tzName);
+    const weekday = new Intl.DateTimeFormat('de-DE', {timeZone:tzName, weekday:'short'}).format(new Date(startTs));
+    const dateStr = `${weekday}, ${pad2(sp.day)}.${pad2(sp.month)}.${sp.year}`;
+    const timeStr = `${pad2(sp.hour)}:${pad2(sp.minute)}–${pad2(ep.hour)}:${pad2(ep.minute)}`;
+    return { dateStr, timeStr };
+  }
+
+  // Staleness-Guard: welcher Kontakt wurde zuletzt per openKanbanPreview()
+  // angefragt -- eine spät ankommende Antwort für eine bereits verlassene
+  // Anfrage darf die inzwischen für einen ANDEREN Kontakt geöffnete Vorschau
+  // nicht mehr überschreiben (gleiches Muster wie currentContactPageId bei
+  // openContactPage(), Häppchen 6b-1). kanbanPreviewOpenTerminId merkt sich
+  // zusätzlich, auf welchen Termin sich der "Einladen"-Button der gerade
+  // sichtbaren Vorschau bezieht, damit refreshKanbanPreviewInviteZone() nach
+  // einer erfolgreichen Einladung nicht versehentlich eine inzwischen für
+  // einen anderen Kontakt geöffnete Vorschau überschreibt.
+  let kanbanPreviewRequestId = null;
+  let kanbanPreviewOpenTerminId = null;
+
+  async function refreshKanbanPreviewInviteZone(terminId){
+    if(kanbanPreviewOpenTerminId !== terminId) return;
+    const inviteZone = document.getElementById('kanbanPreviewInviteZone');
+    if(!inviteZone) return;
+    const statusHtml = await invitationStatusLinesHtml(terminId);
+    if(kanbanPreviewOpenTerminId !== terminId) return;
+    inviteZone.className = 'kp-invite-zone';
+    inviteZone.innerHTML = `<button type="button" class="kp-invite-btn" id="kanbanPreviewInviteBtn">+ Gildenmitglied einladen</button>${statusHtml}`;
+    document.getElementById('kanbanPreviewInviteBtn').onclick = ()=> openTerminInviteModal(terminId);
+  }
+
   // Kurzvorschau: Termin-Zeitraum kommt aus termine (nicht Teil des
   // ohnehin geladenen Kontakt-Bundles), deshalb ein schlanker Nachlade-Schritt
   // nur beim tatsächlichen Öffnen -- kein Vorab-Batch-Query für alle
   // Kanban-Karten, die vermutlich nie angeklickt werden.
   async function openKanbanPreview(contact, bundle){
+    kanbanPreviewRequestId = contact.id;
+    kanbanPreviewOpenTerminId = null;
     const modal = document.getElementById('kanbanPreviewModal');
     document.getElementById('kanbanPreviewName').textContent = contact.name;
     const profileLink = document.getElementById('kanbanPreviewProfileLink');
@@ -8148,7 +8195,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     const stageMeta = KANBAN_STAGE_META[contact.kanban_stage] || {};
     const sublineParts = [];
-    if(bundle.roles[contact.role]||contact.role) sublineParts.push(bundle.roles[contact.role]||contact.role);
+    const roleLabel = bundle.roles[contact.role]||contact.role;
+    if(roleLabel) sublineParts.push(roleLabel);
     if(contact.location_id) sublineParts.push(locName(bundle, contact.location_id));
 
     const field = (icon, label, value) => value
@@ -8184,13 +8232,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const { data: nextTermin, error } = await sb.from('termine').select('id,start_at,end_at,kanal,organizer_id')
       .eq('contact_id', contact.id).gte('start_at', new Date().toISOString())
       .order('start_at', {ascending:true}).limit(1).maybeSingle();
+    // Staleness-Guard: inzwischen wurde vielleicht schon eine andere Karte
+    // angeklickt -- diese verspätete Antwort gehört dann nicht mehr zur
+    // aktuell sichtbaren Vorschau.
+    if(kanbanPreviewRequestId !== contact.id) return;
     const terminRow = document.getElementById('kanbanPreviewTerminRow');
     if(!terminRow) return; // Popup wurde inzwischen wieder geschlossen
     if(error){ logSilentError('Termin für Kanban-Vorschau laden', error); terminRow.remove(); return; }
     if(!nextTermin){ terminRow.querySelector('.cdv').textContent = 'Kein Termin geplant'; return; }
-    const s = new Date(nextTermin.start_at), e2 = new Date(nextTermin.end_at);
-    const dateStr = s.toLocaleDateString('de-DE',{weekday:'short', day:'2-digit', month:'2-digit', year:'numeric'});
-    const timeStr = `${s.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}–${e2.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}`;
+    const { dateStr, timeStr } = terminRangeLabel(nextTermin.start_at, nextTermin.end_at);
     terminRow.querySelector('.cdv').textContent = `${dateStr}, ${timeStr}${nextTermin.kanal && KANAL_ICONS[nextTermin.kanal] ? ` ${KANAL_ICONS[nextTermin.kanal]}` : ''}`;
 
     // Einladen nur sinnvoll für einen eigenen, echten Termin -- nicht für
@@ -8199,14 +8249,17 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const inviteZone = document.getElementById('kanbanPreviewInviteZone');
     if(!inviteZone) return; // Popup wurde inzwischen wieder geschlossen
     if(!nextTermin.organizer_id){
-      const statusHtml = await invitationStatusLinesHtml(nextTermin.id);
-      inviteZone.className = 'kp-invite-zone';
-      inviteZone.innerHTML = `<button type="button" class="kp-invite-btn" id="kanbanPreviewInviteBtn">+ Gildenmitglied einladen</button>${statusHtml}`;
-      document.getElementById('kanbanPreviewInviteBtn').onclick = ()=> openTerminInviteModal(nextTermin.id);
+      kanbanPreviewOpenTerminId = nextTermin.id;
+      await refreshKanbanPreviewInviteZone(nextTermin.id);
     }
   }
 
-  const INVITATION_STATUS_LABELS = { offen:'⏳ Ausstehend', angenommen:'✓ Angenommen', abgelehnt:'✗ Abgelehnt', storniert:'Storniert' };
+  // "storniert" kommt hier bewusst nicht vor: termin_id wird beim Stornieren
+  // per FK auf NULL gesetzt (cleanup_termin_invitee_copies()), eine Zeile
+  // mit diesem Status kann also nie mehr über .eq('termin_id', terminId)
+  // gefunden werden -- storniert wird stattdessen in loadTerminInvitesCard()
+  // (dort über die eigenen Schattenfelder statt termin_id) separat behandelt.
+  const INVITATION_STATUS_LABELS = { offen:'⏳ Ausstehend', angenommen:'✓ Angenommen', abgelehnt:'✗ Abgelehnt' };
 
   // Wird sowohl in der Kanban-Vorschau als auch im Kalender-Termin des
   // Organisators selbst gebraucht (Nutzerwunsch: Status an beiden Stellen
@@ -8223,9 +8276,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     }).join('');
   }
 
-  // Nur die eigenen Gildenmitglieder (Gilde ist bewusst klein gehalten,
-  // siehe CLAUDE.md -- kein Bedarf für eine Such-als-du-tippst-Eingabe wie
-  // beim Notfallzugriff-Picker, eine einfache Liste reicht).
+  // Kandidaten sind Gildenmitglieder UND Freunde -- invite_to_termin() prüft
+  // serverseitig socially_visible() (Gilde ODER Freundschaft, siehe
+  // CLAUDE.md "Einladen ist nur innerhalb der eigenen Gilde/Freundschaft
+  // möglich"). Der Picker fragte bisher nur guild_members ab: ein Nutzer
+  // ganz ohne Gilde, aber mit Freunden, bekam fälschlich "Du bist in keiner
+  // Gilde" und konnte serverseitig erlaubte Freunde gar nicht einladen --
+  // jetzt beide Quellen zusammengeführt, dedupliziert (jemand kann
+  // gleichzeitig Gildenmitglied und Freund sein).
   async function openTerminInviteModal(terminId){
     const modal = document.getElementById('terminInviteModal');
     const listEl = document.getElementById('terminInviteList');
@@ -8235,27 +8293,44 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     modal.style.display = 'flex';
     document.getElementById('terminInviteClose').onclick = ()=>{ modal.style.display = 'none'; };
 
-    const { data: membership, error: memErr } = await sb.from('guild_members').select('guild_id').eq('member_id', profile.id).maybeSingle();
-    if(memErr){ logSilentError('Eigene Gilde laden', memErr); listEl.innerHTML = '<div class="empty-page-hint">Fehler beim Laden.</div>'; return; }
-    if(!membership){ listEl.innerHTML = '<div class="empty-page-hint">Du bist in keiner Gilde.</div>'; return; }
+    const [membershipRes, friendRes] = await Promise.all([
+      sb.from('guild_members').select('guild_id').eq('member_id', profile.id).maybeSingle(),
+      sb.from('friends').select('owner_id,friend_id').or(`owner_id.eq.${profile.id},friend_id.eq.${profile.id}`).eq('status','accepted')
+    ]);
+    if(membershipRes.error){ logSilentError('Eigene Gilde laden', membershipRes.error); listEl.innerHTML = '<div class="empty-page-hint">Fehler beim Laden.</div>'; return; }
+    if(friendRes.error) logSilentError('Freundesliste laden', friendRes.error);
 
-    const { data: mates, error: matesErr } = await sb.from('guild_members')
-      .select('member:member_id(id,display_name,real_name,character_class)')
-      .eq('guild_id', membership.guild_id).neq('member_id', profile.id);
-    if(matesErr){ logSilentError('Gildenmitglieder laden', matesErr); listEl.innerHTML = '<div class="empty-page-hint">Fehler beim Laden.</div>'; return; }
-    if(!mates || mates.length===0){ listEl.innerHTML = '<div class="empty-page-hint">Keine weiteren Gildenmitglieder.</div>'; return; }
+    let mateIds = [];
+    if(membershipRes.data){
+      const { data: mates, error: matesErr } = await sb.from('guild_members')
+        .select('member_id').eq('guild_id', membershipRes.data.guild_id).neq('member_id', profile.id);
+      if(matesErr){ logSilentError('Gildenmitglieder laden', matesErr); listEl.innerHTML = '<div class="empty-page-hint">Fehler beim Laden.</div>'; return; }
+      mateIds = (mates||[]).map(m=>m.member_id);
+    }
+    const friendIds = (friendRes.data||[]).map(r=> r.owner_id===profile.id ? r.friend_id : r.owner_id);
+    const candidateIds = [...new Set([...mateIds, ...friendIds])];
+    if(candidateIds.length===0){ listEl.innerHTML = '<div class="empty-page-hint">Keine Gildenmitglieder oder Freunde zum Einladen.</div>'; return; }
 
-    listEl.innerHTML = mates.map(m=>`
+    const { data: candidates, error: candErr } = await sb.from('profiles')
+      .select('id,display_name,real_name,character_class').in('id', candidateIds);
+    if(candErr){ logSilentError('Kandidaten laden', candErr); listEl.innerHTML = '<div class="empty-page-hint">Fehler beim Laden.</div>'; return; }
+
+    listEl.innerHTML = (candidates||[]).map(m=>`
       <div class="guild-picker-row">
-        <span>${CLASS_ICONS[m.member.character_class]||'❔'} ${escHtml(m.member.real_name || m.member.display_name)}</span>
-        <button class="cal-nav-btn" data-invite="${m.member.id}">Einladen</button>
+        <span>${CLASS_ICONS[m.character_class]||'❔'} ${escHtml(m.real_name || m.display_name)}</span>
+        <button class="cal-nav-btn" data-invite="${m.id}">Einladen</button>
       </div>`).join('');
     listEl.querySelectorAll('[data-invite]').forEach(btn=>{
       btn.addEventListener('click', async ()=>{
+        if(btn.disabled) return;
         btn.disabled = true;
         const { error } = await sb.rpc('invite_to_termin', { p_termin_id: terminId, p_invited_user_id: btn.dataset.invite });
         if(error){ reportError('Einladen', error, statusEl); btn.disabled = false; return; }
         statusEl.textContent = 'Einladung verschickt.';
+        // Die dahinterliegende Kanban-Vorschau (falls noch mit demselben
+        // Termin offen) soll den neuen Einladungsstatus zeigen, ohne dass
+        // der Nutzer sie manuell neu öffnen muss.
+        refreshKanbanPreviewInviteZone(terminId);
         setTimeout(()=>{ modal.style.display = 'none'; }, 900);
       });
     });
@@ -8278,9 +8353,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(!data || data.length===0){ card.style.display = 'none'; return; }
     card.style.display = 'block';
     document.getElementById('terminInvitesList').innerHTML = data.map(inv=>{
-      const s = new Date(inv.start_at), e = new Date(inv.end_at);
-      const dateStr = s.toLocaleDateString('de-DE',{weekday:'short', day:'2-digit', month:'2-digit', year:'numeric'});
-      const timeStr = `${s.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}–${e.toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'})}`;
+      const { dateStr, timeStr } = terminRangeLabel(inv.start_at, inv.end_at);
       const organizerName = inv.organizer ? escHtml(inv.organizer.real_name || inv.organizer.display_name) : '?';
       const isCancelled = inv.status === 'storniert';
       const actions = isCancelled
@@ -8401,6 +8474,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     modal.style.display = 'flex';
     grid.querySelectorAll('[data-movestage]').forEach(btn=>{
       btn.addEventListener('click', async ()=>{
+        if(btn.disabled) return;
+        grid.querySelectorAll('[data-movestage]').forEach(b=>b.disabled=true);
         modal.style.display = 'none';
         await moveKanbanCard(contact.id, fromStage, btn.dataset.movestage);
       });
