@@ -5902,7 +5902,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         if(file.size > CONTACT_FILE_MAX_BYTES){
           return { ok:false, message:`${file.name}: größer als 10 MB.` };
         }
-        const path = `${c.id}/${crypto.randomUUID()}_${file.name}`;
+        // Speicherpfad enthält bewusst NICHT mehr den rohen Dateinamen
+        // (Path-Traversal-Risiko bei manipuliertem file.name, z.B. "../..")
+        // -- der Anzeigename lebt bereits separat in contact_files.filename,
+        // eine reine UUID (+ geprüfte Endung) reicht als Speicherschlüssel.
+        const extMatch = /\.[A-Za-z0-9]{1,10}$/.exec(file.name);
+        const path = `${c.id}/${crypto.randomUUID()}${extMatch ? extMatch[0] : ''}`;
         const { error: upErr } = await sb.storage.from(CONTACT_FILE_BUCKET).upload(path, file, { contentType: file.type });
         if(upErr){ reportError('Datei hochladen', upErr); return { ok:false, message:'Fehler: '+(upErr.message||upErr) }; }
         const { error: insErr } = await sb.from('contact_files').insert({
