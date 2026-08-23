@@ -533,6 +533,37 @@ HISTORY.md), kann nicht durch den Aufruf selbst erzwungen werden. Bei
 inhaltlich riskanteren Migrationen zusätzlich Assertions/Testfälle
 gegen echte Wegwerf-Testprofile in denselben Dry-Run einbauen.
 
+**Verbindliche Regel, vom Nutzer am 2026-08-24 festgelegt, Kernbestandteil
+der Arbeitsweise ab sofort (Auslöser: Selbst-Review-Lücke beim
+Konflikt-Schutz-Umbau erkannt — eine einzelne Sitzung war Autor UND
+einziger Prüfer der eigenen Migration, siehe
+[[project_optimistic_locking_enforcement_gap]]):** bei jeder Migration,
+die RLS-Policies, `GRANT`/`REVOKE`, `SECURITY DEFINER`-Funktionen oder
+sonstige Berechtigungslogik anfasst, holt Claude Code vor dem
+`supabase db push` eine **unabhängige Zweitmeinung** ein — ein frischer
+Agent/eine frische Sitzung ohne Kontext der Bau-Session liest den Diff
+blind gegen (`/code-review` bzw. das Agent-Werkzeug mit
+`subagent_type: claude-code-guide`/`general-purpose`, je nach Bedarf).
+Der Sinn liegt genau darin, dass diese Sitzung NICHT dieselben blinden
+Flecken hat wie die, die den Code gerade geschrieben hat. Reine
+Struktur-/Optik-Migrationen (neue Spalte ohne Berechtigungsbezug, reine
+Indizes) brauchen das nicht — der Maßstab ist "berührt diese Migration,
+wer schreiben/lesen darf", nicht "ist es eine Schema-Änderung".
+
+**Zweite verbindliche Regel, selber Tag, selber Auslöser:** der
+Dry-Run-Schritt prüft ab jetzt nicht nur, ob die Migration vorwärts
+funktioniert, sondern auch, ob ein Rückbau tatsächlich möglich ist —
+bei Policy-Änderungen z.B. testweise die alte Policy-Definition
+innerhalb derselben `begin`/`rollback`-Transaktion wiederherstellen und
+prüfen, dass das funktioniert, statt sich erst im echten Ernstfall
+darauf zu verlassen, dass ein Rückbau schon irgendwie klappen wird. Bei
+Migrationen, die (wie die o.g. Konflikt-Schutz-Migrationen) eine Policy
+ersatzlos durch Funktionen ersetzen, reicht als Rückbau-Nachweis: die
+gelöschte Policy-Definition liegt vollständig im Migrations-Kommentar
+oder in der vorherigen Migrationsdatei vor (git-Historie), sodass ein
+Rückbau ohne Rätselraten möglich ist — nicht zwingend ein eigenes
+Down-Skript, aber immer ein geprüfter, dokumentierter Weg zurück.
+
 ## Sicherheitsmodell (RLS), zum Verständnis
 
 Fast jede Tabelle hat `org_id` und eine RLS-Policy, die auf eine Hilfsfunktion
