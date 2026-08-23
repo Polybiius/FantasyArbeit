@@ -2108,56 +2108,61 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   // Konflikt-Schutz bei gleichzeitiger Bearbeitung geteilter Datensätze
-  // (optimistisches Sperren, siehe CLAUDE.md): jede Schreibstelle reicht
-  // den zuletzt gesehenen updated_at-Wert als zusätzliche WHERE-Bedingung
-  // mit. Ein serverseitiger Trigger stempelt updated_at bei JEDEM Update
-  // der betroffenen Tabelle neu (ignoriert dabei jeden vom Client
-  // mitgeschickten Wert) -- hat sich die Zeile seit dem Laden geändert,
-  // matcht die Bedingung nicht mehr, das Update betrifft 0 Zeilen statt
-  // die fremde Änderung stillschweigend zu überschreiben. Gibt bei Erfolg
-  // die frische Zeile zurück (neuer updated_at inklusive, Aufrufer sollte
-  // ihn im lokalen Objekt nachziehen), bei Konflikt {conflict:true}, bei
-  // echtem Fehler {error}. Generisch über die noch verbliebenen drei
-  // Tabellen (locations/sales/termine/termin_series) hinweg -- contacts
-  // ist seit der strukturellen Härtung (update_contact_locked(), siehe
-  // Migration 20260824160000 + project_optimistic_locking_enforcement_gap)
-  // NICHT mehr Teil davon: ein direktes UPDATE auf contacts ist serverseitig
-  // gesperrt (keine passende RLS-Policy mehr), das würde hier still 0
-  // Zeilen treffen und fälschlich als Konflikt statt als Rechte-Fehler
-  // gemeldet -- deshalb hat contacts jetzt seinen eigenen RPC-Weg.
-  async function updateRowWithLockCheck(table, id, patch, expectedUpdatedAt){
-    const { data, error } = await sb.from(table).update(patch)
-      .eq('id', id).eq('updated_at', expectedUpdatedAt)
-      .select().maybeSingle();
-    if(error) return { error };
-    if(!data) return { conflict: true };
-    return { data };
-  }
+  // (optimistisches Sperren, siehe CLAUDE.md): ALLE fünf Tabellen mit
+  // echtem Mehrfach-Schreiber-Risiko (contacts/locations/sales/termine/
+  // termin_series) sind strukturell gehärtet -- direktes UPDATE ist
+  // serverseitig komplett gesperrt (keine passende RLS-Policy mehr),
+  // einziger Schreibweg ist je eine SECURITY-DEFINER-Funktion pro
+  // Tabelle/Schreibform, siehe project_optimistic_locking_enforcement_gap.
+  // Jede Funktion prüft Berechtigung + Sperr-Wert (updated_at) atomar in
+  // einer Operation und gibt bei Erfolg die frische Zeile zurück, bei
+  // Konflikt SQL NULL.
+  //
+  // Wichtige PostgREST-Eigenheit, live per REST-Test entdeckt (siehe
+  // check_contact_locked_rpc.mjs): ein SQL-NULL-Rückgabewert kommt NICHT
+  // als JSON null an, sondern als Objekt mit lauter null-Feldern
+  // ({id:null,...}) -- ein reiner !data-Check würde das NICHT erkennen
+  // (das Objekt ist "truthy"). Alle Wrapper unten prüfen deshalb
+  // `!data || data.id === null`.
   function alertConflict(subject){
     alert(subject + ' wurde inzwischen von jemand anderem geändert. Bitte lade die Seite neu, um die aktuelle Version zu sehen.');
   }
-  // Kontakte: einzige verbleibende Schreibfunktion ist update_contact_locked()
-  // -- direktes sb.from('contacts').update() schlägt seit der strukturellen
-  // Härtung mit einem RLS-Fehler fehl (kein "still vergessen" mehr möglich,
-  // siehe project_optimistic_locking_enforcement_gap). p_patch darf nur die
-  // 14 Felder enthalten, die die App wirklich am Kontaktformular/Kanban
-  // ändert -- owner_id/guild_id/org_id sind bewusst nicht dabei, die ändern
-  // sich ausschließlich über bestehende Server-Trigger.
-  async function updateContactWithLockCheck(contactId, patch, expectedUpdatedAt){
-    const { data, error } = await sb.rpc('update_contact_locked', {
-      p_id: contactId, p_patch: patch, p_expected_updated_at: expectedUpdatedAt
-    });
+  async function rpcLockedUpdate(fnName, params){
+    const { data, error } = await sb.rpc(fnName, params);
     if(error) return { error };
-    // Ein SQL-NULL-Rückgabewert (Konflikt) kommt über PostgREST NICHT als
-    // JSON null an, sondern als Objekt mit lauter null-Feldern
-    // ({id:null,...}) -- Eigenheit der row_to_json-Konvertierung bei
-    // zusammengesetzten Rückgabetypen, live per REST-Test entdeckt
-    // (check_contact_locked_rpc.mjs). Ein reiner !data-Check hätte das
-    // NICHT erkannt (das Objekt ist "truthy").
     if(!data || data.id === null) return { conflict: true };
     return { data };
   }
+  // Kontakte: p_patch darf nur die 15 Felder enthalten, die die App
+  // wirklich am Kontaktformular/Kanban ändert -- owner_id/guild_id/org_id
+  // sind bewusst nicht dabei, die ändern sich ausschließlich über
+  // bestehende Server-Trigger.
+  async function updateContactWithLockCheck(contactId, patch, expectedUpdatedAt){
+    return rpcLockedUpdate('update_contact_locked', { p_id: contactId, p_patch: patch, p_expected_updated_at: expectedUpdatedAt });
+  }
   function alertContactConflict(){ alertConflict('Dieser Kontakt'); }
+  // Dungeons: zwei getrennte Funktionen für zwei völlig verschiedene
+  // Schreibvorgänge (Gilden-Pool-Aufnahme durch den Gildenführer vs.
+  // Account-Zuweisung, admin-exklusiv) -- siehe Migration 20260824180000.
+  async function admitLocationToGuildPoolLocked(locationId, guildId, expectedUpdatedAt){
+    return rpcLockedUpdate('admit_location_to_guild_pool_locked', { p_id: locationId, p_guild_id: guildId, p_expected_updated_at: expectedUpdatedAt });
+  }
+  async function assignLocationOwnerLocked(locationId, ownerId, expectedUpdatedAt){
+    return rpcLockedUpdate('assign_location_owner_locked', { p_id: locationId, p_owner_id: ownerId, p_expected_updated_at: expectedUpdatedAt });
+  }
+  // Verkäufe: einziger Schreibvorgang ist Kündigen (vertragsende setzen).
+  async function cancelSaleLocked(saleId, vertragsende, expectedUpdatedAt){
+    return rpcLockedUpdate('cancel_sale_locked', { p_id: saleId, p_vertragsende: vertragsende, p_expected_updated_at: expectedUpdatedAt });
+  }
+  // Termine/Serien: p_patch-Allowlist siehe Migration 20260824180000
+  // (termine: title/start_at/end_at/contact_id/location_id/kanal/series_id;
+  // termin_series: start_time/end_time/kanal).
+  async function updateTerminLocked(terminId, patch, expectedUpdatedAt){
+    return rpcLockedUpdate('update_termin_locked', { p_id: terminId, p_patch: patch, p_expected_updated_at: expectedUpdatedAt });
+  }
+  async function updateTerminSeriesLocked(seriesId, patch, expectedUpdatedAt){
+    return rpcLockedUpdate('update_termin_series_locked', { p_id: seriesId, p_patch: patch, p_expected_updated_at: expectedUpdatedAt });
+  }
 
   // Verhindert doppelte Schreibvorgänge durch schnellen Doppelklick: umhüllt
   // einen Klick-Handler so, dass der Button synchron VOR dem Ausführen
@@ -5854,7 +5859,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       btn.addEventListener('click', async ()=>{
         const datum = prompt('Kündigungsdatum (JJJJ-MM-TT):', todayKey(new Date()));
         if(!datum) return;
-        const res = await updateRowWithLockCheck('sales', btn.dataset.kuendigen, { vertragsende: datum }, btn.dataset.updated);
+        const res = await cancelSaleLocked(btn.dataset.kuendigen, datum, btn.dataset.updated);
         if(res.error){ reportError('Vertrag als gekündigt markieren', res.error); return; }
         if(res.conflict){ alertConflict('Dieser Vertrag'); return; }
         await refreshContactsAndDetail(c.id);
@@ -6710,7 +6715,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     listEl.querySelectorAll('[data-pool-loc]').forEach(cb=>{
       cb.addEventListener('change', async ()=>{
         const newGuildId = cb.checked ? currentGuild.id : null;
-        const res = await updateRowWithLockCheck('locations', cb.dataset.poolLoc, { guild_id: newGuildId }, cb.dataset.updated);
+        const res = await admitLocationToGuildPoolLocked(cb.dataset.poolLoc, newGuildId, cb.dataset.updated);
         if(res.error){ reportError('Dungeon in Gilden-Pool aufnehmen', res.error); cb.checked = !cb.checked; return; }
         if(res.conflict){ alertConflict('Dieser Dungeon'); cb.checked = !cb.checked; return; }
         cb.dataset.updated = res.data.updated_at;
@@ -6882,7 +6887,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       sel.value = loc.owner_id || '';
       sel.addEventListener('change', async ()=>{
         const newOwner = sel.value || null;
-        const res = await updateRowWithLockCheck('locations', sel.dataset.assign, { owner_id:newOwner }, loc.updated_at);
+        const res = await assignLocationOwnerLocked(sel.dataset.assign, newOwner, loc.updated_at);
         if(res.error){ reportError('Account-Zuweisung ändern', res.error); return; }
         if(res.conflict){ alertConflict('Dieser Dungeon'); sel.value = loc.owner_id || ''; return; }
         loc.updated_at = res.data.updated_at;
@@ -7184,7 +7189,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   let termineContactSelectedId = null;
   let termineLocationSelectedId = null;
   let termineEditingId = null; // null = neuer Termin, sonst wird ein bestehender bearbeitet
-  let termineEditingUpdatedAt = null; // gemerkter Stand fürs optimistische Sperren, siehe updateRowWithLockCheck()
+  let termineEditingUpdatedAt = null; // gemerkter Stand fürs optimistische Sperren, siehe updateTerminLocked()
   let termineEntryDateForSave = null;
 
   // Termin-Kanal (Patch 40): Online/Büro/Im Betrieb, optional. Drei
@@ -7978,7 +7983,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     // Direkt im Anschluss an den eigenen, gerade erst erfolgten Insert --
     // Konflikt-Risiko hier praktisch null, updated_at aber ohnehin schon
     // im Objekt vorhanden, daher trotzdem konsistent per Lock-Check.
-    const linkRes = await updateRowWithLockCheck('termine', insertedRow.id, { series_id: seriesRow.id }, insertedRow.updated_at);
+    const linkRes = await updateTerminLocked(insertedRow.id, { series_id: seriesRow.id }, insertedRow.updated_at);
     if(linkRes.error) logSilentError('Ersten Serientermin verknüpfen', linkRes.error);
     await topUpSeries(seriesRow);
   }
@@ -8067,7 +8072,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
             // Vorab-Fetch statt eines veralteten/geratenen Stands.
             const { data: seriesRowNow, error: seriesFetchErr } = await sb.from('termin_series').select('updated_at').eq('id', editingRow.series_id).maybeSingle();
             if(seriesFetchErr || !seriesRowNow){ reportError('Serie laden', seriesFetchErr || new Error('Serie nicht gefunden')); return; }
-            const seriesRes = await updateRowWithLockCheck('termin_series', editingRow.series_id, { start_time:startStr, end_time:endeStr, kanal:termineEntryKanal||null }, seriesRowNow.updated_at);
+            const seriesRes = await updateTerminSeriesLocked(editingRow.series_id, { start_time:startStr, end_time:endeStr, kanal:termineEntryKanal||null }, seriesRowNow.updated_at);
             if(seriesRes.error){ reportError('Serie ändern', seriesRes.error, statusEl); return; }
             if(seriesRes.conflict){ alertConflict('Diese Serie'); return; }
             const todayP = fullPartsInTZ(new Date(), tz());
@@ -8080,7 +8085,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
               const rp = fullPartsInTZ(row.start_at, tz());
               const ns = zonedTimeToUtc(rp.year, rp.month, rp.day, sh, sm, tz());
               const ne = zonedTimeToUtc(rp.year, rp.month, rp.day, eh, em, tz());
-              return updateRowWithLockCheck('termine', row.id, { title, start_at:ns.toISOString(), end_at:ne.toISOString(), contact_id:termineContactSelectedId, location_id:termineLocationSelectedId, kanal:termineEntryKanal||null }, row.updated_at);
+              return updateTerminLocked(row.id, { title, start_at:ns.toISOString(), end_at:ne.toISOString(), contact_id:termineContactSelectedId, location_id:termineLocationSelectedId, kanal:termineEntryKanal||null }, row.updated_at);
             }));
             updateResults.forEach((r,i)=>{
               if(r.error) logSilentError('Serientermin aktualisieren', r.error);
@@ -8089,13 +8094,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
             });
             if(seriesConflicts>0) alert(seriesConflicts + ' Termin(e) der Serie wurden inzwischen von jemand anderem geändert und dabei übersprungen. Bitte Kalender neu laden und einzeln prüfen.');
           } else {
-            const res = await updateRowWithLockCheck('termine', termineEditingId, payload, termineEditingUpdatedAt);
+            const res = await updateTerminLocked(termineEditingId, payload, termineEditingUpdatedAt);
             error = res.error;
             if(res.conflict){ alertConflict('Dieser Termin'); return; }
             if(!error) updatedTerminIds = [termineEditingId];
           }
         } else {
-          const res = await updateRowWithLockCheck('termine', termineEditingId, payload, termineEditingUpdatedAt);
+          const res = await updateTerminLocked(termineEditingId, payload, termineEditingUpdatedAt);
           error = res.error;
           if(res.conflict){ alertConflict('Dieser Termin'); return; }
           if(!error) updatedTerminIds = [termineEditingId];

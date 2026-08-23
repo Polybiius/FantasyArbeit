@@ -3153,15 +3153,65 @@ könnte):
   Konsistenz) automatisch erfüllt, ohne sie zusätzlich nachbauen zu
   müssen — diese Felder werden von der Funktion schlicht nie verändert.
 
-`updateContactWithLockCheck()` im Frontend ruft jetzt `sb.rpc('update_
-contact_locked', ...)` statt `updateRowWithLockCheck('contacts', ...)`
-auf — gleicher Rückgabe-Vertrag (`{data}`/`{conflict:true}`/`{error}`),
-alle 8 bestehenden Aufrufstellen unverändert. Dry-Run mit 7 Assertions
-gegen die echte DB bestanden (Eigentümer-Schreiben, falscher Sperr-Wert
-→ Konflikt, fremder Nutzer → Fehler, roher UPDATE-Versuch → 0 Zeilen,
-Admin-Bypass, verbotenes Feld → Fehler, korrekter Endzustand).
-`locations`/`sales`/`termine`/`termin_series` bewusst noch NICHT
-mitgezogen — gleiches Muster käme dort später, kein Auftrag dafür bisher.
+`updateContactWithLockCheck()` im Frontend ruft `sb.rpc('update_
+contact_locked', ...)` auf — gleicher Rückgabe-Vertrag (`{data}`/
+`{conflict:true}`/`{error}`), alle 8 bestehenden Aufrufstellen
+unverändert. Dry-Run mit 7 Assertions gegen die echte DB bestanden
+(Eigentümer-Schreiben, falscher Sperr-Wert → Konflikt, fremder Nutzer →
+Fehler, roher UPDATE-Versuch → 0 Zeilen, Admin-Bypass, verbotenes Feld →
+Fehler, korrekter Endzustand). **Wichtiger Live-Fund beim anschließenden
+REST-Test** (nicht im reinen SQL-Dry-Run sichtbar): PostgREST liefert
+einen SQL-NULL-Rückgabewert bei einem zusammengesetzten Rückgabetyp
+NICHT als JSON `null`, sondern als Objekt mit lauter `null`-Feldern
+(`{id:null,...}`) — ein reiner `!data`-Check im Frontend hätte den
+Konflikt-Fall NICHT erkannt (das Objekt ist "truthy") und wäre
+stillschweigend als Erfolg durchgegangen. Der generische Helfer
+`rpcLockedUpdate()` (siehe unten) prüft deshalb `!data || data.id ===
+null`.
+
+**`locations`/`sales`/`termine`/`termin_series`: direkt im Anschluss
+ebenfalls umgebaut, Migration `20260824180000_locations_sales_termine_
+locked_write_rpc.sql`** (Nutzerwunsch "mach weiter mit den Tabellen").
+Anders als bei `contacts` (eine breite Funktion) hier mehrere schmale
+Funktionen, weil sich die Tabellen strukturell unterscheiden:
+- **`locations`**: zwei Funktionen für zwei völlig verschiedene
+  Schreibvorgänge — `admit_location_to_guild_pool_locked()` (Gilden-Pool-
+  Aufnahme/-Entlassung durch den Gildenführer, `locations_writable()` als
+  Berechtigungs-Basis + zusätzliche Prüfung, dass der Aufrufer Gründer
+  GENAU der Ziel-Gilde ist) und `assign_location_owner_locked()`
+  (Account-Zuweisung, explizit admin-only geprüft — der bestehende
+  `protect_location_owner_field()`-Trigger, Migration `20260822120000`,
+  bleibt als zusätzliche Verteidigungsebene unverändert bestehen).
+- **`sales`**: `cancel_sale_locked()` — einziger Schreibvorgang
+  (Kündigen), Berechtigung hängt am verknüpften Kontakt
+  (`sales_writable()`), nicht an `sales` selbst.
+- **`termine`/`termin_series`**: `update_termin_locked()`/
+  `update_termin_series_locked()` — gleiche Allowlist-Technik wie bei
+  `contacts`, aber ohne dessen Gilden-Komplexität (einfaches
+  `owner_id=auth.uid() OR is_admin()`, analog zur bisherigen Policy).
+  `update_termin_locked()` deckt alle vier Termin-Schreibformen ab
+  (Serie verknüpfen, Serie-weite Zeitänderung pro Einzeltermin,
+  Einzeltermin-Bearbeitung), da sie alle dieselbe Berechtigungslogik
+  teilen.
+
+Anon-Rechte diesmal von Anfang an mit-eingeschränkt (nicht wie bei
+`contacts` erst als Nachtrag-Migration) — `supabase db advisors` danach
+lief sauber durch, keine neuen Funde. Alle 16 Schreibstellen insgesamt
+(8 contacts + 2 locations + 1 sales + 5 termine/termin_series) sind
+jetzt strukturell gehärtet, die alte generische `updateRowWithLockCheck()`
+ist komplett entfernt (kein Aufrufer mehr übrig), ersetzt durch
+tabellenspezifische Wrapper (`admitLocationToGuildPoolLocked()`,
+`assignLocationOwnerLocked()`, `cancelSaleLocked()`,
+`updateTerminLocked()`, `updateTerminSeriesLocked()`), die alle denselben
+`rpcLockedUpdate()`-Kern nutzen (inkl. des oben gefundenen
+Null-Komposit-Fixes). Live gegen die echte DB verifiziert: SQL-Dry-Run
+mit 15 Assertions (begin/rollback) + REST-Test mit 24 Assertions
+(`check_locations_sales_termine_locked_rpc.mjs`, echte Wegwerf-Daten,
+try/finally-Aufräumen). Beide Regressionssuiten liefen im Anschluss
+weiterhin grün (33/33 + 9/9).
+
+**Damit ist [[project_optimistic_locking_enforcement_gap]] für alle vier
+Tabellen geschlossen** — kein offener Punkt mehr in diesem Strang.
 
 **Nachtrag, `supabase db advisors` nach beiden Migrationen nachgeholt**
 (war beim Bauen selbst übersprungen worden): einziger echter, durch
