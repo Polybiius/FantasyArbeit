@@ -3101,7 +3101,35 @@ Wegwerf-Kontakt aus einem frühen, an einem Playwright-Dialog-Handler-Bug
 gescheiterten Testlauf blieb unbemerkt liegen, bis eine abschließende
 DB-Stichprobe über alle vier Tabellen ihn aufdeckte — bestätigt den Wert
 einer expliziten Nachkontrolle statt nur auf "Skript lief durch" zu
-vertrauen.
+vertrauen. **Beide handwerklichen Lücken direkt danach behoben:** beide
+Testskripte laufen jetzt in try/finally (Aufräumen passiert garantiert,
+auch wenn ein Schritt dazwischen wirft — der Kontakt-Fund oben wäre damit
+nicht passiert), und der Test-Produkt-`key` trägt jetzt einen Zeitstempel
+statt eines festen Werts (sonst kollidiert jeder zweite Lauf mit der
+eigenen, nie löschbaren Karteileiche des vorherigen Laufs — genau das
+ist beim ersten Nachtest tatsächlich aufgetreten).
+
+**Bekannte, bewusst offene architektonische Lücke, vom Nutzer am
+2026-08-24 ausdrücklich für ein späteres erneutes Anschauen vorgemerkt
+(siehe Claudes Erinnerung `project-optimistic-locking-enforcement-gap`):**
+der Schutz ist nur im Frontend verdrahtet (jede Schreibstelle muss
+`updateRowWithLockCheck()` benutzen), nicht wie bei `action_log`/
+`user_inventory` durch RLS strukturell erzwungen — eine künftige neue
+Schreibstelle könnte den Helfer vergessen und würde lautlos wieder ins
+alte "wer zuletzt speichert, gewinnt"-Verhalten zurückfallen, ohne dass
+irgendetwas das meldet. Nicht von selbst weiterverfolgen, erst auf
+erneuten Anstoß.
+
+**Nachtrag, `supabase db advisors` nach beiden Migrationen nachgeholt**
+(war beim Bauen selbst übersprungen worden): einziger echter, durch
+heute verursachter Fund — beide neuen Trigger-Funktionen
+(`touch_contacts_updated_at`/`touch_updated_at`) hatten keinen fest
+verankerten `search_path` ("Function Search Path Mutable", Kategorie
+SECURITY — theoretisches Search-Path-Hijacking-Risiko). Migration
+`20260824150000_touch_trigger_search_path_fix.sql` behebt das
+(`alter function ... set search_path = public, pg_temp`), per Dry-Run
+bestätigt. Alle übrigen Advisor-Funde beim selben Durchlauf sind
+Alt-Bestand ohne Bezug zu den heutigen Änderungen.
 
 ## Bekannte, bewusst in Kauf genommene Lücken
 
