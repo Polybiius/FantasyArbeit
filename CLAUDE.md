@@ -124,7 +124,7 @@ begründen (Business/Motivation-Engine-Trennung, PvE, Gilden-Größe, SDT).
   "best practice? dann bitte" — kein CI/CD, dessen Auslöser noch nicht
   erreicht ist, siehe "Technische Skalierungs-Schwellen" unten): ein
   wiederverwendbares Skript, das vor jeder größeren Änderung gegen die
-  echte App laufen sollte, 27 Einzelprüfungen über sieben Bereiche —
+  echte App laufen sollte, 33 Einzelprüfungen über acht Bereiche —
   Login/rollenbasierte Sichtbarkeit, XP-/Level-Berechnung
   (`computeTotals()`/`levelInfo()`, liest `levelBase`/`levelExponent`
   live aus `rule_configs`, damit der Test auch künftige Neukalibrierungen
@@ -158,6 +158,41 @@ begründen (Business/Motivation-Engine-Trennung, PvE, Gilden-Größe, SDT).
   `role`+`timezone` mitselektiert — PostgREST liefert auch bei
   `.maybeSingle()` ein Array mit einem Element, keine nackte
   Objekt-Antwort, empirisch gegen die echte API geprüft).
+  **Mobiles/Touch-Verhalten** (2026-08-23 ergänzt, sechs weitere Prüfungen,
+  33 insgesamt): Kanban-Layout schaltet unter 760px auf gestapelt um,
+  der Verschieben-Knopf (↕, Touch-Alternative zum auf Touch nicht
+  zuverlässigen nativen Ziehen) ist nur mobil sichtbar und öffnet
+  antippbar das Zielspalten-Menü, Tagesansicht-Raster stapelt Kalender/
+  Aufgaben mobil. **Bewusst nur bis zum Öffnen/Prüfen/Schließen des
+  Verschieben-Menüs getestet, keine abgeschlossene Verschiebung** — die
+  würde über `moveKanbanCard()` ein echtes RPC
+  (`log_action_for_self`) + PATCH auf `contacts` auslösen, das (anders
+  als die abgefangenen GETs) nicht synthetisch ist und am echten Konto
+  hängen würde.
+  **Zweites Skript `regression_suite_member.mjs`** (eigene Datei, selber
+  Ordner): prüft gezielt die rollenabhängigen Stellen (Admin-Nav-Buttons
+  unsichtbar, `#produkte`/`#fehlerprotokoll`/`#notfallzugriff` werfen
+  zurück + korrigieren die Adresszeile) noch einmal mit einem echten
+  **Nicht-Admin-Konto** — Admin ist im echten Team die Ausnahme, nicht
+  die Regel, die Hauptsuite lief bisher nur mit dem Admin-Testkonto.
+  Bewusst NICHT die ganze Hauptsuite ein zweites Mal mit anderem Konto
+  durchlaufen lassen — die meisten der 33 Prüfungen (XP-Berechnung,
+  Kanban-Spalten, Chronik-Merge, Statistik) hängen nicht an der Rolle,
+  ein zweiter Komplettlauf wäre reine Verschwendung. Zwei getrennte
+  Zugangsdaten-Dateien im selben, gitignorten Ordner
+  (`~/.local/share/fantasyarbeit-claude-test/credentials.json` = Admin,
+  `credentials_member.json` = Nicht-Admin, beide `chmod 600`).
+  **Aufruf beider Skripte:** vorher `python3 -m http.server <port>` im
+  Repo-Ordner starten (beide Skripte können denselben laufenden Server
+  nutzen), dann `node regression_suite.mjs <port>` und
+  `node regression_suite_member.mjs <port>`.
+  **Verbindliche Regel, vom Nutzer am 2026-08-23 festgelegt (analog zum
+  Blankoscheck für `git push`, siehe "Wie mit dem Nutzer arbeiten"
+  unten):** Claude Code lässt beide Regressions-Skripte künftig
+  automatisch vor jedem `git push` laufen, ohne vorher zu fragen — als
+  letzte Prüfung kurz bevor etwas live geht. Schlägt dabei ein Test
+  fehl, NICHT einfach pushen — den Fund kurz melden und gemeinsam
+  klären, ob es ein echter Bug oder ein veralteter Test ist.
 - **Lokales Öffnen von HTML-Dateien beim Nutzer** (seit 2026-08-02): Brave
   läuft bei ihm sandboxed (vermutlich Flatpak) — ein direkter `file://`-Zugriff
   auf den Projektordner schlägt fehl (`ERR_FILE_NOT_FOUND`), und Dateien über
@@ -3040,3 +3075,9 @@ Lücken.
   — kein manueller Zwischenschritt beim Nutzer mehr nötig, anders als noch
   am Anfang dieser Session (damals scheiterte es an fehlendem
   `ksshaskpass` in der Sandbox).
+  **Ergänzung, 2026-08-23:** vor jedem Push laufen zusätzlich automatisch
+  beide Regressions-Skripte (`regression_suite.mjs` +
+  `regression_suite_member.mjs`, siehe Tech-Stack-Abschnitt
+  "Regressions-Suite" oben) — ebenfalls ohne vorher zu fragen. Schlägt
+  dabei ein Test fehl, nicht einfach pushen, sondern den Fund erst kurz
+  melden.
