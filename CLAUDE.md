@@ -3101,21 +3101,23 @@ Rechte, greift nur in eine ohnehin schon erlaubte Schreiboperation ein).
 Fortschrittsmarker in `topUpSeries()` (`termin_series`) — reine interne
 Hintergrund-Buchhaltung eines Systemvorgangs, keine Nutzer-Bearbeitung.
 
-Genereller Frontend-Helfer `updateRowWithLockCheck(table, id, patch,
-expectedUpdatedAt)` (neben `reportError`/`logSilentError`) hängt
-`.eq('updated_at', expectedUpdatedAt)` zusätzlich an die WHERE-Bedingung
-— hat sich die Zeile seit dem Laden geändert, betrifft das Update 0
-Zeilen statt die fremde Änderung stillschweigend zu überschreiben, die
-Funktion gibt dann `{conflict:true}` zurück statt `{data}`.
-`alertConflict(subject)` zeigt eine einfache Meldung ("X wurde
-inzwischen von jemand anderem geändert, bitte neu laden") — bewusst kein
-Zusammenführen/keine Merge-Oberfläche (wie ein großes CRM, z.B.
-Salesforces `LastModifiedDate`-Prüfung, das auch macht — Datenqualitäts-
-Schutz zwischen zwei ehrlichen Nutzern, keine Zugriffskontrolle; wer
-schreiben darf, regelt weiterhin unverändert die bestehende RLS-Policy
-je Tabelle). `updateContactWithLockCheck()`/`alertContactConflict()`
-bestehen als dünne, `contacts`-spezifische Wrapper fort, damit die acht
-bestehenden Kontakt-Schreibstellen nicht umbenannt werden mussten.
+**Historischer Zwischenstand, seit 2026-08-24 überholt (Details siehe
+weiter unten, Abschnitt "strukturell gehärtet"):** ursprünglich hing der
+Konflikt-Schutz an einem generischen Frontend-Helfer
+`updateRowWithLockCheck(table, id, patch, expectedUpdatedAt)`, der
+`.eq('updated_at', expectedUpdatedAt)` an die WHERE-Bedingung hängte —
+"wer schreiben darf" regelte dabei noch die normale RLS-Policy je
+Tabelle. **Diese Funktion existiert nicht mehr** — alle vier Tabellen
+sind inzwischen strukturell gehärtet (keine RLS-UPDATE-Policy mehr,
+nur noch tabellenspezifische `SECURITY DEFINER`-Funktionen). Was
+geblieben ist: `alertConflict(subject)` (einfache Meldung "X wurde
+inzwischen von jemand anderem geändert, bitte neu laden" — bewusst kein
+Zusammenführen/keine Merge-Oberfläche, wie ein großes CRM, z.B.
+Salesforces `LastModifiedDate`-Prüfung, das auch macht) und
+`updateContactWithLockCheck()`/`alertContactConflict()` als dünne,
+`contacts`-spezifische Wrapper (rufen jetzt `rpcLockedUpdate()` auf),
+damit die acht bestehenden Kontakt-Schreibstellen nicht umbenannt
+werden mussten.
 
 Insgesamt 16 Schreibstellen umgestellt: acht bei `contacts`
 (Bearbeiten-Formular, sechs Kanban-/Status-Übergänge, Wiedervorlage-
@@ -3165,18 +3167,13 @@ statt eines festen Werts (sonst kollidiert jeder zweite Lauf mit der
 eigenen, nie löschbaren Karteileiche des vorherigen Laufs — genau das
 ist beim ersten Nachtest tatsächlich aufgetreten).
 
-**Bekannte, architektonische Lücke, vom Nutzer am 2026-08-24 für ein
-späteres erneutes Anschauen vorgemerkt (siehe Claudes Erinnerung
-`project-optimistic-locking-enforcement-gap`) — für `contacts` seitdem
-geschlossen, für die anderen drei Tabellen weiterhin offen:** der Schutz
-war ursprünglich nur im Frontend verdrahtet (jede Schreibstelle muss
-`updateRowWithLockCheck()` benutzen), nicht wie bei `action_log`/
-`user_inventory` durch RLS strukturell erzwungen — eine künftige neue
-Schreibstelle könnte den Helfer vergessen und würde lautlos wieder ins
-alte "wer zuletzt speichert, gewinnt"-Verhalten zurückfallen, ohne dass
-irgendetwas das meldet. Für `locations`/`sales`/`termine`/`termin_series`
-gilt das unverändert weiter — nicht von selbst weiterverfolgen, erst auf
-erneuten Anstoß.
+**Architektonische Lücke, am 2026-08-24 erkannt UND noch am selben Tag
+für alle vier Tabellen geschlossen** (Details/Verlauf inkl. eines dabei
+selbst gefundenen und behobenen Folgefehlers: siehe Claudes Erinnerung
+`project-optimistic-locking-enforcement-gap`, sowie Abschnitt
+"strukturell gehärtet" unten): der Schutz war ursprünglich nur im
+Frontend verdrahtet, nicht wie bei `action_log`/`user_inventory` durch
+RLS strukturell erzwungen. Kein offener Punkt mehr in diesem Strang.
 
 **`contacts`: strukturell gehärtet, Migration `20260824160000_
 contacts_locked_write_rpc.sql`.** Auf Nutzeranstoß ("langfristig denken
