@@ -564,6 +564,31 @@ oder in der vorherigen Migrationsdatei vor (git-Historie), sodass ein
 Rückbau ohne Rätselraten möglich ist — nicht zwingend ein eigenes
 Down-Skript, aber immer ein geprüfter, dokumentierter Weg zurück.
 
+**Ergänzung, noch am selben Tag, nach echter Bewährung der Regel** (die
+Zweitmeinung fand sofort einen echten Fehler — fehlende Org-Grenze im
+Admin-Zweig, siehe [[project_optimistic_locking_enforcement_gap]]):
+zwei bewusst gewählte, tatsächlich beeinflussbare Verstärkungen, keine
+Enterprise-Prozesse von der Stange:
+- **Modell-Vielfalt beim Review, wo möglich:** die Zweitmeinung nutzt
+  wenn sinnvoll ein anderes Modell als die Bau-Session (z.B. Bau mit
+  Sonnet, Review-Agent explizit mit `model: 'opus'` beauftragt) — ein
+  frischer Kontext allein reduziert korrelierte blinde Flecken nur
+  teilweise, ein anderes Modell (auch innerhalb derselben Anbieter-
+  Familie) trifft andere Trainingsschwerpunkte. Kein Ersatz für einen
+  echten externen Prüfer, aber der wirksamste Hebel, den diese
+  Konstellation (ein Nutzer, keine zweite Fachperson) tatsächlich hat.
+- **Lokaler `pre-push`-Git-Hook** (`.git/hooks/pre-push`, bewusst NICHT
+  versioniert — gilt nur für diese eine Arbeitskopie, in der Claude Code
+  tatsächlich arbeitet, was hier aber genau der Realität entspricht):
+  warnt beim `git push`, wenn eine gepushte Migration unter
+  `supabase/migrations/` Berechtigungslogik enthält (RLS-Policy/
+  `GRANT`/`REVOKE`/`SECURITY DEFINER`), als Erinnerung an die
+  Zweitmeinungs-Pflicht oben. Bewusst NICHT blockierend (kein
+  zuverlässiger automatischer Weg, echte Zweitmeinung von "vergessen"
+  zu unterscheiden) — reine, aber strukturelle (nicht nur dokumentierte)
+  Erinnerung, die auch dann noch feuert, wenn eine Sitzung die
+  CLAUDE.md-Regel aus irgendeinem Grund nicht mehr präsent hat.
+
 ## Sicherheitsmodell (RLS), zum Verständnis
 
 Fast jede Tabelle hat `org_id` und eine RLS-Policy, die auf eine Hilfsfunktion
