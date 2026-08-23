@@ -3244,6 +3244,29 @@ weiterhin grün (33/33 + 9/9).
 **Damit ist [[project_optimistic_locking_enforcement_gap]] für alle vier
 Tabellen geschlossen** — kein offener Punkt mehr in diesem Strang.
 
+**Echter Fund der neuen Review-Regel, noch am selben Tag, Migration
+`20260824190000_locked_write_org_boundary_fix.sql`:** die erste
+Anwendung der neu eingeführten Pflicht zur unabhängigen Zweitmeinung
+(siehe Abschnitt "Supabase-CLI-Migrationstoolchain") deckte sofort einen
+echten, selbst eingeführten Fehler auf — `contacts_writable()`/
+`sales_writable()`/`termine_writable()`/`termin_series_writable()`
+übernahmen jeweils nur die USING-Klausel der entfernten RLS-Policy, nicht
+aber die WITH-CHECK-Klausel, in der bei diesen vier Tabellen (anders als
+bei `locations`) die Org-Grenze für den Admin-Zweig steckte. Ein Admin
+konnte dadurch theoretisch eine Zeile jeder Organisation anfassen, sofern
+er ihre UUID kennt — live gegen eine echte, zurückgerollte Test-Transaktion
+zweifelsfrei nachgewiesen (`notes` einer fremden Test-Org wurde
+tatsächlich verändert), praktisch aber folgenlos, solange nur eine
+Organisation (`DEFAULT_ORG_ID`) live ist. Fix: alle vier Funktionen
+prüfen jetzt zusätzlich `target.org_id = current_org_id()` — dieselbe
+Grenze, die die alte WITH-CHECK-Klausel für die neue Zeile durchsetzte,
+jetzt für die zu lesende alte Zeile. Vor UND nach dem Fix live gegen die
+Produktions-DB (in `begin`/`rollback`) empirisch bewiesen: vorher
+erfolgreich, danach korrekt abgewiesen, keine Regression beim normalen
+Bearbeiten der eigenen Org. **Bestätigt den Sinn der neuen Review-Regel
+noch am Tag ihrer Einführung** — reines Selbst-Review dieser Sitzung
+hatte die Lücke nicht gefunden.
+
 **Nachtrag, `supabase db advisors` nach beiden Migrationen nachgeholt**
 (war beim Bauen selbst übersprungen worden): einziger echter, durch
 heute verursachter Fund — beide neuen Trigger-Funktionen
