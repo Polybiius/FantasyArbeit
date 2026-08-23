@@ -3109,16 +3109,59 @@ statt eines festen Werts (sonst kollidiert jeder zweite Lauf mit der
 eigenen, nie löschbaren Karteileiche des vorherigen Laufs — genau das
 ist beim ersten Nachtest tatsächlich aufgetreten).
 
-**Bekannte, bewusst offene architektonische Lücke, vom Nutzer am
-2026-08-24 ausdrücklich für ein späteres erneutes Anschauen vorgemerkt
-(siehe Claudes Erinnerung `project-optimistic-locking-enforcement-gap`):**
-der Schutz ist nur im Frontend verdrahtet (jede Schreibstelle muss
+**Bekannte, architektonische Lücke, vom Nutzer am 2026-08-24 für ein
+späteres erneutes Anschauen vorgemerkt (siehe Claudes Erinnerung
+`project-optimistic-locking-enforcement-gap`) — für `contacts` seitdem
+geschlossen, für die anderen drei Tabellen weiterhin offen:** der Schutz
+war ursprünglich nur im Frontend verdrahtet (jede Schreibstelle muss
 `updateRowWithLockCheck()` benutzen), nicht wie bei `action_log`/
 `user_inventory` durch RLS strukturell erzwungen — eine künftige neue
 Schreibstelle könnte den Helfer vergessen und würde lautlos wieder ins
 alte "wer zuletzt speichert, gewinnt"-Verhalten zurückfallen, ohne dass
-irgendetwas das meldet. Nicht von selbst weiterverfolgen, erst auf
+irgendetwas das meldet. Für `locations`/`sales`/`termine`/`termin_series`
+gilt das unverändert weiter — nicht von selbst weiterverfolgen, erst auf
 erneuten Anstoß.
+
+**`contacts`: strukturell gehärtet, Migration `20260824160000_
+contacts_locked_write_rpc.sql`.** Auf Nutzeranstoß ("langfristig denken
+überschreibt kurzfristigen Bauaufwand") nach demselben Muster wie
+`action_log`/`user_inventory` umgebaut: die RLS-Policy
+`contacts_update_visible` ist komplett entfernt, kein direktes
+`sb.from('contacts').update(...)` funktioniert mehr — der einzige
+verbleibende Weg ist `update_contact_locked(p_id, p_patch, p_expected_
+updated_at)` (`SECURITY DEFINER`). Ein vergessener Aufruf des
+Frontend-Helfers fällt jetzt sofort als echter RLS-Fehler auf, statt
+lautlos ins alte Verhalten zurückzufallen.
+
+Zwei Design-Entscheidungen, die die sonst übliche Duplikations-Falle
+vermeiden (Berechtigungslogik an zwei Stellen, die auseinanderdriften
+könnte):
+- **Eine einzige Quelle der Wahrheit für "wer darf schreiben":**
+  `contacts_writable(target contacts)` übernimmt die USING-Bedingung der
+  entfernten Policy 1:1 — und wird jetzt nur noch von genau EINER Stelle
+  aufgerufen (der neuen Funktion), es gibt also gar keine zweite Stelle
+  mehr, mit der sie auseinanderlaufen könnte.
+- **Bewusst schmales Feld-Allowlist statt generischem Patch:**
+  `update_contact_locked()` erlaubt nur die 15 Felder, die die 8 echten
+  Kontakt-Schreibstellen im Frontend tatsächlich anfassen (Formularfelder,
+  `kanban_stage`, `status`, `naechster_kontakt`). `owner_id`/`guild_id`/
+  `org_id` sind bewusst NICHT patchbar — die ändern sich ausschließlich
+  über die bestehenden `SECURITY DEFINER`-Trigger
+  (`sync_contacts_owner_on_location_reassign`/`handle_member_
+  offboarding`), nie über eine App-Schreibstelle. Dadurch bleibt die
+  WITH-CHECK-Bedingung der alten Policy (Org-Zugehörigkeit, Gilden-Pool-
+  Konsistenz) automatisch erfüllt, ohne sie zusätzlich nachbauen zu
+  müssen — diese Felder werden von der Funktion schlicht nie verändert.
+
+`updateContactWithLockCheck()` im Frontend ruft jetzt `sb.rpc('update_
+contact_locked', ...)` statt `updateRowWithLockCheck('contacts', ...)`
+auf — gleicher Rückgabe-Vertrag (`{data}`/`{conflict:true}`/`{error}`),
+alle 8 bestehenden Aufrufstellen unverändert. Dry-Run mit 7 Assertions
+gegen die echte DB bestanden (Eigentümer-Schreiben, falscher Sperr-Wert
+→ Konflikt, fremder Nutzer → Fehler, roher UPDATE-Versuch → 0 Zeilen,
+Admin-Bypass, verbotenes Feld → Fehler, korrekter Endzustand).
+`locations`/`sales`/`termine`/`termin_series` bewusst noch NICHT
+mitgezogen — gleiches Muster käme dort später, kein Auftrag dafür bisher.
 
 **Nachtrag, `supabase db advisors` nach beiden Migrationen nachgeholt**
 (war beim Bauen selbst übersprungen worden): einziger echter, durch

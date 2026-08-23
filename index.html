@@ -2117,10 +2117,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // die fremde Änderung stillschweigend zu überschreiben. Gibt bei Erfolg
   // die frische Zeile zurück (neuer updated_at inklusive, Aufrufer sollte
   // ihn im lokalen Objekt nachziehen), bei Konflikt {conflict:true}, bei
-  // echtem Fehler {error}. Generisch über alle vier bisher geschützten
-  // Tabellen (contacts/locations/sales/termine/termin_series) hinweg --
-  // die Tabellen-spezifischen Wrapper darunter bestehen nur, damit
-  // bestehende Aufrufstellen nicht umbenannt werden mussten.
+  // echtem Fehler {error}. Generisch über die noch verbliebenen drei
+  // Tabellen (locations/sales/termine/termin_series) hinweg -- contacts
+  // ist seit der strukturellen Härtung (update_contact_locked(), siehe
+  // Migration 20260824160000 + project_optimistic_locking_enforcement_gap)
+  // NICHT mehr Teil davon: ein direktes UPDATE auf contacts ist serverseitig
+  // gesperrt (keine passende RLS-Policy mehr), das würde hier still 0
+  // Zeilen treffen und fälschlich als Konflikt statt als Rechte-Fehler
+  // gemeldet -- deshalb hat contacts jetzt seinen eigenen RPC-Weg.
   async function updateRowWithLockCheck(table, id, patch, expectedUpdatedAt){
     const { data, error } = await sb.from(table).update(patch)
       .eq('id', id).eq('updated_at', expectedUpdatedAt)
@@ -2132,8 +2136,26 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   function alertConflict(subject){
     alert(subject + ' wurde inzwischen von jemand anderem geändert. Bitte lade die Seite neu, um die aktuelle Version zu sehen.');
   }
+  // Kontakte: einzige verbleibende Schreibfunktion ist update_contact_locked()
+  // -- direktes sb.from('contacts').update() schlägt seit der strukturellen
+  // Härtung mit einem RLS-Fehler fehl (kein "still vergessen" mehr möglich,
+  // siehe project_optimistic_locking_enforcement_gap). p_patch darf nur die
+  // 14 Felder enthalten, die die App wirklich am Kontaktformular/Kanban
+  // ändert -- owner_id/guild_id/org_id sind bewusst nicht dabei, die ändern
+  // sich ausschließlich über bestehende Server-Trigger.
   async function updateContactWithLockCheck(contactId, patch, expectedUpdatedAt){
-    return updateRowWithLockCheck('contacts', contactId, patch, expectedUpdatedAt);
+    const { data, error } = await sb.rpc('update_contact_locked', {
+      p_id: contactId, p_patch: patch, p_expected_updated_at: expectedUpdatedAt
+    });
+    if(error) return { error };
+    // Ein SQL-NULL-Rückgabewert (Konflikt) kommt über PostgREST NICHT als
+    // JSON null an, sondern als Objekt mit lauter null-Feldern
+    // ({id:null,...}) -- Eigenheit der row_to_json-Konvertierung bei
+    // zusammengesetzten Rückgabetypen, live per REST-Test entdeckt
+    // (check_contact_locked_rpc.mjs). Ein reiner !data-Check hätte das
+    // NICHT erkannt (das Objekt ist "truthy").
+    if(!data || data.id === null) return { conflict: true };
+    return { data };
   }
   function alertContactConflict(){ alertConflict('Dieser Kontakt'); }
 
