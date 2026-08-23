@@ -3011,6 +3011,64 @@ mitgebrachte generische Engineering-Checkliste, Cross-Check gegen den
 echten Code (nicht nur Plausibilität aus der Doku) bestätigte alle drei
 Lücken.
 
+## Konflikt-Schutz bei gleichzeitiger Kontakt-Bearbeitung (optimistisches Sperren)
+
+Löst die bisher bewusst in Kauf genommene Lücke "wer zuletzt speichert,
+gewinnt ohne Warnung" — zu unterscheiden von der Idempotenz-Härtung oben
+(die schützt gegen denselben Nutzer/denselben Request, nicht gegen zwei
+unterschiedliche echte Bearbeitungen). Bisher nur für `contacts`
+umgesetzt (2026-08-23) — die Tabelle mit dem höchsten echten Risiko
+(gilden-geteilt, mehrere Kolleg:innen können denselben Kontakt
+bearbeiten). **Langfristig auf weitere Tabellen mit echtem Mehrfach-
+Schreiber-Risiko ausgeweitet werden**, priorisiert nach Risiko:
+`locations` (ebenfalls gilden-geteilt) → `sales` (Eigentümer+Admin können
+denselben Verkauf anfassen) → `termine`/`termin_series` (Admin darf laut
+Rechten auch fremde Termine bearbeiten, seltener Fall). Bewusst NICHT
+für `journal_entries`/`profiles`/`products`/`organizations`/
+`rule_configs`/`friends`/`guild_members` — dort kann strukturell nur eine
+Person je Zeile schreiben (oder es ist praktisch nie gleichzeitig der
+Fall), kein echter Bedarf.
+
+**Technik:** `contacts.updated_at` existierte schon, wurde aber nur an
+einer von acht Schreibstellen im Frontend gepflegt. Ein neuer
+`BEFORE UPDATE`-Trigger (`touch_contacts_updated_at()`,
+`supabase/migrations/20260824130000_contacts_konflikt_schutz.sql`)
+stempelt jetzt bei JEDEM Update automatisch `now()` — **ignoriert dabei
+bewusst jeden vom Client mitgeschickten Wert**, sonst könnte ein
+direkter API-Aufruf (an der App vorbei) einen alten Zeitstempel
+unterschieben und die Schutzprüfung aushebeln. Kein `SECURITY DEFINER`
+nötig (keine erhöhten Rechte, greift nur in eine ohnehin schon erlaubte
+Schreiboperation ein).
+
+Neuer Frontend-Helfer `updateContactWithLockCheck(contactId, patch,
+expectedUpdatedAt)` (neben `reportError`/`logSilentError`) hängt
+`.eq('updated_at', expectedUpdatedAt)` zusätzlich an die WHERE-Bedingung
+— hat sich die Zeile seit dem Laden geändert, betrifft das Update 0
+Zeilen statt die fremde Änderung stillschweigend zu überschreiben, die
+Funktion gibt dann `{conflict:true}` zurück statt `{data}`.
+`alertContactConflict()` zeigt eine einfache Meldung ("wurde inzwischen
+von jemand anderem geändert, bitte neu laden") — bewusst kein
+Zusammenführen/keine Merge-Oberfläche (wie ein großes CRM, z.B.
+Salesforces `LastModifiedDate`-Prüfung, das auch macht — Datenqualitäts-
+Schutz zwischen zwei ehrlichen Nutzern, keine Zugriffskontrolle; wer
+schreiben darf, regelt weiterhin unverändert die bestehende RLS-Policy).
+Alle acht bestehenden Schreibstellen umgestellt (Bearbeiten-Formular,
+sechs Kanban-/Status-Übergänge, Wiedervorlage-Datum) — jede aktualisiert
+nach Erfolg auch das lokale, im Speicher gehaltene Kontakt-Objekt
+(`contact.updated_at = ...`), damit eine zweite Aktion auf demselben
+Objekt in derselben Sitzung nicht sofort fälschlich in einen
+Selbst-Konflikt läuft.
+
+**Live gegen die echte Datenbank verifiziert** (`check_contact_lock.mjs`,
+echte Schreibvorgänge an einem Wegwerf-Testkontakt, danach aufgeräumt —
+bewusst NICHT über die simulierte Regressions-Suite, da hier genau das
+echte Trigger-Verhalten geprüft werden muss): ein komplett unabhängiger
+zweiter HTTP-Client (eigener Login, nicht derselbe Browser-Tab) ändert
+den Kontakt während das Bearbeiten-Formular noch mit dem alten Stand
+offen ist — das anschließende Speichern mit veraltetem Stand löst
+korrekt die Warnung aus, und die Änderung des "Kollegen" bleibt
+nachweislich erhalten statt überschrieben zu werden.
+
 ## Bekannte, bewusst in Kauf genommene Lücken
 
 - ~~"Zuletzt kontaktiert"/Kontakt-Chronik zeigen nur eigene Einträge~~ —
@@ -3030,14 +3088,13 @@ Lücken.
   "Technische Skalierungs-Schwellen" oben (mehrere Personen bearbeiten
   das Repo gleichzeitig) betrifft weiterhin nur Code-Bearbeitung, nicht
   App-Nutzung — bleibt also unverändert nicht ausgelöst.
-- Kein Konflikt-Schutz bei gleichzeitiger Bearbeitung desselben
-  geteilten Datensatzes durch zwei verschiedene Nutzer (z.B. zwei
-  Kolleg:innen speichern im selben Moment dieselbe Kontaktnotiz) — "wer
-  zuletzt speichert" gewinnt ohne Warnung. Zu unterscheiden von der
-  Idempotenz-Härtung oben (die schützt gegen denselben Nutzer/
-  denselben Request, nicht gegen zwei unterschiedliche echte
-  Bearbeitungen). Bei 7 Kolleg:innen real, aber sehr unwahrscheinlich —
-  auf der Beobachtungsliste, nicht von selbst bauen.
+- ~~Kein Konflikt-Schutz bei gleichzeitiger Bearbeitung~~ — **für
+  `contacts` behoben, 2026-08-23**, siehe eigener Abschnitt "Konflikt-
+  Schutz bei gleichzeitiger Kontakt-Bearbeitung" oben. Für die übrigen
+  Tabellen mit echtem Mehrfach-Schreiber-Risiko (`locations`, `sales`,
+  `termine`/`termin_series`) weiterhin offen, priorisierte Reihenfolge
+  dort dokumentiert — bei 7 Kolleg:innen real, aber selten, kein
+  Zeitdruck.
 
 ## Wie mit dem Nutzer arbeiten (Ton/Stil aus dem bisherigen Chat)
 

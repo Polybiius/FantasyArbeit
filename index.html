@@ -2107,6 +2107,29 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     }
   }
 
+  // Konflikt-Schutz bei gleichzeitiger Kontakt-Bearbeitung (optimistisches
+  // Sperren, siehe CLAUDE.md "Konflikt-Schutz bei gleichzeitiger Kontakt-
+  // Bearbeitung"): jede Schreibstelle reicht den zuletzt gesehenen
+  // updated_at-Wert als zusätzliche WHERE-Bedingung mit. Ein serverseitiger
+  // Trigger stempelt updated_at bei JEDEM contacts-Update neu (ignoriert
+  // dabei jeden vom Client mitgeschickten Wert) -- hat sich die Zeile seit
+  // dem Laden geändert, matcht die Bedingung nicht mehr, das Update betrifft
+  // 0 Zeilen statt die fremde Änderung stillschweigend zu überschreiben.
+  // Gibt bei Erfolg die frische Zeile zurück (neuer updated_at inklusive,
+  // Aufrufer sollte ihn im lokalen Objekt nachziehen), bei Konflikt
+  // {conflict:true}, bei echtem Fehler {error}.
+  async function updateContactWithLockCheck(contactId, patch, expectedUpdatedAt){
+    const { data, error } = await sb.from('contacts').update(patch)
+      .eq('id', contactId).eq('updated_at', expectedUpdatedAt)
+      .select().maybeSingle();
+    if(error) return { error };
+    if(!data) return { conflict: true };
+    return { data };
+  }
+  function alertContactConflict(){
+    alert('Dieser Kontakt wurde inzwischen von jemand anderem geändert. Bitte lade die Seite neu, um die aktuelle Version zu sehen.');
+  }
+
   // Verhindert doppelte Schreibvorgänge durch schnellen Doppelklick: umhüllt
   // einen Klick-Handler so, dass der Button synchron VOR dem Ausführen
   // deaktiviert und danach garantiert wieder aktiviert wird (auch bei
@@ -4927,6 +4950,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // ---- Kontakte (Arkanes Register / Kriegsarchiv / Jägerchronik) ----
   const CLASS_CONTACT_LABELS = { zauberer:'Arkanes Register', krieger:'Kriegsarchiv', schuetze:'Jägerchronik' };
   let editingContactId = null;
+  let editingContactUpdatedAt = null; // gemerkter Stand fürs optimistische Sperren, siehe updateContactWithLockCheck()
 
   function updateContactLabels(){
     const label = CLASS_CONTACT_LABELS[profile.character_class] || CLASS_CONTACT_LABELS.zauberer;
@@ -5697,9 +5721,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       if(c.kanban_stage==='gewonnen' || c.kanban_stage==='verloren'){
         const ok = await logKanbanAction(c, 'kundenausbau');
         if(!ok) return;
-        const { error } = await sb.from('contacts').update({ kanban_stage:'ersttermin_vereinbart' }).eq('id', c.id);
-        if(error){ reportError('Kanban-Spalte aktualisieren', error); return; }
+        const res = await updateContactWithLockCheck(c.id, { kanban_stage:'ersttermin_vereinbart' }, c.updated_at);
+        if(res.error){ reportError('Kanban-Spalte aktualisieren', res.error); return; }
+        if(res.conflict){ alertContactConflict(); return; }
         c.kanban_stage = 'ersttermin_vereinbart';
+        c.updated_at = res.data.updated_at;
         await promptKanbanTermin(c, 'Ersttermin');
         await renderContactsPage();
       } else {
@@ -5787,9 +5813,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       // Ein Kontakt ganz ohne Kanban-Zugehörigkeit wird dadurch NICHT
       // nachträglich ins Board gezogen, gleiches Prinzip wie überall sonst.
       if(c.kanban_stage){
-        const { error: stageErr } = await sb.from('contacts').update({ kanban_stage: status }).eq('id', c.id);
-        if(stageErr) reportError('Kanban-Spalte aktualisieren', stageErr);
-        else c.kanban_stage = status;
+        const res = await updateContactWithLockCheck(c.id, { kanban_stage: status }, c.updated_at);
+        if(res.error) reportError('Kanban-Spalte aktualisieren', res.error);
+        else if(res.conflict) alertContactConflict();
+        else { c.kanban_stage = status; c.updated_at = res.data.updated_at; }
       }
       await recordWinOrLoss(c, status);
       await refreshContactsAndDetail(c.id);
@@ -6042,6 +6069,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('contactFormBody').style.display = 'block';
     document.getElementById('contactFormToggleBtn').classList.add('open');
     editingContactId = c.id;
+    editingContactUpdatedAt = c.updated_at;
     document.getElementById('contactVornameInput').value = c.vorname||'';
     document.getElementById('contactNachnameInput').value = c.nachname||'';
     document.getElementById('contactRoleSelect').value = c.role||'';
@@ -6092,10 +6120,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     btn.disabled = true;
     try{
       if(editingContactId){
-        const { data: savedContact, error } = await sb.from('contacts').update({ ...payload, updated_at:new Date().toISOString() }).eq('id', editingContactId).select().single();
-        if(error){ reportError('Kontakt speichern', error, statusEl); return; }
+        const res = await updateContactWithLockCheck(editingContactId, payload, editingContactUpdatedAt);
+        if(res.error){ reportError('Kontakt speichern', res.error, statusEl); return; }
+        if(res.conflict){ alertContactConflict(); return; }
+        const savedContact = res.data;
         await syncWiedervorlageTask(savedContact.id, savedContact.name, savedContact.naechster_kontakt);
         editingContactId = null;
+        editingContactUpdatedAt = null;
         document.getElementById('contactAddBtn').textContent = '+ Kontakt anlegen';
       } else {
         const { data: savedContact, error } = await sb.from('contacts').insert({ org_id:profile.org_id, owner_id:profile.id, ...payload }).select().single();
@@ -6172,9 +6203,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(key==='kundenausbau' && !contact.kanban_stage){
       const ok = await logKanbanAction(contact, 'termin_vereinbart');
       if(ok){
-        const { error: stageErr } = await sb.from('contacts').update({ kanban_stage:'ersttermin_vereinbart' }).eq('id', contact.id);
-        if(stageErr) reportError('Kanban-Spalte aktualisieren', stageErr);
-        else contact.kanban_stage = 'ersttermin_vereinbart';
+        const res = await updateContactWithLockCheck(contact.id, { kanban_stage:'ersttermin_vereinbart' }, contact.updated_at);
+        if(res.error) reportError('Kanban-Spalte aktualisieren', res.error);
+        else if(res.conflict) alertContactConflict();
+        else { contact.kanban_stage = 'ersttermin_vereinbart'; contact.updated_at = res.data.updated_at; }
       }
     }
 
@@ -6183,9 +6215,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     // "Gewonnen": Kanban-Spalte setzen, Produkt(e)+Menge abfragen, Status
     // auf "Kunde" setzen. Das fehlte hier bisher komplett.
     if(key==='abschluss'){
-      const { error: stageErr } = await sb.from('contacts').update({ kanban_stage:'gewonnen' }).eq('id', contact.id);
-      if(stageErr) reportError('Kanban-Spalte aktualisieren', stageErr);
-      else contact.kanban_stage = 'gewonnen';
+      const res = await updateContactWithLockCheck(contact.id, { kanban_stage:'gewonnen' }, contact.updated_at);
+      if(res.error) reportError('Kanban-Spalte aktualisieren', res.error);
+      else if(res.conflict) alertContactConflict();
+      else { contact.kanban_stage = 'gewonnen'; contact.updated_at = res.data.updated_at; }
       await recordWinOrLoss(contact, 'gewonnen');
     }
 
@@ -8748,10 +8781,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
             if(statusEl.textContent) return;
           }
           if(wiedervorlageEl.value){
-            const { error } = await sb.from('contacts').update({ naechster_kontakt: wiedervorlageEl.value }).eq('id', contact.id);
-            if(error) logSilentError('Wiedervorlage speichern', error);
+            const res = await updateContactWithLockCheck(contact.id, { naechster_kontakt: wiedervorlageEl.value }, contact.updated_at);
+            if(res.error) logSilentError('Wiedervorlage speichern', res.error);
+            else if(res.conflict) alertContactConflict();
             else {
               contact.naechster_kontakt = wiedervorlageEl.value;
+              contact.updated_at = res.data.updated_at;
               await syncWiedervorlageTask(contact.id, contact.name, contact.naechster_kontakt);
             }
           }
@@ -8788,8 +8823,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     // einen "Kunden" mit 0 Verträgen.
     const saleRecorded = await recordSaleForKanban(contact, status);
     if(!saleRecorded) return;
-    const { error } = await sb.from('contacts').update({status: status==='gewonnen' ? 'kunde' : 'verloren'}).eq('id', contact.id);
-    if(error) logSilentError('Kontaktstatus aktualisieren', error);
+    const newStatus = status==='gewonnen' ? 'kunde' : 'verloren';
+    const res = await updateContactWithLockCheck(contact.id, { status: newStatus }, contact.updated_at);
+    if(res.error) logSilentError('Kontaktstatus aktualisieren', res.error);
+    else if(res.conflict) alertContactConflict();
+    else { contact.status = newStatus; contact.updated_at = res.data.updated_at; }
   }
 
   // Kleines Popup mit optionalen Zusatz-Aktionen (Bedarfsanalyse bei
@@ -8855,9 +8893,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     if(!ok) return;
 
-    const { error: stageErr } = await sb.from('contacts').update({ kanban_stage: toStage }).eq('id', contactId);
-    if(stageErr){ reportError('Kanban-Spalte aktualisieren', stageErr); return; }
+    const res = await updateContactWithLockCheck(contactId, { kanban_stage: toStage }, contact.updated_at);
+    if(res.error){ reportError('Kanban-Spalte aktualisieren', res.error); return; }
+    if(res.conflict){ alertContactConflict(); return; }
     contact.kanban_stage = toStage;
+    contact.updated_at = res.data.updated_at;
 
     if(toStage==='gewonnen'){
       await recordWinOrLoss(contact, 'gewonnen');
