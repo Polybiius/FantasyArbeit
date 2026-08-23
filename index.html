@@ -2107,28 +2107,35 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     }
   }
 
-  // Konflikt-Schutz bei gleichzeitiger Kontakt-Bearbeitung (optimistisches
-  // Sperren, siehe CLAUDE.md "Konflikt-Schutz bei gleichzeitiger Kontakt-
-  // Bearbeitung"): jede Schreibstelle reicht den zuletzt gesehenen
-  // updated_at-Wert als zusätzliche WHERE-Bedingung mit. Ein serverseitiger
-  // Trigger stempelt updated_at bei JEDEM contacts-Update neu (ignoriert
-  // dabei jeden vom Client mitgeschickten Wert) -- hat sich die Zeile seit
-  // dem Laden geändert, matcht die Bedingung nicht mehr, das Update betrifft
-  // 0 Zeilen statt die fremde Änderung stillschweigend zu überschreiben.
-  // Gibt bei Erfolg die frische Zeile zurück (neuer updated_at inklusive,
-  // Aufrufer sollte ihn im lokalen Objekt nachziehen), bei Konflikt
-  // {conflict:true}, bei echtem Fehler {error}.
-  async function updateContactWithLockCheck(contactId, patch, expectedUpdatedAt){
-    const { data, error } = await sb.from('contacts').update(patch)
-      .eq('id', contactId).eq('updated_at', expectedUpdatedAt)
+  // Konflikt-Schutz bei gleichzeitiger Bearbeitung geteilter Datensätze
+  // (optimistisches Sperren, siehe CLAUDE.md): jede Schreibstelle reicht
+  // den zuletzt gesehenen updated_at-Wert als zusätzliche WHERE-Bedingung
+  // mit. Ein serverseitiger Trigger stempelt updated_at bei JEDEM Update
+  // der betroffenen Tabelle neu (ignoriert dabei jeden vom Client
+  // mitgeschickten Wert) -- hat sich die Zeile seit dem Laden geändert,
+  // matcht die Bedingung nicht mehr, das Update betrifft 0 Zeilen statt
+  // die fremde Änderung stillschweigend zu überschreiben. Gibt bei Erfolg
+  // die frische Zeile zurück (neuer updated_at inklusive, Aufrufer sollte
+  // ihn im lokalen Objekt nachziehen), bei Konflikt {conflict:true}, bei
+  // echtem Fehler {error}. Generisch über alle vier bisher geschützten
+  // Tabellen (contacts/locations/sales/termine/termin_series) hinweg --
+  // die Tabellen-spezifischen Wrapper darunter bestehen nur, damit
+  // bestehende Aufrufstellen nicht umbenannt werden mussten.
+  async function updateRowWithLockCheck(table, id, patch, expectedUpdatedAt){
+    const { data, error } = await sb.from(table).update(patch)
+      .eq('id', id).eq('updated_at', expectedUpdatedAt)
       .select().maybeSingle();
     if(error) return { error };
     if(!data) return { conflict: true };
     return { data };
   }
-  function alertContactConflict(){
-    alert('Dieser Kontakt wurde inzwischen von jemand anderem geändert. Bitte lade die Seite neu, um die aktuelle Version zu sehen.');
+  function alertConflict(subject){
+    alert(subject + ' wurde inzwischen von jemand anderem geändert. Bitte lade die Seite neu, um die aktuelle Version zu sehen.');
   }
+  async function updateContactWithLockCheck(contactId, patch, expectedUpdatedAt){
+    return updateRowWithLockCheck('contacts', contactId, patch, expectedUpdatedAt);
+  }
+  function alertContactConflict(){ alertConflict('Dieser Kontakt'); }
 
   // Verhindert doppelte Schreibvorgänge durch schnellen Doppelklick: umhüllt
   // einen Klick-Handler so, dass der Button synchron VOR dem Ausführen
@@ -5789,7 +5796,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         · laufender Beitrag: ${fmtEuro(s.laufender_beitrag)} · ausgeschüttete Provision: —
         ${s.status==='verloren' ? ' · <span style="color:var(--danger)">verloren</span>' : ''}
         ${s.vertragsende ? ` · gekündigt zum ${fmtDate(s.vertragsende)}` : ''}</span>
-        ${showKuendigen && canEdit ? `<button class="cal-nav-btn" data-kuendigen="${s.id}">Gekündigt/ausgelaufen</button>` : ''}
+        ${showKuendigen && canEdit ? `<button class="cal-nav-btn" data-kuendigen="${s.id}" data-updated="${s.updated_at}">Gekündigt/ausgelaufen</button>` : ''}
       </div>`;
     };
 
@@ -5825,8 +5832,9 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       btn.addEventListener('click', async ()=>{
         const datum = prompt('Kündigungsdatum (JJJJ-MM-TT):', todayKey(new Date()));
         if(!datum) return;
-        const { error } = await sb.from('sales').update({ vertragsende: datum }).eq('id', btn.dataset.kuendigen);
-        if(error){ reportError('Vertrag als gekündigt markieren', error); return; }
+        const res = await updateRowWithLockCheck('sales', btn.dataset.kuendigen, { vertragsende: datum }, btn.dataset.updated);
+        if(res.error){ reportError('Vertrag als gekündigt markieren', res.error); return; }
+        if(res.conflict){ alertConflict('Dieser Vertrag'); return; }
         await refreshContactsAndDetail(c.id);
       });
     });
@@ -6665,14 +6673,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   async function loadGuildRightsPoolList(memberId){
     const listEl = document.getElementById('guildRightsPoolList');
     listEl.innerHTML = '<div class="empty-page-hint">Lade …</div>';
-    const { data: locs, error } = await sb.from('locations').select('id,name,type')
+    const { data: locs, error } = await sb.from('locations').select('id,name,type,updated_at')
       .or(`owner_id.eq.${memberId},created_by.eq.${memberId}`).is('guild_id', null);
     if(error){ logSilentError('Private Dungeons des Mitglieds laden', error); listEl.innerHTML=''; return; }
     if(!locs || locs.length===0){ listEl.innerHTML = '<div class="empty-page-hint">Keine privaten Dungeons zum Aufnehmen.</div>'; return; }
     listEl.innerHTML = locs.map(l=>`
       <label class="settings-switch-row" style="margin-bottom:8px;">
         <span class="settings-switch">
-          <input type="checkbox" data-pool-loc="${l.id}">
+          <input type="checkbox" data-pool-loc="${l.id}" data-updated="${l.updated_at}">
           <span class="settings-switch-track"><span class="settings-switch-thumb"></span></span>
         </span>
         <span class="settings-switch-label">${escHtml(l.name)}</span>
@@ -6680,8 +6688,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     listEl.querySelectorAll('[data-pool-loc]').forEach(cb=>{
       cb.addEventListener('change', async ()=>{
         const newGuildId = cb.checked ? currentGuild.id : null;
-        const { error: updErr } = await sb.from('locations').update({ guild_id: newGuildId }).eq('id', cb.dataset.poolLoc);
-        if(updErr){ reportError('Dungeon in Gilden-Pool aufnehmen', updErr); cb.checked = !cb.checked; }
+        const res = await updateRowWithLockCheck('locations', cb.dataset.poolLoc, { guild_id: newGuildId }, cb.dataset.updated);
+        if(res.error){ reportError('Dungeon in Gilden-Pool aufnehmen', res.error); cb.checked = !cb.checked; return; }
+        if(res.conflict){ alertConflict('Dieser Dungeon'); cb.checked = !cb.checked; return; }
+        cb.dataset.updated = res.data.updated_at;
       });
     });
   }
@@ -6850,8 +6860,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       sel.value = loc.owner_id || '';
       sel.addEventListener('change', async ()=>{
         const newOwner = sel.value || null;
-        const { error } = await sb.from('locations').update({owner_id:newOwner}).eq('id', sel.dataset.assign);
-        if(error){ reportError('Account-Zuweisung ändern', error); return; }
+        const res = await updateRowWithLockCheck('locations', sel.dataset.assign, { owner_id:newOwner }, loc.updated_at);
+        if(res.error){ reportError('Account-Zuweisung ändern', res.error); return; }
+        if(res.conflict){ alertConflict('Dieser Dungeon'); sel.value = loc.owner_id || ''; return; }
+        loc.updated_at = res.data.updated_at;
       });
     });
   }
@@ -7150,6 +7162,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   let termineContactSelectedId = null;
   let termineLocationSelectedId = null;
   let termineEditingId = null; // null = neuer Termin, sonst wird ein bestehender bearbeitet
+  let termineEditingUpdatedAt = null; // gemerkter Stand fürs optimistische Sperren, siehe updateRowWithLockCheck()
   let termineEntryDateForSave = null;
 
   // Termin-Kanal (Patch 40): Online/Büro/Im Betrieb, optional. Drei
@@ -7832,6 +7845,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   function openTermineEntryModal(opts){
     termineEditingId = opts.editing ? opts.editing.id : null;
+    termineEditingUpdatedAt = opts.editing ? opts.editing.updated_at : null;
     termineContactSelectedId = opts.editing ? (opts.editing.contact_id || null) : null;
     termineLocationSelectedId = opts.editing ? (opts.editing.location_id || null) : null;
     // Org-Zeitzone statt Browser-lokal für den Kalendertag (Zeitzonen-
@@ -7939,8 +7953,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       generated_until: startDateStr
     }).select().single();
     if(error){ logSilentError('Serie anlegen', error); return; }
-    const { error: linkErr } = await sb.from('termine').update({ series_id: seriesRow.id }).eq('id', insertedRow.id);
-    if(linkErr) logSilentError('Ersten Serientermin verknüpfen', linkErr);
+    // Direkt im Anschluss an den eigenen, gerade erst erfolgten Insert --
+    // Konflikt-Risiko hier praktisch null, updated_at aber ohnehin schon
+    // im Objekt vorhanden, daher trotzdem konsistent per Lock-Check.
+    const linkRes = await updateRowWithLockCheck('termine', insertedRow.id, { series_id: seriesRow.id }, insertedRow.updated_at);
+    if(linkRes.error) logSilentError('Ersten Serientermin verknüpfen', linkRes.error);
     await topUpSeries(seriesRow);
   }
 
@@ -8023,29 +8040,42 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
           const scope = await askSeriesScope('Diesen Termin oder die ganze Serie ändern?');
           if(!scope) return;
           if(scope==='all'){
-            const { error: seriesErr } = await sb.from('termin_series').update({ start_time:startStr, end_time:endeStr, kanal:termineEntryKanal||null }).eq('id', editingRow.series_id);
-            if(seriesErr){ reportError('Serie ändern', seriesErr, statusEl); return; }
+            // Die Serie selbst (termin_series) traegt ihr eigenes updated_at,
+            // das weekTermine (nur termine-Zeilen) nicht mitliefert -- kurzer
+            // Vorab-Fetch statt eines veralteten/geratenen Stands.
+            const { data: seriesRowNow, error: seriesFetchErr } = await sb.from('termin_series').select('updated_at').eq('id', editingRow.series_id).maybeSingle();
+            if(seriesFetchErr || !seriesRowNow){ reportError('Serie laden', seriesFetchErr || new Error('Serie nicht gefunden')); return; }
+            const seriesRes = await updateRowWithLockCheck('termin_series', editingRow.series_id, { start_time:startStr, end_time:endeStr, kanal:termineEntryKanal||null }, seriesRowNow.updated_at);
+            if(seriesRes.error){ reportError('Serie ändern', seriesRes.error, statusEl); return; }
+            if(seriesRes.conflict){ alertConflict('Diese Serie'); return; }
             const todayP = fullPartsInTZ(new Date(), tz());
             const startOfToday = zonedTimeToUtc(todayP.year, todayP.month, todayP.day, 0, 0, tz());
-            const { data: futureRows, error: futErr } = await sb.from('termine').select('id,start_at')
+            const { data: futureRows, error: futErr } = await sb.from('termine').select('id,start_at,updated_at')
               .eq('series_id', editingRow.series_id).gte('start_at', startOfToday.toISOString());
             if(futErr) logSilentError('Serie: künftige Termine laden', futErr);
+            let seriesConflicts = 0;
             const updateResults = await Promise.all((futureRows||[]).map(row=>{
               const rp = fullPartsInTZ(row.start_at, tz());
               const ns = zonedTimeToUtc(rp.year, rp.month, rp.day, sh, sm, tz());
               const ne = zonedTimeToUtc(rp.year, rp.month, rp.day, eh, em, tz());
-              return sb.from('termine').update({ title, start_at:ns.toISOString(), end_at:ne.toISOString(), contact_id:termineContactSelectedId, location_id:termineLocationSelectedId, kanal:termineEntryKanal||null }).eq('id', row.id);
+              return updateRowWithLockCheck('termine', row.id, { title, start_at:ns.toISOString(), end_at:ne.toISOString(), contact_id:termineContactSelectedId, location_id:termineLocationSelectedId, kanal:termineEntryKanal||null }, row.updated_at);
             }));
             updateResults.forEach((r,i)=>{
               if(r.error) logSilentError('Serientermin aktualisieren', r.error);
+              else if(r.conflict) seriesConflicts++;
               else updatedTerminIds.push(futureRows[i].id);
             });
+            if(seriesConflicts>0) alert(seriesConflicts + ' Termin(e) der Serie wurden inzwischen von jemand anderem geändert und dabei übersprungen. Bitte Kalender neu laden und einzeln prüfen.');
           } else {
-            ({ error } = await sb.from('termine').update(payload).eq('id', termineEditingId));
+            const res = await updateRowWithLockCheck('termine', termineEditingId, payload, termineEditingUpdatedAt);
+            error = res.error;
+            if(res.conflict){ alertConflict('Dieser Termin'); return; }
             if(!error) updatedTerminIds = [termineEditingId];
           }
         } else {
-          ({ error } = await sb.from('termine').update(payload).eq('id', termineEditingId));
+          const res = await updateRowWithLockCheck('termine', termineEditingId, payload, termineEditingUpdatedAt);
+          error = res.error;
+          if(res.conflict){ alertConflict('Dieser Termin'); return; }
           if(!error) updatedTerminIds = [termineEditingId];
         }
       } else {
