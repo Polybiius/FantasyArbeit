@@ -3306,7 +3306,6 @@ Alt-Bestand ohne Bezug zu den heutigen Änderungen.
   **behoben, Patch 45, 2026-08-10**, siehe eigener Abschnitt "Chronik-
   Sichtbarkeit folgt der Kontakt-Freigabe". "Zuletzt kontaktiert (von
   dir)" bleibt bewusst weiterhin eigentümerbezogen (so gekennzeichnet).
-- Level-Kurve basiert auf geschätzten, nicht gemessenen Aktivitätswerten.
 - ~~Zwei kleine Unschärfen bei den Termin-Einladungen~~ — **behoben,
   2026-08-19** (Details/Verifikation: HISTORY.md). Organisator sieht
   seine stornierte Einladung über `organizer_id`, direktes Löschen der
