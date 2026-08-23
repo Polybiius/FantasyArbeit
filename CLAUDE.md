@@ -119,28 +119,45 @@ begründen (Business/Motivation-Engine-Trennung, PvE, Gilden-Größe, SDT).
   CSS-Code zu lesen und zu hoffen, dass es passt. Chromium ist technisch
   derselbe Rendering-Kern (Blink) wie im vom Nutzer verwendeten Brave —
   visuell identisch für CSS/Layout-Zwecke.
-- **Regressions-Suite** (seit 2026-08-17, `~/.local/share/playwright-portable/
-  regression_suite.mjs`, Nutzerwunsch "best practice? dann bitte" — kein
-  CI/CD, dessen Auslöser noch nicht erreicht ist, siehe "Technische
-  Skalierungs-Schwellen" unten): ein wiederverwendbares Skript, das vor
-  jeder größeren Änderung an den drei riskantesten Pfaden gegen die echte
-  App laufen sollte — Login/rollenbasierte Sichtbarkeit, XP-/Level-
-  Berechnung (`computeTotals()`/`levelInfo()`, liest `levelBase`/
-  `levelExponent` live aus `rule_configs`, damit der Test auch künftige
-  Neukalibrierungen richtig einschätzt), Kanban-Spalten-Zuordnung. Nutzt
-  `page.route()`-Interception für alle drei Tests (wie in mehreren
-  bestehenden `check_*.mjs`-Skripten) statt echter Schreibvorgänge —
-  **schreibt nichts an der echten Datenbank**, unabhängig vom
-  RLS-Testmuster mit `supabase db query --linked`. Aufruf: vorher
+- **Regressions-Suite** (seit 2026-08-17, auf 2026-08-23 ausgeweitet,
+  `~/.local/share/playwright-portable/regression_suite.mjs`, Nutzerwunsch
+  "best practice? dann bitte" — kein CI/CD, dessen Auslöser noch nicht
+  erreicht ist, siehe "Technische Skalierungs-Schwellen" unten): ein
+  wiederverwendbares Skript, das vor jeder größeren Änderung gegen die
+  echte App laufen sollte, 27 Einzelprüfungen über sieben Bereiche —
+  Login/rollenbasierte Sichtbarkeit, XP-/Level-Berechnung
+  (`computeTotals()`/`levelInfo()`, liest `levelBase`/`levelExponent`
+  live aus `rule_configs`, damit der Test auch künftige Neukalibrierungen
+  richtig einschätzt), Kanban-Spalten-Zuordnung, **zentrale Navigation**
+  (Deep-Links `#kontakt/<id>`/`#tagebuch/woche/<datum>` inkl. Reload-
+  Persistenz, ungültiger/rechte-gebundener Seiten-Hash fällt korrekt
+  zurück UND korrigiert die Adresszeile — schützt genau den in
+  Häppchen 12 gefundenen/behobenen Bug), **Kalender/Termine**
+  (Wochenansicht positioniert einen Termin zeitzonen-korrekt,
+  Serientermine-Autofüllung erzeugt die richtige, korrekt getaggte
+  Zeile — der POST wird abgefangen, nie echt geschrieben), **Kontakt-
+  Seite/Chronik** (Zusammenführung aus action_log/contact_activities/
+  termine/sales, Kennzahlen-Leiste), **Verkauf/Statistik** (BWS-/
+  Provisions-Aggregation über mehrere Verkäufe/Monate hinweg). Nutzt
+  `page.route()`-Interception (wie in mehreren bestehenden
+  `check_*.mjs`-Skripten) statt echter Schreibvorgänge — **schreibt
+  nichts an der echten Datenbank**, unabhängig vom RLS-Testmuster mit
+  `supabase db query --linked` (nach dem Ausbau per `supabase db query
+  --linked` gegengeprüft: 0 Treffer für alle synthetischen Test-IDs in
+  termine/termin_series/sales/products/contacts). Aufruf: vorher
   `python3 -m http.server <port>` im Repo-Ordner starten, dann
   `node regression_suite.mjs <port>`.
-  **Geplante Erweiterung, noch NICHT umgesetzt:** der aktuelle Umfang
-  (nur die drei o.g. Kernpfade) ist zu schmal, besonders bei Änderungen
-  an zentralen, überall mitgenutzten Stellen (z.B. `showPage()`/
-  `routeToHash()`/`initJournal()`). Soll künftig auf die ganze App
-  ausgeweitet werden — noch kein konkreter Umsetzungsplan, nur als
-  Vorhaben vermerkt (siehe Erinnerung `project-roadmap-prioritaeten`,
-  Punkt Regressions-Suite).
+  **Echter Bug im alten Test selbst gefunden und mitgefixt:**
+  `window.profile` existiert nicht (die ganze App läuft in einer
+  eigenen `(function(){...})()`-Klammer, `profile` ist darin ein rein
+  lokales `let`) — der ursprüngliche Admin-Sichtbarkeits-Check fiel
+  dadurch immer auf "übersprungen", testete faktisch nie wirklich die
+  rollenbasierte UI. Fix: Rolle/Zeitzone werden jetzt über eine
+  Strukturprüfung der `profiles`-REST-Antwort abgefangen (die eigene
+  Profilzeile ist die einzige `profiles`-Abfrage im Code, die
+  `role`+`timezone` mitselektiert — PostgREST liefert auch bei
+  `.maybeSingle()` ein Array mit einem Element, keine nackte
+  Objekt-Antwort, empirisch gegen die echte API geprüft).
 - **Lokales Öffnen von HTML-Dateien beim Nutzer** (seit 2026-08-02): Brave
   läuft bei ihm sandboxed (vermutlich Flatpak) — ein direkter `file://`-Zugriff
   auf den Projektordner schlägt fehl (`ERR_FILE_NOT_FOUND`), und Dateien über
