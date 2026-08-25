@@ -1584,8 +1584,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       <!-- SEITE: TEAM-REPORTING (nur Admins) -->
       <div class="page" id="page-team-reporting" style="display:none;">
         <div class="card">
-          <h2>Team-Reporting <span class="tag">nur für Admins sichtbar</span></h2>
-          <div class="empty-page-hint" style="margin-bottom:8px;">Dungeons und Kontakte je Mitarbeiter, org-weit — folgt direkt aus dem bestehenden Besitzer-Feld, keine eigene Pflege nötig.</div>
+          <h2>Team-Reporting <span class="tag">nur für Gildengründer sichtbar</span></h2>
+          <div class="empty-page-hint" style="margin-bottom:8px;">Dungeons und Kontakte je Mitglied deiner eigenen Gilde — folgt direkt aus dem bestehenden Besitzer-Feld, keine eigene Pflege nötig. Zeigt nur, wen du selbst als Gildengründer führst, keine organisationsweite Übersicht.</div>
           <div class="ctable-wrap" id="teamReportingTable"></div>
         </div>
       </div>
@@ -2929,7 +2929,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('navFehlerprotokollBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
     document.getElementById('navNotfallzugriffBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
     document.getElementById('navProdukteBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
-    document.getElementById('navTeamReportingBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
+    await loadMyFoundedGuilds();
     if(profile.role==='admin'){
       document.getElementById('classSwitcher').style.display='flex';
       updateClassSwitcherActive();
@@ -4972,6 +4972,19 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('kanbanHeaderTitle').textContent = label;
   }
   let currentGuild = null;
+  // Gilden, die dieser Nutzer selbst gegründet hat (founder_id) -- nicht
+  // dasselbe wie die aktuelle Mitgliedschaft (currentGuild): wer eine Gilde
+  // verlässt, bleibt trotzdem ihr Gründer (founder_id wird dabei nicht
+  // gelöscht/übertragen, siehe Nachfolge-Trigger). Steuert die Sichtbarkeit
+  // von Team-Reporting -- Teamleiter = wer eine Gilde gegründet hat, nicht
+  // die formale admin-Rolle.
+  let myFoundedGuildIds = [];
+  async function loadMyFoundedGuilds(){
+    const { data, error } = await sb.from('guilds').select('id').eq('founder_id', profile.id);
+    if(error){ logSilentError('loadMyFoundedGuilds', error); return; }
+    myFoundedGuildIds = (data||[]).map(g=>g.id);
+    document.getElementById('navTeamReportingBtn').style.display = myFoundedGuildIds.length ? 'inline-block' : 'none';
+  }
   let statsSyncTimer = null;
 
   function syncProfileStatsCache(totalXp, level){
@@ -6609,6 +6622,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         .is('guild_id', null);
       if(locErr) logSilentError('Eigene Dungeons in neue Gilde übernehmen', locErr);
       await loadGuildState();
+      await loadMyFoundedGuilds();
     }finally{
       btn.disabled = false;
     }
@@ -9086,27 +9100,41 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   async function renderTeamReportingPage(){
     const wrapEl = document.getElementById('teamReportingTable');
-    if(profile.role!=='admin') return;
+    if(myFoundedGuildIds.length===0) return;
     wrapEl.innerHTML = '<div class="empty-page-hint">Lädt …</div>';
-    const [membersRes, locsRes, contactsRes] = await Promise.all([
-      sb.from('profiles').select('id,real_name,display_name').eq('org_id', profile.org_id),
-      sb.from('locations').select('owner_id').eq('org_id', profile.org_id),
-      sb.from('contacts').select('owner_id').eq('org_id', profile.org_id)
+    // Nur die eigene(n) gegründete(n) Gilde(n) -- KEIN organisationsweiter
+    // Query. Absichtlich zwei Schritte statt eines direkten owner_id-Filters
+    // aus dem Stand: erst die Mitglieder-IDs holen, dann locations/contacts
+    // EXPLIZIT darauf einschränken -- verlässt sich nicht darauf, dass RLS
+    // "zufällig" schon eng genug filtert (ein Gründer, der zugleich Admin
+    // ist, sähe sonst über den admin-Zweig der RLS-Policy wieder alles).
+    const { data: guildMembers, error: gmErr } = await sb.from('guild_members')
+      .select('member_id').in('guild_id', myFoundedGuildIds);
+    if(gmErr){
+      logSilentError('renderTeamReportingPage:guild_members', gmErr);
+      wrapEl.innerHTML = '<div class="empty-page-hint">Fehler beim Laden.</div>';
+      return;
+    }
+    const memberIds = [...new Set((guildMembers||[]).map(m=>m.member_id))];
+    if(memberIds.length===0){ wrapEl.innerHTML = '<div class="empty-page-hint">Deine Gilde hat noch keine Mitglieder.</div>'; return; }
+    const [profilesRes, locsRes, contactsRes] = await Promise.all([
+      sb.from('profiles').select('id,real_name,display_name').in('id', memberIds),
+      sb.from('locations').select('owner_id').in('owner_id', memberIds).limit(2000),
+      sb.from('contacts').select('owner_id').in('owner_id', memberIds).limit(2000)
     ]);
-    if(membersRes.error || locsRes.error || contactsRes.error){
-      logSilentError('renderTeamReportingPage', membersRes.error || locsRes.error || contactsRes.error);
+    if(profilesRes.error || locsRes.error || contactsRes.error){
+      logSilentError('renderTeamReportingPage', profilesRes.error || locsRes.error || contactsRes.error);
       wrapEl.innerHTML = '<div class="empty-page-hint">Fehler beim Laden.</div>';
       return;
     }
     const locCounts = {}, contactCounts = {};
     (locsRes.data||[]).forEach(l=>{ if(l.owner_id) locCounts[l.owner_id] = (locCounts[l.owner_id]||0)+1; });
     (contactsRes.data||[]).forEach(c=>{ if(c.owner_id) contactCounts[c.owner_id] = (contactCounts[c.owner_id]||0)+1; });
-    const rows = (membersRes.data||[]).map(m=>({
+    const rows = (profilesRes.data||[]).map(m=>({
       name: m.real_name || m.display_name || 'Unbenannt',
       dungeons: locCounts[m.id]||0,
       contacts: contactCounts[m.id]||0
     })).sort((a,b)=> b.dungeons - a.dungeons || a.name.localeCompare(b.name,'de'));
-    if(rows.length===0){ wrapEl.innerHTML = '<div class="empty-page-hint">Noch keine Team-Mitglieder in dieser Organisation.</div>'; return; }
     wrapEl.innerHTML = html`<table class="ctable">
       <thead><tr><th>Mitarbeiter</th><th>Dungeons</th><th>Kontakte</th></tr></thead>
       <tbody>${rows.map(r=>html`<tr><td>${r.name}</td><td>${r.dungeons}</td><td>${r.contacts}</td></tr>`)}</tbody>
@@ -9853,7 +9881,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(pageName==='fehlerprotokoll' && profile.role!=='admin') pageName = 'charakter';
     if(pageName==='produkte' && profile.role!=='admin') pageName = 'charakter';
     if(pageName==='notfallzugriff' && profile.role!=='admin') pageName = 'charakter';
-    if(pageName==='team-reporting' && profile.role!=='admin') pageName = 'charakter';
+    if(pageName==='team-reporting' && myFoundedGuildIds.length===0) pageName = 'charakter';
     document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active', b.dataset.page===pageName));
     document.querySelectorAll('.page').forEach(p=>p.style.display='none');
     document.getElementById('page-'+pageName).style.display='block';
