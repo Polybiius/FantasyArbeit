@@ -969,6 +969,7 @@
       <button class="nav-btn" data-page="produkte" id="navProdukteBtn" style="display:none;">📦 Produkte</button>
       <button class="nav-btn" data-page="fehlerprotokoll" id="navFehlerprotokollBtn" style="display:none;">🛠 Fehlerprotokoll</button>
       <button class="nav-btn" data-page="notfallzugriff" id="navNotfallzugriffBtn" style="display:none;">🚨 Notfallzugriff</button>
+      <button class="nav-btn" data-page="team-reporting" id="navTeamReportingBtn" style="display:none;">👥 Team-Reporting</button>
     </nav>
 
     <div class="content">
@@ -1577,6 +1578,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
           <h2>Protokoll</h2>
           <div class="empty-page-hint" style="margin-bottom:8px;">Jeder ausgelöste Notfallzugriff — unveränderlich, für alle Admins einsehbar.</div>
           <div id="eaAuditLogList"></div>
+        </div>
+      </div>
+
+      <!-- SEITE: TEAM-REPORTING (nur Admins) -->
+      <div class="page" id="page-team-reporting" style="display:none;">
+        <div class="card">
+          <h2>Team-Reporting <span class="tag">nur für Admins sichtbar</span></h2>
+          <div class="empty-page-hint" style="margin-bottom:8px;">Dungeons und Kontakte je Mitarbeiter, org-weit — folgt direkt aus dem bestehenden Besitzer-Feld, keine eigene Pflege nötig.</div>
+          <div class="ctable-wrap" id="teamReportingTable"></div>
         </div>
       </div>
 
@@ -2919,6 +2929,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('navFehlerprotokollBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
     document.getElementById('navNotfallzugriffBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
     document.getElementById('navProdukteBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
+    document.getElementById('navTeamReportingBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
     if(profile.role==='admin'){
       document.getElementById('classSwitcher').style.display='flex';
       updateClassSwitcherActive();
@@ -9073,6 +9084,35 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     });
   }
 
+  async function renderTeamReportingPage(){
+    const wrapEl = document.getElementById('teamReportingTable');
+    if(profile.role!=='admin') return;
+    wrapEl.innerHTML = '<div class="empty-page-hint">Lädt …</div>';
+    const [membersRes, locsRes, contactsRes] = await Promise.all([
+      sb.from('profiles').select('id,real_name,display_name').eq('org_id', profile.org_id),
+      sb.from('locations').select('owner_id').eq('org_id', profile.org_id),
+      sb.from('contacts').select('owner_id').eq('org_id', profile.org_id)
+    ]);
+    if(membersRes.error || locsRes.error || contactsRes.error){
+      logSilentError('renderTeamReportingPage', membersRes.error || locsRes.error || contactsRes.error);
+      wrapEl.innerHTML = '<div class="empty-page-hint">Fehler beim Laden.</div>';
+      return;
+    }
+    const locCounts = {}, contactCounts = {};
+    (locsRes.data||[]).forEach(l=>{ if(l.owner_id) locCounts[l.owner_id] = (locCounts[l.owner_id]||0)+1; });
+    (contactsRes.data||[]).forEach(c=>{ if(c.owner_id) contactCounts[c.owner_id] = (contactCounts[c.owner_id]||0)+1; });
+    const rows = (membersRes.data||[]).map(m=>({
+      name: m.real_name || m.display_name || 'Unbenannt',
+      dungeons: locCounts[m.id]||0,
+      contacts: contactCounts[m.id]||0
+    })).sort((a,b)=> b.dungeons - a.dungeons || a.name.localeCompare(b.name,'de'));
+    if(rows.length===0){ wrapEl.innerHTML = '<div class="empty-page-hint">Noch keine Team-Mitglieder in dieser Organisation.</div>'; return; }
+    wrapEl.innerHTML = html`<table class="ctable">
+      <thead><tr><th>Mitarbeiter</th><th>Dungeons</th><th>Kontakte</th></tr></thead>
+      <tbody>${rows.map(r=>html`<tr><td>${r.name}</td><td>${r.dungeons}</td><td>${r.contacts}</td></tr>`)}</tbody>
+    </table>`;
+  }
+
   function openProductDetailModal(p){
     const modalEl = document.getElementById('productDetailModal');
     document.getElementById('productDetailName').textContent = p.name;
@@ -9805,7 +9845,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   // ---- Seitennavigation ----
-  const VALID_PAGES = ['charakter','handlungen','inventar','gilde','dungeons','kontakte','tagebuch','kanban','statistik','einstellungen','fehlerprotokoll','produkte','notfallzugriff'];
+  const VALID_PAGES = ['charakter','handlungen','inventar','gilde','dungeons','kontakte','tagebuch','kanban','statistik','einstellungen','fehlerprotokoll','produkte','notfallzugriff','team-reporting'];
 
   function showPage(pageName, updateHash){
     const requestedPage = pageName;
@@ -9813,6 +9853,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(pageName==='fehlerprotokoll' && profile.role!=='admin') pageName = 'charakter';
     if(pageName==='produkte' && profile.role!=='admin') pageName = 'charakter';
     if(pageName==='notfallzugriff' && profile.role!=='admin') pageName = 'charakter';
+    if(pageName==='team-reporting' && profile.role!=='admin') pageName = 'charakter';
     document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active', b.dataset.page===pageName));
     document.querySelectorAll('.page').forEach(p=>p.style.display='none');
     document.getElementById('page-'+pageName).style.display='block';
@@ -9827,6 +9868,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(pageName==='fehlerprotokoll'){ renderSecurityAlerts(); renderErrorLog(); }
     if(pageName==='notfallzugriff') renderEmergencyAccessPage();
     if(pageName==='produkte') renderProductsPage();
+    if(pageName==='team-reporting') renderTeamReportingPage();
     if(pageName==='einstellungen') renderEinstellungenPage();
     if(pageName==='statistik'){ renderStatTabs(); renderStatistikPage(); }
     if(pageName==='kanban') renderKanbanBoard();
