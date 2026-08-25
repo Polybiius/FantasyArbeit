@@ -1910,9 +1910,6 @@ existieren, aber es gibt noch keine Zählquelle dafür im Aktions-Log.
   bleiben. **Echte strukturelle Weiche** (aktuell ist ein Profil fest an
   GENAU EINE Organisation gekettet) — bewusst nicht angefasst, nur
   dokumentiert.
-- **Team-Reporting für Teamleiter** (wie viele Accounts pro Mitarbeiter, etc.)
-  — technisch trivial, sobald `locations.owner_id` existiert (existiert
-  bereits seit Patch 11), aber noch keine UI dafür gebaut.
 - **Automatisiertes Anruf-Verzeichnis** ("wen sollte ich als Nächstes
   anrufen") — nur als Idee erwähnt, nichts geplant.
 
@@ -2117,6 +2114,34 @@ Verifikations-Verlauf: HISTORY.md.
 
 **Damit ist das gesamte Gilden-Sichtbarkeits-Projekt (Phase 1+2+3)
 fertig**, kein bekannter offener Punkt mehr in diesem Strang.
+
+## Team-Reporting: Gildengründer = realer Teamleiter
+
+Neue Seite "Team-Reporting" (`#page-team-reporting`), zeigt je Mitglied
+der **eigenen gegründeten Gilde(n)** die Anzahl Dungeons/Kontakte —
+reine Anzeige, kein neues Datenmodell, folgt direkt aus
+`locations.owner_id`/`contacts.owner_id`.
+
+**Sichtbarkeit bewusst NICHT an die `admin`-Rolle gekoppelt, sondern an
+`guilds.founder_id`** (`myFoundedGuildIds`, geladen in `enterApp()` via
+`loadMyFoundedGuilds()`, nach Gilde-Gründen sofort aktualisiert) — der
+reale Teamleiter im Vertrieb IST der Gildengründer, es braucht dafür
+keine eigene, neue Rolle. **Erste Fassung war admin-only und org-weit**
+— eine Zweitmeinung fand darin einen echten Verstoß gegen das
+Gilden-Sichtbarkeitsmodell oben (Admins sollen private Mitarbeiter-Daten
+nur über den begründungspflichtigen, protokollierten Notfallzugriff
+sehen, nicht beiläufig über eine Reporting-Seite). Die jetzige Fassung
+nutzt stattdessen exakt dieselbe freiwillige Gilden-Freigabe wie überall
+sonst im Projekt — keine neue Ausnahme, kein Protokoll nötig, weil kein
+Bruch der Regel mehr vorliegt.
+
+**Wichtiges Implementierungsdetail:** die Abfrage schränkt
+`locations`/`contacts` **explizit** per `.in('owner_id', memberIds)` auf
+die eigenen Gildenmitglieder ein, statt sich darauf zu verlassen, dass
+die RLS-Policy schon zufällig eng genug filtert — ein Gildengründer ist
+im echten Team oft zugleich Admin, über den `is_admin()`-Zweig der
+Policy hätte eine ungefilterte Abfrage sonst doch wieder org-weite Daten
+geliefert.
 
 ## Vertragsnummer-Feld an `sales`
 
