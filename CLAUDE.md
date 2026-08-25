@@ -22,6 +22,12 @@ irgendetwas im Repo arbeitest.
   Geschäfts-/Preis-/Marktfahrplan (`project_business_fahrplan`), reine
   Arbeitsweise-Lehren (`feedback_*`), sowie Verweise auf externe Quellen
   (z.B. den Obsidian-Questbaum-Vault).
+- **`businessvorbereitung/`** (Repo-Root, seit 2026-08-25) — echte
+  Rechts-/Compliance-Arbeitsprodukte (Datenschutzerklärung- und
+  VVT-Entwurf), bewusst im Git-Repo (nicht im Erinnerungssystem, das ist
+  Geschäftsstrategie/-diskussion, hier geht's um versionierte Dokumente).
+  Beide Entwürfe sind explizit als Entwurf markiert — vor echtem
+  Kundeneinsatz durch Rechtsberatung gegenprüfen.
 
 ## Die Grundidee
 
@@ -87,7 +93,23 @@ begründen (Business/Motivation-Engine-Trennung, PvE, Gilden-Größe, SDT).
 - **Backend**: Supabase (Postgres + Auth + Storage + automatische REST-API via
   PostgREST). Kein eigener Server, keine Edge Functions bisher.
 - **Karte**: Leaflet.js + OpenStreetMap-Kacheln (CartoDB dark-Theme), Geocoding
-  über die öffentliche Nominatim-API (kostenlos, kein Key).
+  über die öffentliche Nominatim-API (kostenlos, kein Key). Beide senden bei
+  jeder Nutzung die Besucher-IP an einen externen Dienst (CartoDB/OSM) — in
+  der Datenschutzerklärung als externe Dienste aufgeführt (siehe
+  `businessvorbereitung/`), technisch bewusst nicht selbst gehostet (anders
+  als die Schriftarten unten) — Karten-Kacheln/Geocoding-Datenbank
+  selbst vorzuhalten wäre ein deutlich größerer, nicht gerechtfertigter aufwand.
+- **Schriftarten**: Cinzel/Inter/JetBrains Mono liegen seit 2026-08-25 lokal
+  unter `fonts/*.woff2` (per `@font-face` in `index.html` eingebunden),
+  **nicht mehr live von `fonts.googleapis.com`/`fonts.gstatic.com` geladen**
+  — vermeidet die Übertragung der Besucher-IP an Google ohne Einwilligung
+  (bekanntes rechtliches Risiko, LG München I 2022). Dateien sind
+  byte-identisch zu dem, was Google vorher ausgeliefert hat (nur
+  `latin`-Subset, deckt deutsche Umlaute/ß ab), keine Verhaltensänderung.
+  Bei künftigem Bedarf an weiteren Schriftschnitten: gleiches Verfahren
+  (Google-Fonts-CSS mit Browser-UA abrufen, `latin`-Subset-Blöcke
+  extrahieren, `.woff2`-Dateien herunterladen, lokal einbinden) statt
+  einfach einen neuen `<link>` auf Google zu setzen.
 - **Hosting**: GitHub Pages, Repo ist öffentlich (nötig für den kostenlosen
   GitHub-Pages-Plan; unbedenklich, weil der Supabase-Key im Code ein bewusst
   öffentlicher "publishable key" ist, abgesichert durch RLS, nicht durch
@@ -1661,6 +1683,19 @@ gruppiert nach `vertragsbeginn` (Fallback `datum`).
 existieren, aber es gibt noch keine Zählquelle dafür im Aktions-Log.
 
 ## Bewusst aufgeschobene Ideen (NICHT vergessen, aber NICHT von selbst bauen)
+- **Notfall-Quest vor automatischer Kontakt-Löschung** — vom Nutzer am
+  2026-08-25 direkt im Anschluss an die automatische Löschung inaktiver
+  Kontakte (siehe "DSGVO-Vorbereitung" oben) vorgeschlagen: kurz bevor
+  ein Kontakt wegen Inaktivität automatisch gelöscht würde, könnte das
+  System eine Aufgabe/einen Quest erzeugen ("Kontakt X droht bald
+  gelöscht zu werden, jetzt nochmal melden") — rettet potenziell den
+  Lead UND ist ein sinnvoller neuer Gamification-Baustein statt reiner
+  Bürokratie. Technisch naheliegend über das bestehende Aufgaben-System
+  (`tasks`, gleiches Prinzip wie automatische Geburtstags-/
+  Wiedervorlage-Aufgaben) lösbar — bräuchte eine Vorlaufzeit-Konfiguration
+  und eine Prüfung "steht kurz vor der automatischen Löschung". Nur als
+  Idee festgehalten, ausdrücklicher Nutzerwunsch ("nur speichern die
+  Idee") — nicht von selbst bauen, erst auf erneuten Anstoß.
 - ~~**Outlook-artige abhakbare Aufgaben**~~ — **fertig gebaut, live,
   2026-08-20, Patch 51**, siehe eigener Abschnitt "Aufgaben-System: echte,
   abhakbare Aufgaben (Outlook-Stil)" oben. Neue Tabelle `tasks`, neuer
