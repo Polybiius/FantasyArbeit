@@ -3325,8 +3325,74 @@ SECURITY — theoretisches Search-Path-Hijacking-Risiko). Migration
 bestätigt. Alle übrigen Advisor-Funde beim selben Durchlauf sind
 Alt-Bestand ohne Bezug zu den heutigen Änderungen.
 
+## DSGVO-Vorbereitung: Einwilligung + automatische Löschung inaktiver Kontakte
+
+Erster technischer Baustein aus Phase 1 des Business-Fahrplans
+(rechtliche Grundlage vor dem ersten echten Kunden) — Entwürfe für
+Datenschutzerklärung/VVT liegen unter `businessvorbereitung/` (Repo,
+nicht im Erinnerungssystem, da es sich um echte Arbeitsprodukte
+handelt, keine Geschäftsstrategie).
+
+**Einwilligungs-Häkchen** (`contacts.consent_obtained`, boolean, Default
+`false`): bewusst einfaches Ja/Nein ohne Datum/Zweckangabe
+(Nutzerentscheidung — gleiche Praxis wie beim bestehenden AXA-Vertrieb
+des Nutzers), im Kontaktformular (Anlegen + Bearbeiten) sowie im
+Übersicht-Reiter sichtbar. Läuft wie alle Kontakt-Schreibvorgänge über
+`update_contact_locked()`.
+
+**Automatische Löschung** (`auto_delete_inactive_contacts()`, täglicher
+pg_cron-Lauf 03:17 UTC): löscht Kontakte ohne jemals gewonnenen Vertrag,
+deren letzte erkennbare Aktivität (Anlage, letzte Bearbeitung,
+Wiedervorlage-Datum, letzter Anruf/E-Mail, letzter Termin, letzte
+geloggte Aktion, letzter Datei-Upload — das Späteste aus allen zählt)
+länger als die pro Organisation konfigurierte Frist zurückliegt
+(`rule_configs.config.contactAutoDelete: {enabled, monthsInactive}`,
+Standard beim Nutzer selbst: 6 Monate — **Standard bei neuen
+Organisationen bewusst `enabled: false`**, muss aktiv scharf geschaltet
+werden). **Kontakte mit irgendeinem jemals gewonnenen Vertrag (auch
+längst gekündigt) sind komplett ausgenommen** — eine Kaskaden-Löschung
+würde sonst rückwirkend Kompendium-/Schatzraum-Zahlen vergangener Jahre
+verändern, und echte Ex-Kunden haben typischerweise eine
+handelsrechtliche Aufbewahrungspflicht (§257 HGB), die einer Löschung
+ohnehin entgegenstünde. **Für diesen Fall ist der eigentlich richtige,
+noch nicht gebaute Mechanismus eine "Einschränkung der Verarbeitung"
+statt Löschung (Art. 18 DSGVO, umgangssprachlich Sperrvermerk)** — Daten
+bleiben bestehen, werden aber für den Alltagsbetrieb unsichtbar/nur noch
+für Admins zu Nachweiszwecken einsehbar, erst nach Ablauf der echten
+gesetzlichen Frist (6–10 Jahre) tatsächlich gelöscht. Bewusst noch nicht
+gebaut, eigener, größerer Baustein — bei Bedarf anstoßen.
+
+Jeder Lauf protokolliert nur die Anzahl gelöschter Kontakte pro
+Organisation (`contact_auto_delete_log`, admin-lesbar, keine
+personenbezogenen Daten) — reine Nachweisbarkeit, dass der Mechanismus
+zuverlässig läuft.
+
+Entstanden über zwei Runden unabhängiger Zweitmeinung (Pflicht bei
+`SECURITY DEFINER`-Funktionen, siehe "Supabase-CLI-Migrationstoolchain"
+oben) — beide fanden echte Logikfehler der jeweiligen Vorfassung
+(fehlender Aktivitäts-Anker, fehlender Ex-Kunden-Ausschluss, fehlende
+Untergrenze gegen einen Konfigurations-Tippfehler), alle behoben und
+per Dry-Run mit 9 Testszenarien gegen die echte DB verifiziert.
+
 ## Bekannte, bewusst in Kauf genommene Lücken
 
+- **Dateien in `contact-files` überleben die automatische Kontakt-
+  Löschung.** Die `contact_files`-Datenbankzeile kaskadiert mit, das
+  eigentliche Objekt im Storage-Bucket nicht — live bestätigt: Supabase
+  blockiert eine direkte SQL-Löschung von `storage.objects` ausdrücklich
+  (`storage.protect_delete()`-Trigger, "Use the Storage API instead"),
+  nur die Storage-API kann wirklich löschen, die von reinem SQL/pg_cron
+  aus nicht ohne ein zusätzliches Geheimnis in der Datenbank erreichbar
+  ist (widerspräche dem Architekturprinzip "kein versteckter
+  Backend-Schlüssel", siehe Sicherheitswarnungen-Abschnitt oben).
+  Betrifft nur Kontakte, die nie Kunde wurden (Ex-Kunden sind von der
+  Auto-Löschung bereits komplett ausgenommen) — Nutzer-Entscheidung
+  2026-08-25: heute ohne Datei-Aufräumung live gehen. Sauberer
+  Nachfolge-Mechanismus, falls das Thema wieder aufkommt: eine kleine
+  Warteschlangen-Tabelle (Cron-Funktion merkt sich die Datei-Pfade vor
+  dem Löschen), abgearbeitet beim nächsten Admin-Login über die normale,
+  authentifizierte Storage-API — gleiches Muster wie der Geburtstags-/
+  Manatrank-Nachtrag, kein neues Geheimnis in der Datenbank nötig.
 - ~~"Zuletzt kontaktiert"/Kontakt-Chronik zeigen nur eigene Einträge~~ —
   **behoben, Patch 45, 2026-08-10**, siehe eigener Abschnitt "Chronik-
   Sichtbarkeit folgt der Kontakt-Freigabe". "Zuletzt kontaktiert (von

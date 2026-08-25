@@ -1241,6 +1241,11 @@
               <label class="cc-role" style="align-self:center;">Nächster Kontakt (Wiedervorlage):</label>
               <input type="date" id="contactNextContactInput">
             </div>
+            <div class="contact-add-row">
+              <label class="cc-role" style="align-self:center;display:flex;align-items:center;gap:8px;cursor:pointer;">
+                <input type="checkbox" id="contactConsentInput"> Einwilligung eingeholt
+              </label>
+            </div>
             <textarea id="contactNotesInput" placeholder="Allgemeine Notizen (optional)" rows="2" maxlength="2000"></textarea>
             <button class="cal-nav-btn" id="contactAddBtn" style="margin-top:8px;">+ Kontakt anlegen</button>
             <div class="empty-page-hint" id="contactAddStatus"></div>
@@ -5758,6 +5763,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     html += field('Bedarf – Wunsch', c.bedarf_wunsch);
     html += field('Nächster Kontakt', c.naechster_kontakt ? fmtDate(c.naechster_kontakt) : null);
     html += field('Zuletzt kontaktiert (von dir)', lastTs ? fmtTime(lastTs) : 'Noch kein eigener Kontaktpunkt');
+    html += field('Einwilligung eingeholt', c.consent_obtained ? 'Ja' : 'Nein');
     html += field('Notizen', c.notes);
     document.getElementById('contactDetailBody').innerHTML = html || '<div class="empty-page-hint">Keine weiteren Angaben.</div>';
 
@@ -6163,6 +6169,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('contactBedarfIstInput').value = c.bedarf_ist||'';
     document.getElementById('contactBedarfWunschInput').value = c.bedarf_wunsch||'';
     document.getElementById('contactNextContactInput').value = c.naechster_kontakt||'';
+    document.getElementById('contactConsentInput').checked = !!c.consent_obtained;
     document.getElementById('contactNotesInput').value = c.notes||'';
     document.getElementById('contactAddBtn').textContent = 'Änderungen speichern';
     document.getElementById('page-kontakte').scrollIntoView({behavior:'smooth', block:'start'});
@@ -6184,11 +6191,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const bedarf_ist = document.getElementById('contactBedarfIstInput').value.trim();
     const bedarf_wunsch = document.getElementById('contactBedarfWunschInput').value.trim();
     const naechster_kontakt = document.getElementById('contactNextContactInput').value || null;
+    const consent_obtained = document.getElementById('contactConsentInput').checked;
     const notes = document.getElementById('contactNotesInput').value.trim();
     const statusEl = document.getElementById('contactAddStatus');
     if(!vorname && !nachname){ statusEl.textContent = 'Bitte mindestens Vor- oder Nachname eingeben.'; return; }
 
-    const payload = { vorname, nachname, role, location_id, status, kanban_stage, geburtsdatum, telefon, email, wohnort_strasse, wohnort_ort, bedarf_ist, bedarf_wunsch, naechster_kontakt, notes };
+    const payload = { vorname, nachname, role, location_id, status, kanban_stage, geburtsdatum, telefon, email, wohnort_strasse, wohnort_ort, bedarf_ist, bedarf_wunsch, naechster_kontakt, consent_obtained, notes };
 
     btn.disabled = true;
     try{
@@ -6221,6 +6229,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       document.getElementById('contactBedarfIstInput').value = '';
       document.getElementById('contactBedarfWunschInput').value = '';
       document.getElementById('contactNextContactInput').value = '';
+      document.getElementById('contactConsentInput').checked = false;
       document.getElementById('contactNotesInput').value = '';
       statusEl.textContent = '';
       await renderContactsPage();
