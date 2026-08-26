@@ -3431,6 +3431,17 @@ der Klassenfarbe (`--arcane`) hervorgehoben, Löschdatum als Unterzeile.
 Jede betroffene eigene Person bekommt das für ihre eigenen Kontakte,
 nicht nur eine Ansicht für Admins.
 
+**Optik-Korrektur, noch am selben Tag** (Nutzer-Feedback: die erste
+Fassung ohne Balken/Fußzeile "sah aus wie 2 verschiedene Dinge" neben
+den normalen Tages-Quest-Kacheln): der Fortschrittsbalken zeigt jetzt
+einen Countdown der verbleibenden Tage bis zur Löschung (voll bei
+30 Tagen Vorlauf, leer am Fälligkeitstag, in der Klassenfarbe statt der
+sonstigen Erfolg/Mana-Farbe) statt komplett zu fehlen, die Fußzeile
+zeigt statt einer XP-Zahl "🛡️ Kontakt retten" — dieselbe drei-Zeilen-
+Struktur (Kategorie/Name, Balken, Fußzeile) wie jede normale Kachel,
+nur inhaltlich anders befüllt. Bewusst NICHT stattdessen echtes XP
+dranhängen (siehe unten) — reine visuelle Formangleichung.
+
 **Datenquelle:** `contacts_pending_deletion_for_self()` (Migration
 `20260826150000_notfall_quest_kontakt_loeschung.sql`), eine reine
 Lese-`SECURITY DEFINER`-Funktion, fest auf `auth.uid()` verdrahtet (kein

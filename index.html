@@ -801,11 +801,15 @@
   .qcard .qc-xp .qc-reward{color:var(--text);}
   .qcard .qc-sub{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--muted-2);margin-top:3px;}
   /* Sonderquest-Hinweise (z.B. Kontakt vor Auto-Löschung) -- dezent in der
-     Klassenfarbe hervorgehoben, kein Fortschrittsbalken (binärer Zustand:
-     kontaktiert oder nicht, kein Zwischenstand zu zeigen). */
+     Klassenfarbe hervorgehoben. Der Balken zeigt hier bewusst einen
+     Countdown (verbleibende Tage bis zur Löschung) statt eines
+     Fortschritts, damit die Kachel strukturell (Kategorie/Name, Balken,
+     Fußzeile) genau wie eine normale Tages-Quest aussieht statt wie ein
+     eigenständiges UI-Element. */
   .qcard.qcard-notfall{border-color:var(--arcane);box-shadow:0 0 0 1px var(--arcane) inset,var(--shadow-rest);}
   .qcard.qcard-notfall .qc-cat{color:var(--arcane);}
-  .qcard.qcard-notfall .qc-track{display:none;}
+  .qcard.qcard-notfall .qc-fill{background:linear-gradient(90deg,var(--arcane),var(--arcane-glow));}
+  .qcard.qcard-notfall .qc-xp{color:var(--arcane);}
 
   .quest{margin-bottom:14px;}
   .quest-top{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:6px;}
@@ -3504,14 +3508,27 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(error){ logSilentError('Löschwarnung laden', error); return; }
     specialQuestItems = (data||[]).map(r=>({
       name: `${r.vorname} ${r.nachname} kontaktieren`,
+      deletionDateStr: r.deletion_date,
       subLabel: `Löschung am ${new Date(r.deletion_date+'T12:00:00').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'})}`
     }));
   }
 
+  // Countdown-Fenster der Löschwarnung -- muss zum Lead-Fenster von
+  // contacts_pending_deletion_for_self() (1 Monat = 30 Tage) passen, damit
+  // der Balken bei Erscheinen der Kachel voll startet und bei Fälligkeit
+  // auf 0 steht.
+  const NOTFALL_QUEST_LEAD_DAYS = 30;
+
   function specialQuestTilesHtml(){
-    return specialQuestItems.map(it=>
-      questCardHtml('Sonderquest', html`${it.name}`.toString(), '', 0, null, html`${it.subLabel}`.toString(), 'qcard-notfall')
-    ).join('');
+    const now = new Date();
+    const todayNoon = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12, 0, 0);
+    return specialQuestItems.map(it=>{
+      const delDate = new Date(it.deletionDateStr+'T12:00:00');
+      const daysLeft = Math.max(0, Math.round((delDate-todayNoon)/86400000));
+      const pct = Math.max(0, Math.min(100, Math.round(100*daysLeft/NOTFALL_QUEST_LEAD_DAYS)));
+      const fracLabel = daysLeft===0 ? 'heute fällig' : daysLeft===1 ? 'noch 1 Tag' : `noch ${daysLeft} Tage`;
+      return questCardHtml('Sonderquest', html`${it.name}`.toString(), fracLabel, pct, '<span>🛡️ Kontakt retten</span>', html`${it.subLabel}`.toString(), 'qcard-notfall');
+    }).join('');
   }
 
   function renderQuestTreeQuick(){
