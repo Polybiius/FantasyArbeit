@@ -2137,3 +2137,361 @@ Runden über den Tag verteilt:**
   Testzeilen, `profiles.timezone`-Override) danach vollständig
   entfernt, ESLint sauber.
 
+## 2026-08-01 bis 2026-08-03: Ausrüstungs-/Charakterbild-System
+
+KI-Bildgenerierung pro Einzelteil wurde als Ansatz verworfen (Thema
+abgeschlossen, 2026-08-01): unabhängig generierte Bilder halten
+Proportion/Ankerpunkte nicht zuverlässig ein, die Ebenen müssen aber
+pixelgenau zueinander passen — ein technisches, kein Geschmacksproblem.
+Einziger tragfähiger Weg: fertige, bereits in Ebenen aufgeteilte
+Asset-Pakete (GandalfHardcore, itch.io). Assets liegen lokal unter
+`~/Schreibtisch/GandalfHardcore *.zip`, Lizenz erlaubt kommerzielle
+Projekte/Verändern, kein Namensnennungszwang, verbietet aber
+Weiterverkauf der Rohdaten, KI-Training und Einbau in "Game Tools".
+Multi-Tenant-SaaS-Lizenzfrage bewusst zurückgestellt bis zum ersten
+echten Verkauf an eine zweite Organisation. Korrektur 2026-08-02: die
+anfängliche Linie, freizügige Teile (Bikini/Unterwäsche) aus "Female
+Clothing" auszusortieren, wieder aufgehoben — passt zum B2B-Kontext.
+
+**Anziehen/Ausziehen, fertig 2026-08-03** (Design seit 2026-08-01
+festgelegt): `toggleEquip(itemKey, slotField)` existierte als
+Code-Gerüst schon seit Patch 5, lief aber ins Leere, weil kein
+Ausrüstungs-Item im Katalog existierte (nur der Manatrank). Bewusst
+keine geloggte Aktion (kein XP) — reine Kosmetik. Verbraucht das Item
+NICHT (anders als Verbrauchsgüter). Item-Katalog unterscheidet
+`category:'waffen'|'ruestung'|'accessories'` (→ `EQUIP_SLOT_FIELD` auf
+`profiles.equipped_weapon/armor/accessory`) von Verbrauchsgütern mit
+`effect`-Feld.
+
+**Rendering-Ansatz geändert:** statt des ursprünglich geplanten flachen
+`items.image`-Felds (statisches PNG-Overlay) nutzt Ausrüstung dieselbe
+Sprite-Sheet-Technik wie der Aussehen-Screen — `items.sheet`
+(Dateiname unter `img/characters/sheets/`, `{g}`-Platzhalter für
+Geschlecht). `layersForCharacterProfile()` baut die Ebenen-Liste live
+aus `profiles.equipped_*`. Das alte `items.image`-Feld/die
+`<img>`-Overlay-Logik wurden ersatzlos entfernt.
+
+Die bisherigen CLASS_OUTFIT-Klassenitems (Zauberer: Zauberstab + blaues
+Cape, Krieger: Holzschwert + Guard Helmet, Schütze: kleiner Rucksack)
+wurden echte Katalog-Items (`sql/patch26_klassenitems.sql`). Neue
+Charaktere bekommen sie automatisch bei der Erschaffung ins Inventar
+gelegt UND angezogen (`grantClassStarterEquipment()`, `justCreated
+Character`-Flag in `enterApp()`), bestehende Profile bekamen ihr
+Klassenitem einmalig per SQL nachträglich.
+
+**Schützen-Bogen (`schuetze_bogen`, Patch 28), zwei Iterationen:** kein
+GandalfHardcore-Asset (im Paket nicht enthalten) — handgezeichnetes
+Pixel-Sprite. Erste, formelbasierte Version (`make_bow_sprite()`,
+Sinus-Kurve, Positions-Spur 1:1 vom Schwert übernommen) wurde vom
+Nutzer als zu klobig/hässlich verworfen. Ersetzt durch eine von Hand
+gezeichnete, schlankere Silhouette (Entwurf archiviert unter
+`Design/ItemKonzept/bogen_konzept_v1.png`), Position UND Rotation
+wurden pro Laufzyklus-Frame im neuen Sprite-Labor (siehe eigener
+CLAUDE.md-Abschnitt) von Hand abgestimmt — der Bogen schwingt jetzt
+sichtbar mit (0° bis −75° über 8 Frames), Werte liegen dauerhaft in
+`Design/ItemKonzept/bogen_export.json`, gebacken über
+`Design/bake_sprite_lab_export.py`. Weiblicher Bogen ist nur eine
+Näherung (dieselben Werte 1:1 auf `outfit_weapon_bow_w.png`
+übernommen, bewusste Nutzer-Entscheidung, sitzt nicht ganz exakt).
+`layersForClassPortrait('schuetze', g)` zeigt den Bogen seitdem auch
+auf dem Klassenwahl-Bildschirm.
+
+**Klassenwahl-Bildschirm, zwei Überarbeitungen:** zeigte anfangs nur für
+Krieger ein Bild (`img/characters/krieger.png`), Zauberer/Schütze
+hatten Emoji. Erst statische Einzelbilder pro Klasse+Geschlecht, dann
+— auf ausdrücklichen Nutzerwunsch nach einem dynamischen statt
+flachen Screen — durch `<canvas>`-Elemente ersetzt
+(`layersForClassPortrait`/`portraitRenderers`). `img/characters/
+krieger.png` und die sechs zwischenzeitlich erzeugten statischen
+`hexer_m.png`/etc. wurden komplett aus dem Repo entfernt, sobald die
+Charakterseite denselben Canvas-Renderer nutzte (bestätigt per Check
+am 2026-08-10) — `CLASS_BASE_ART` existiert im Code nicht mehr.
+
+## 2026-08-17 bis 2026-08-23: Regressions-Suite aufgebaut und erweitert
+
+Nutzerwunsch "best practice? dann bitte" (kein CI/CD, dessen Auslöser
+noch nicht erreicht war). `~/.local/share/playwright-portable/
+regression_suite.mjs` entstand als wiederverwendbares Skript gegen die
+echte App, ursprünglich mit drei Kernpfaden, am 2026-08-23 auf 33
+Einzelprüfungen über acht Bereiche ausgeweitet (Login/Rollen, XP-/
+Level-Berechnung, Kanban, zentrale Navigation inkl. Deep-Links,
+Kalender/Termine, Kontakt-Chronik, Verkauf/Statistik, mobiles/Touch-
+Verhalten). Nutzt `page.route()`-Interception statt echter
+Schreibvorgänge — schreibt nichts an der echten DB, nach dem Ausbau per
+`supabase db query --linked` gegengeprüft (0 Treffer für alle
+synthetischen Test-IDs).
+
+**Echter Bug im alten Test selbst gefunden:** `window.profile`
+existiert nicht (die App läuft in einer eigenen IIFE-Klammer, `profile`
+ist darin ein rein lokales `let`) — der ursprüngliche Admin-
+Sichtbarkeits-Check fiel dadurch immer auf "übersprungen", testete
+faktisch nie die rollenbasierte UI. Fix: Rolle/Zeitzone werden über
+eine Strukturprüfung der `profiles`-REST-Antwort abgefangen.
+
+**Mobiles/Touch-Verhalten (sechs weitere Prüfungen):** bewusst nur bis
+zum Öffnen/Prüfen/Schließen des Verschieben-Menüs getestet, keine
+abgeschlossene Verschiebung — die würde über `moveKanbanCard()` ein
+echtes RPC + PATCH auf `contacts` auslösen, das am echten Konto hängen
+würde.
+
+**Zweites Skript `regression_suite_member.mjs`:** prüft die
+rollenabhängigen Stellen noch einmal mit einem echten Nicht-Admin-
+Konto (Admin ist im echten Team die Ausnahme). Bewusst NICHT die ganze
+Hauptsuite ein zweites Mal durchlaufen lassen — die meisten der 33
+Prüfungen hängen nicht an der Rolle. Zwei getrennte Zugangsdaten-
+Dateien im gitignorten Ordner `~/.local/share/fantasyarbeit-claude-test/`
+(`credentials.json` = Admin, `credentials_member.json` = Nicht-Admin).
+
+Am 2026-08-23 legte der Nutzer fest, dass beide Skripte künftig
+automatisch vor jedem `git push` laufen sollen, ohne vorher zu fragen —
+aktuelle Regel dazu: CLAUDE.md, Abschnitt "Wie mit dem Nutzer arbeiten".
+
+## 2026-08-23/24: Optimistisches Sperren (Konflikt-Schutz bei gleichzeitiger Bearbeitung)
+
+Löste die bisher bewusst in Kauf genommene Lücke "wer zuletzt speichert,
+gewinnt ohne Warnung". Umgesetzt für die vier Tabellen mit echtem
+Mehrfach-Schreiber-Risiko: `contacts` zuerst (höchstes Risiko,
+gilden-geteilt), dann `locations`, `sales`, `termine`/`termin_series`.
+
+**Erste Fassung, rein im Frontend:** `contacts.updated_at` existierte
+schon, die drei anderen Tabellen bekamen das Feld per Migration neu
+(`20260824130000_contacts_konflikt_schutz.sql` +
+`20260824140000_locations_sales_termine_konflikt_schutz.sql`).
+`BEFORE UPDATE`-Trigger stempeln `now()`, ignorieren dabei jeden vom
+Client mitgeschickten Wert. Ein generischer Frontend-Helfer
+`updateRowWithLockCheck(table, id, patch, expectedUpdatedAt)` hängte
+`.eq('updated_at', expectedUpdatedAt)` an die WHERE-Bedingung —
+Schreibrechte regelte noch die normale RLS-Policy je Tabelle.
+Insgesamt 16 Schreibstellen umgestellt (8 contacts, 2 locations, 1
+sales, 5 termine/termin_series).
+
+**Live-Verifikation** (`check_contact_lock.mjs` + `check_multi_table_
+lock.mjs`, echte Schreibvorgänge an Wegwerf-Testdaten): für `contacts`/
+`termine` das volle Konflikt-Szenario mit zwei unabhängigen HTTP-
+Clients — Kollege ändert die Zeile, Speichern löst korrekt die Warnung
+aus, Kollegen-Änderung bleibt erhalten. Für `locations`/`sales` ein
+Rauchtest. **Zwei handwerkliche Lücken bei der Aufräum-Kontrolle
+gefunden:** ein Testlauf versuchte fälschlich ein DELETE auf `products`
+(nie löschbar, nur deaktivierbar — schlug still fehl, Testskript auf
+`active:false` umgestellt); ein Wegwerf-Kontakt aus einem an einem
+Playwright-Dialog-Bug gescheiterten Testlauf blieb unbemerkt liegen,
+bis eine abschließende DB-Stichprobe ihn aufdeckte. Beide Testskripte
+liefen danach in try/finally, Test-Produkt-`key` bekam einen
+Zeitstempel statt eines festen Werts.
+
+**Architektonische Lücke, noch am 2026-08-24 erkannt und geschlossen:**
+der Schutz war nur im Frontend verdrahtet, nicht wie bei `action_log`/
+`user_inventory` durch RLS strukturell erzwungen — ein vergessener
+Aufruf des Frontend-Helfers wäre lautlos ins alte "letzter gewinnt"-
+Verhalten zurückgefallen. Auf Nutzeranstoß ("langfristig denken
+überschreibt kurzfristigen Bauaufwand") umgebaut:
+
+- **`contacts`** (`20260824160000_contacts_locked_write_rpc.sql`): die
+  RLS-Policy `contacts_update_visible` komplett entfernt, einziger
+  verbleibender Weg ist `update_contact_locked(p_id, p_patch,
+  p_expected_updated_at)` (`SECURITY DEFINER`). `contacts_writable(target
+  contacts)` übernimmt die alte USING-Bedingung 1:1 und wird nur noch
+  von dieser einen Funktion aufgerufen. Bewusst schmale Feld-Allowlist
+  (nur die 15 Felder, die die 8 echten Schreibstellen tatsächlich
+  anfassen) statt generischem Patch — `owner_id`/`guild_id`/`org_id`
+  bleiben unpatchbar, ändern sich nur über bestehende Trigger. Dry-Run
+  mit 7 Assertions bestanden. **Wichtiger Live-Fund beim REST-Test:**
+  PostgREST liefert einen SQL-NULL-Rückgabewert bei zusammengesetztem
+  Rückgabetyp NICHT als JSON `null`, sondern als Objekt mit lauter
+  `null`-Feldern (`{id:null,...}`) — ein reiner `!data`-Check hätte den
+  Konflikt-Fall nicht erkannt. `rpcLockedUpdate()` prüft seitdem
+  `!data || data.id === null`.
+- **`locations`/`sales`/`termine`/`termin_series`**
+  (`20260824180000_locations_sales_termine_locked_write_rpc.sql`):
+  mehrere schmale Funktionen statt einer breiten (`admit_location_to_
+  guild_pool_locked()`, `assign_location_owner_locked()`,
+  `cancel_sale_locked()`, `update_termin_locked()`, `update_termin_
+  series_locked()`). Anon-Rechte diesmal von Anfang an mit-eingeschränkt.
+  SQL-Dry-Run mit 15 Assertions + REST-Test mit 24 Assertions
+  (`check_locations_sales_termine_locked_rpc.mjs`). Beide
+  Regressionssuiten liefen danach weiterhin grün (33/33 + 9/9). Die
+  alte generische `updateRowWithLockCheck()` wurde komplett entfernt.
+
+**Erster echter Beweis für die neu eingeführte Zweitmeinungs-Pflicht
+(siehe eigener Eintrag unten), noch am selben Tag**
+(`20260824190000_locked_write_org_boundary_fix.sql`): die Zweitmeinung
+fand sofort einen echten Fehler — `contacts_writable()`/
+`sales_writable()`/`termine_writable()`/`termin_series_writable()`
+übernahmen nur die USING-Klausel der entfernten Policy, nicht die
+WITH-CHECK-Klausel, in der die Org-Grenze für den Admin-Zweig steckte.
+Ein Admin hätte theoretisch eine Zeile jeder Organisation anfassen
+können, sofern er ihre UUID kennt — live gegen eine echte,
+zurückgerollte Test-Transaktion nachgewiesen (`notes` einer fremden
+Test-Org wurde tatsächlich verändert), praktisch folgenlos, solange nur
+eine Organisation live ist. Fix: alle vier Funktionen prüfen jetzt
+zusätzlich `target.org_id = current_org_id()`, vor UND nach dem Fix
+live gegen die Produktions-DB (in `begin`/`rollback`) bewiesen.
+
+**Nachtrag, `supabase db advisors` nachgeholt:** beide neuen Trigger-
+Funktionen (`touch_contacts_updated_at`/`touch_updated_at`) hatten
+keinen fest verankerten `search_path` ("Function Search Path Mutable").
+Migration `20260824150000_touch_trigger_search_path_fix.sql` behebt
+das, per Dry-Run bestätigt.
+
+## 2026-08-24: Idempotenz-Härtung (Duplikatschutz gegen Netzwerk-Retries)
+
+Ausgelöst durch eine vom Nutzer mitgebrachte generische Engineering-
+Checkliste, Cross-Check gegen den echten Code bestätigte drei Lücken
+(Migration `20260824120000_idempotenz_haertung.sql`):
+
+- **`grant_quest_bonus_to_self()`:** der Duplikat-Schutz war "erst
+  zählen, dann einfügen" (`SELECT COUNT(*) ... IF > 0 THEN RAISE`) —
+  ein klassisches Race-Window ohne echten Constraint. Jetzt drei
+  partielle Unique-Indizes (Quest+Zeitraum / Kette+Stufe / Questbaum+
+  Stufe+Jahr) + `INSERT ... ON CONFLICT ... DO NOTHING`.
+- **`log_action_for_self()`:** hatte zuvor GAR KEINEN Duplikatschutz —
+  die Funktion hinter fast jeder XP-Aktion. Ein exakt identischer
+  Aufruf innerhalb der letzten 5 Sekunden gibt jetzt die bereits
+  geloggte Zeile zurück statt sie zu duplizieren (Zeitfenster statt
+  hartem Unique-Constraint, da dieselbe Aktion mehrfach am Tag zu
+  loggen der Normalfall ist).
+- **`sales`:** neuer `BEFORE INSERT`-Trigger
+  (`prevent_duplicate_sale_submission()`), gleiches Zeitfenster-
+  Prinzip — ein exakt identischer Verkauf innerhalb von 5 Sekunden wird
+  still übersprungen (`RETURN NULL`) statt einen zweiten Vertrag
+  anzulegen.
+
+Bewusst NICHT umgesetzt: der Mehrfach-Produkt-Verkauf
+(`recordWonSalesLoop()`) bleibt ein sequenzieller Insert pro Produkt
+statt einer gebündelten Transaktion — die Schritt-für-Schritt-Anzeige
+macht Fehler sichtbar, das eigentliche Risiko (Retry) ist über den
+`sales`-Trigger abgedeckt.
+
+**Im selben Aufwasch behoben:** Path Traversal beim Datei-Upload
+(`contact-files`) — der Speicherpfad nutzte den rohen `file.name`
+unsanitisiert. Jetzt nur noch UUID + geprüfte Dateiendung, der
+Anzeigename lebt separat in `contact_files.filename`.
+
+Migration per `begin`/`rollback`-Dry-Run mit 6 Assertions verifiziert
+(Dedup greift in allen drei Fällen, legitime unterschiedliche
+Aktionen/Verkäufe werden nicht fälschlich blockiert), danach live
+gepusht und erneut bestätigt (`schema_patches` Patch 52 eingetragen).
+
+## 2026-08-24: Migrations-Zweitmeinung-Pflicht + Rückbau-Nachweis eingeführt
+
+Auslöser: beim Konflikt-Schutz-Umbau (siehe oben) war eine einzelne
+Sitzung Autor UND einziger Prüfer der eigenen Migration — eine
+Selbst-Review-Lücke. Neue, verbindliche Regel: bei jeder Migration, die
+RLS-Policies, `GRANT`/`REVOKE`, `SECURITY DEFINER`-Funktionen oder
+sonstige Berechtigungslogik anfasst, holt Claude Code vor dem
+`supabase db push` eine unabhängige Zweitmeinung ein (frischer Agent/
+frische Sitzung ohne Kontext der Bau-Session). Zweite Regel, selber
+Tag: der Dry-Run prüft ab jetzt auch, ob ein Rückbau tatsächlich
+möglich ist (alte Policy-Definition testweise wiederherstellen, oder
+zumindest vollständig im Migrations-Kommentar/git-Historie dokumentiert
+lassen).
+
+Zwei zusätzliche, bewusst gewählte Verstärkungen, noch am selben Tag
+nach echter Bewährung der Regel (die Zweitmeinung fand sofort den
+Org-Grenze-Fehler, siehe Eintrag "Optimistisches Sperren" oben):
+Modell-Vielfalt beim Review (Bau mit Sonnet, Review-Agent wenn sinnvoll
+explizit mit `model:'opus'`), und ein lokaler, unversionierter
+`pre-push`-Git-Hook (`.git/hooks/pre-push`), der beim `git push` warnt,
+wenn eine gepushte Migration Berechtigungslogik enthält — bewusst nicht
+blockierend, reine strukturelle Erinnerung.
+
+Aktuelle, gültige Regelformulierung: CLAUDE.md, Abschnitt
+"Supabase-CLI-Migrationstoolchain".
+
+## Team-Reporting: Gildengründer statt Admin-Rolle als Sichtbarkeits-Anker
+
+Neue Seite "Team-Reporting" zeigt je Mitglied der eigenen gegründeten
+Gilde(n) die Anzahl Dungeons/Kontakte. **Erste Fassung war admin-only
+und org-weit** — eine unabhängige Zweitmeinung fand darin einen echten
+Verstoß gegen das Gilden-Sichtbarkeitsmodell (Admins sollen private
+Mitarbeiter-Daten nur über den begründungspflichtigen, protokollierten
+Notfallzugriff sehen, nicht beiläufig über eine Reporting-Seite).
+Umgebaut: Sichtbarkeit hängt jetzt an `guilds.founder_id`
+(`myFoundedGuildIds`) statt an der `admin`-Rolle — der reale Teamleiter
+im Vertrieb IST der Gildengründer. Die Abfrage schränkt `locations`/
+`contacts` zusätzlich explizit per `.in('owner_id', memberIds)` ein,
+statt sich auf die RLS-Policy allein zu verlassen — ein Gildengründer
+ist im echten Team oft zugleich Admin, über den `is_admin()`-Zweig der
+Policy hätte eine ungefilterte Abfrage sonst wieder org-weite Daten
+geliefert. Aktueller Stand: CLAUDE.md, Abschnitt "Team-Reporting".
+
+## 2026-08-25/26: DSGVO-Vorbereitung (Einwilligung + automatische Löschung inaktiver Kontakte)
+
+Erster technischer Baustein aus Phase 1 des Business-Fahrplans
+(rechtliche Grundlage vor dem ersten echten Kunden), Entwürfe für
+Datenschutzerklärung/VVT liegen unter `businessvorbereitung/`.
+Einwilligungs-Häkchen (`contacts.consent_obtained`) bewusst einfaches
+Ja/Nein ohne Datum/Zweckangabe (gleiche Praxis wie beim bestehenden
+AXA-Vertrieb des Nutzers).
+
+**Automatische Löschung** (`auto_delete_inactive_contacts()`, täglicher
+pg_cron-Lauf 03:17 UTC): löscht Kontakte ohne jemals gewonnenen Vertrag,
+deren letzte erkennbare Aktivität länger als die pro Organisation
+konfigurierte Frist zurückliegt (`rule_configs.config.contactAutoDelete`,
+Standard beim Nutzer 6 Monate, bei neuen Organisationen bewusst
+`enabled:false`). Kontakte mit irgendeinem jemals gewonnenen Vertrag
+sind komplett ausgenommen (Kaskaden-Löschung würde rückwirkend
+Kompendium-/Schatzraum-Zahlen verändern, echte Ex-Kunden haben eine
+handelsrechtliche Aufbewahrungspflicht nach §257 HGB). Der eigentlich
+richtige Mechanismus für diesen Fall (Art. 18 DSGVO, Einschränkung der
+Verarbeitung statt Löschung) ist bewusst noch nicht gebaut.
+
+Entstanden über zwei Runden unabhängiger Zweitmeinung (Pflicht bei
+`SECURITY DEFINER`-Funktionen) — beide fanden echte Logikfehler der
+jeweiligen Vorfassung (fehlender Aktivitäts-Anker, fehlender
+Ex-Kunden-Ausschluss, fehlende Untergrenze gegen einen Konfigurations-
+Tippfehler), alle behoben und per Dry-Run mit 9 Testszenarien
+verifiziert. Aktueller Stand: CLAUDE.md, Abschnitt "DSGVO-Vorbereitung".
+
+## 2026-08-26: Sonderquest-Hinweise (Notfall-Quest vor automatischer Kontakt-Löschung)
+
+Setzt auf der automatischen Kontakt-Löschung auf: 1 Monat bevor ein
+eigener Kontakt ohne jemals gewonnenen Vertrag automatisch gelöscht
+wird, erscheint eine Sonderquest-Kachel bei den täglichen Quests.
+
+**Optik-Korrektur, noch am selben Tag** (Nutzer-Feedback: die erste
+Fassung ohne Balken/Fußzeile "sah aus wie 2 verschiedene Dinge" neben
+normalen Tages-Quest-Kacheln): Fortschrittsbalken zeigt jetzt einen
+Countdown der verbleibenden Tage, Fußzeile zeigt "🛡️ Kontakt retten"
+statt einer XP-Zahl — dieselbe drei-Zeilen-Struktur wie jede normale
+Kachel. Bewusst kein Extra-XP-Bonus fürs Retten (die normale
+Aktions-XP reicht als Belohnung).
+
+Datenquelle `contacts_pending_deletion_for_self()` spiegelt exakt
+denselben Aktivitäts-Anker wie `auto_delete_inactive_contacts()`.
+Frontend generisch gehalten (`specialQuestItems`-Array), Rule-of-Three-
+Schwelle für ein gemeinsames Backend-Muster erst beim dritten
+Hinweistyp. Live per Dry-Run verifiziert (7 Testkontakte inkl.
+Grenzfall "Löschung exakt heute") — eine unabhängige Zweitmeinung fand
+einen echten Off-by-one-Fehler an der Datumsgrenze (`>` statt `>=`)
+sowie zwei Konventions-Abweichungen (fehlender `html`-Tag, fehlender
+Staleness-Schutz), alle drei behoben. Aktueller Stand: CLAUDE.md,
+Abschnitt "Sonderquest-Hinweise".
+
+## 2026-08-26: Supabase-Advisor-Triage
+
+Systematischer Lauf von `supabase db advisors --linked --type all
+--level info` gegen die echte, verlinkte DB (Supabases offizieller
+Linter). Ergebnis: 11 fehlende Fremdschlüssel-Indizes ergänzt
+(Postgres indiziert Fremdschlüssel nicht automatisch), 15 der 33
+anon-ausführbaren Schreib-RPCs gesperrt (Migration `20260826103300_
+advisor_anon_revoke_schreibfunktionen.sql`) — die übrigen 18 bewusst
+offen gelassen (8 sind `returns trigger`-Fehlalarme, die Postgres
+strukturell nicht per RPC aufrufen kann, 10 sind Lese-Hilfsfunktionen,
+die aus RLS-Policies heraus als aufrufende Rolle ausgewertet werden).
+
+**Stolperstein, selbst gefunden bevor er zum Problem wurde:** eine neue
+`CREATE FUNCTION` bekommt von Postgres automatisch einen zusätzlichen
+`EXECUTE`-Grant für die Pseudo-Rolle `PUBLIC`, unabhängig von den
+projekteigenen `ALTER DEFAULT PRIVILEGES`-Regeln — ein reines `revoke
+execute ... from anon` wirkt deshalb NICHT, `anon` behält den Zugriff
+über den `PUBLIC`-Eintrag. Immer `revoke execute ... from public,
+anon` schreiben und per `has_function_privilege('anon', ...,
+'EXECUTE')` im Dry-Run verifizieren. Zweitmeinung bei dieser Migration
+lief sauber durch. Advisor-Fundzahl sank von 112 auf 97 — verbleibende
+Funde bewusst unangetastet (siehe Claudes Erinnerung
+`project_supabase_advisor_triage`), einzig der Dashboard-Passwortschalter
+("Leaked Password Protection") bleibt offen, weil er ein Pro-Plan-
+Feature ist, das auf dem aktuellen Free Plan gar nicht einschaltbar
+ist.
+
