@@ -1590,8 +1590,8 @@ Vergleich ×10 auf ‰ umgerechnet).
 **Einstellungen-Seite** (Gruppe "Provision & Planungsziele", jeder
 pflegt seine eigenen Werte, kein Admin-Umweg): die Sätze oben plus
 persönliche Planungsziele (`profiles.planung_lv_bws`/`planung_kv_mb`/
-`planung_bwp`/`planung_vks`/`planung_fa`) — Grundlage für die
-Fortschritts-Ringe auf der Statistik-Seite.
+`planung_bwp`) — Grundlage für die Fortschritts-Ringe auf der
+Statistik-Seite.
 
 **Verkaufsstatistik-Seite (Kompendium/Kriegskasse/Trophäenkammer):**
 Reiter-Leiste oben (Jahr + 12 Monate) wählt den Zeitraum. **Sechs**
@@ -1611,10 +1611,6 @@ alphabetisch sortierten Kategorien), ganz unten reine Zahlen-Kacheln
 je Produkt (Stück + Summe). Datenbasis: nur die **eigenen** gewonnenen
 Verkäufe des Nutzers (`created_by = profile.id`, `status='gewonnen'`),
 gruppiert nach `vertragsbeginn` (Fallback `datum`).
-
-**Noch nicht angegangen:** Zielerreichungsgrad für Verkaufsgespräche
-(`planung_vks`) und Fachkontakte (`planung_fa`) — die Planungsfelder
-existieren, aber es gibt noch keine Zählquelle dafür im Aktions-Log.
 
 ## Bewusst aufgeschobene Ideen (NICHT vergessen, aber NICHT von selbst bauen)
 - ~~**Notfall-Quest vor automatischer Kontakt-Löschung**~~ — **fertig
