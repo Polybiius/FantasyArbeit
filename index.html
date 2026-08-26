@@ -333,6 +333,22 @@
   .stat-num-card .snc-name{font-size:12px;color:var(--text);font-weight:600;margin-bottom:4px;}
   .stat-num-card .snc-line{font-size:11px;color:var(--muted);font-family:'JetBrains Mono',monospace;}
 
+  /* Akquise-Trichter: einfarbiger Verlauf hell -> dunkel aus der aktiven
+     Klassenfarbe (color-mix() gegen var(--arcane), passt sich dadurch
+     automatisch jeder Klasse an, kein eigener Farbsatz pro Klasse nötig). */
+  .funnel{display:flex;flex-direction:column;align-items:center;gap:4px;}
+  .funnel-stage{width:100%;display:flex;justify-content:center;}
+  .funnel-band{height:46px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;border-radius:var(--radius-sm);border:1px solid rgba(255,255,255,0.14);box-sizing:border-box;transition:filter .15s ease;}
+  .funnel-band:hover{filter:brightness(1.1);}
+  .funnel-band .fb-label{font-weight:600;font-size:12.5px;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-right:10px;}
+  .funnel-band .fb-nums{display:flex;align-items:baseline;gap:7px;}
+  .funnel-band .fb-value{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-weight:700;font-size:14.5px;color:#fff;}
+  .funnel-band .fb-pct{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-weight:600;font-size:10.5px;color:rgba(255,255,255,0.75);background:rgba(0,0,0,0.22);border-radius:var(--radius-pill);padding:1px 7px;}
+  .funnel-summary{display:flex;gap:10px;margin-top:14px;}
+  .funnel-summary-tile{flex:1;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius-md);padding:10px 12px;text-align:center;}
+  .funnel-summary-tile .fst-n{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;font-size:19px;font-weight:700;color:var(--arcane-glow);display:block;}
+  .funnel-summary-tile .fst-l{font-size:10.5px;color:var(--muted);margin-top:2px;}
+
   .dungeon-tile-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;}
   .dungeon-tile{
     position:relative;overflow:hidden;background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius-lg);
@@ -1217,9 +1233,9 @@
                 <option value="">– Nicht im Kanban –</option>
                 <option value="neuer_lead">Neuer Lead</option>
                 <option value="ersttermin_vereinbart">Ersttermin vereinbart</option>
-                <option value="nicht_erschienen">Nicht erschienen</option>
                 <option value="angebot_versendet">Angebot versendet</option>
                 <option value="zweittermin">Zweittermin</option>
+                <option value="nicht_erschienen">Nicht erschienen</option>
                 <option value="gewonnen">Gewonnen</option>
                 <option value="verloren">Verloren</option>
                 <option value="dauerbrenner">Dauerbrenner</option>
@@ -1308,12 +1324,6 @@
               <div class="kanban-cards" id="kanbanCards_ersttermin_vereinbart"></div>
             </div>
             <div class="kanban-path-arrow">➜</div>
-            <div class="kanban-col" data-stage="nicht_erschienen">
-              <div class="kanban-waypoint-icon">🌫</div>
-              <div class="kanban-col-header">Nicht erschienen <span class="kanban-count" id="kanbanCount_nicht_erschienen">0</span></div>
-              <div class="kanban-cards" id="kanbanCards_nicht_erschienen"></div>
-            </div>
-            <div class="kanban-path-arrow">➜</div>
             <div class="kanban-col" data-stage="angebot_versendet">
               <div class="kanban-waypoint-icon">✉️</div>
               <div class="kanban-col-header">Angebot versendet <span class="kanban-count" id="kanbanCount_angebot_versendet">0</span></div>
@@ -1324,6 +1334,12 @@
               <div class="kanban-waypoint-icon">🤝</div>
               <div class="kanban-col-header">Zweittermin <span class="kanban-count" id="kanbanCount_zweittermin">0</span></div>
               <div class="kanban-cards" id="kanbanCards_zweittermin"></div>
+            </div>
+            <div class="kanban-path-arrow">➜</div>
+            <div class="kanban-col" data-stage="nicht_erschienen">
+              <div class="kanban-waypoint-icon">🌫</div>
+              <div class="kanban-col-header">Nicht erschienen <span class="kanban-count" id="kanbanCount_nicht_erschienen">0</span></div>
+              <div class="kanban-cards" id="kanbanCards_nicht_erschienen"></div>
             </div>
             <div class="kanban-path-arrow">➜</div>
             <div class="kanban-col" data-stage="gewonnen">
@@ -1508,6 +1524,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
             <h2 style="font-size:15px;">Konstanz</h2>
             <div class="empty-page-hint" id="statCallStreakHint" style="margin-bottom:4px;"></div>
             <div class="empty-page-hint" id="statTerminStreakHint"></div>
+          </div>
+          <div class="card" id="statFunnelCard" style="margin-top:18px;">
+            <h2 style="font-size:15px;">Akquise-Trichter</h2>
+            <div class="funnel" id="statFunnel"></div>
+            <div class="funnel-summary" id="statFunnelSummary"></div>
           </div>
           <div class="stat-chart-card" id="statChartCard" style="display:none;">
             <div class="stat-legend" id="statLegend"></div>
@@ -5270,6 +5291,83 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       </div>`).join('');
   }
 
+  // ---- Akquise-Trichter (Ansprache -> Ersttermin -> Zweittermin -> Gewonnen) ----
+  // Reine Ableitung aus dem eigenen action_log, nichts wird extra
+  // gespeichert -- gleiches Prinzip wie der Rest der Statistik-Seite.
+  // "Ansprachen" zählt jede Form der Erstkontaktaufnahme zusammen
+  // (Ansprache vor Ort, Kalttelefonie, Nummern gewählt) -- bewusst ohne
+  // Kanal-Trennung, Nutzerentscheidung "Akquise ist Akquise". telefon_5
+  // steht für 5 Nummern pro Log-Zeile, gleicher Umrechnungsfaktor wie bei
+  // der Konstanz-Kachel (dailyActionTotals(..., 5)).
+  //
+  // Zweittermin-vereinbart/-wahrgenommen/-nicht-wahrgenommen sind eigene
+  // Aktions-Schlüssel seit der Kanban-Erweiterung (moveKanbanCard()) --
+  // vorher teilte sich Zweittermin die Aktion `pitch` mit Angebot
+  // versendet, ließ sich also nicht separat zählen.
+  //
+  // Farbe: einfarbiger Verlauf hell -> dunkel aus der aktiven
+  // Klassenfarbe (color-mix() gegen die live gesetzte CSS-Variable
+  // --arcane) -- passt sich automatisch jeder Klasse an, kein eigener
+  // Farbsatz pro Klasse im JS nötig.
+  const FUNNEL_RAMP = [
+    'color-mix(in srgb, var(--arcane) 45%, white 55%)',
+    'color-mix(in srgb, var(--arcane) 62%, white 38%)',
+    'var(--arcane)',
+    'color-mix(in srgb, var(--arcane) 85%, black 15%)',
+    'color-mix(in srgb, var(--arcane) 70%, black 30%)',
+    'color-mix(in srgb, var(--arcane) 55%, black 45%)',
+  ];
+
+  function logForPeriod(period){
+    const year = String(currentBusinessYear());
+    return log.filter(e=>{
+      const key = todayKey(e.created_at);
+      if(!key || key.slice(0,4)!==year) return false;
+      if(period==='jahr') return true;
+      return String(parseInt(key.slice(5,7),10)-1)===period;
+    });
+  }
+
+  function countAction(entries, key){ return entries.filter(e=>e.action_key===key).length; }
+
+  function computeAcquisitionFunnel(period){
+    const entries = logForPeriod(period);
+    const ansprachen = countAction(entries,'ansprache') + countAction(entries,'kalttelefonie') + countAction(entries,'telefon_5')*5;
+    return [
+      { key:'ansprachen',         label:'Ansprachen',               value:ansprachen },
+      { key:'erst_vereinbart',    label:'Ersttermin vereinbart',    value:countAction(entries,'termin_vereinbart') },
+      { key:'erst_wahrgenommen',  label:'Ersttermin wahrgenommen',  value:countAction(entries,'termin_wahrgenommen') },
+      { key:'zweit_vereinbart',   label:'Zweittermin vereinbart',   value:countAction(entries,'zweittermin_vereinbart') },
+      { key:'zweit_wahrgenommen', label:'Zweittermin wahrgenommen', value:countAction(entries,'zweittermin_wahrgenommen') },
+      { key:'gewonnen',           label:'Gewonnen',                 value:countAction(entries,'abschluss') },
+    ];
+  }
+
+  function renderAcquisitionFunnel(){
+    const stages = computeAcquisitionFunnel(statSelectedPeriod);
+    const top = stages[0].value;
+    const minWidthPct = 46;
+    const funnelEl = document.getElementById('statFunnel');
+    funnelEl.innerHTML = stages.map((s,i)=>{
+      const share = top>0 ? s.value/top : 0;
+      const widthPct = minWidthPct + (100-minWidthPct) * share;
+      const pct = Math.round(share*100);
+      return `<div class="funnel-stage"><div class="funnel-band" style="width:${widthPct}%;background:${FUNNEL_RAMP[i]};" title="${s.label}: ${s.value} (${pct}% der Ansprachen)">
+        <span class="fb-label">${s.label}</span>
+        <span class="fb-nums"><span class="fb-value">${s.value}</span><span class="fb-pct">${pct}%</span></span>
+      </div></div>`;
+    }).join('');
+
+    const won = stages.find(s=>s.key==='gewonnen').value;
+    const ansprachen = stages[0].value;
+    const erstWahrgenommen = stages.find(s=>s.key==='erst_wahrgenommen').value;
+    const summaryEl = document.getElementById('statFunnelSummary');
+    summaryEl.innerHTML = won>0
+      ? `<div class="funnel-summary-tile"><span class="fst-n">${(ansprachen/won).toFixed(1)}</span><span class="fst-l">Ansprachen pro Abschluss</span></div>
+         <div class="funnel-summary-tile"><span class="fst-n">${(erstWahrgenommen/won).toFixed(1)}</span><span class="fst-l">Ersttermine (wahrgenommen) pro Abschluss</span></div>`
+      : `<div class="empty-page-hint">Noch keine Abschlüsse in diesem Zeitraum für eine Quote.</div>`;
+  }
+
   async function renderStatistikPage(){
     if(mySalesCache===null) await loadMySales();
     const salesList = salesForPeriod(statSelectedPeriod);
@@ -5299,6 +5397,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     renderStatCategoryChart(agg.byCategory);
     renderStatNumberCards(agg.byCategory);
     renderStatStreaks();
+    renderAcquisitionFunnel();
   }
 
   // ---- Schatzraum: Reliquienkammer/Ruhmeshalle/Jagdkammer, seit 2026-08-17 ----
@@ -8331,7 +8430,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // hält zusätzlich fest, WO die Karte liegt — nötig, weil "Angebot versendet"
   // und "Zweittermin" dieselbe Aktion (pitch) loggen und sich sonst nicht mehr
   // unterscheiden ließen.
-  const KANBAN_STAGES = ['neuer_lead','ersttermin_vereinbart','nicht_erschienen','angebot_versendet','zweittermin','gewonnen','verloren','dauerbrenner'];
+  // Reihenfolge seit 2026-08-26: "Nicht erschienen" sitzt jetzt hinter
+  // Angebot versendet/Zweittermin statt mittendrin -- seit "Nicht
+  // erschienen" auch vom Zweittermin aus erreichbar ist (siehe
+  // moveKanbanCard()), ist es das gemeinsame Auffangbecken nach beiden
+  // "echten Treffen"-Spalten, kein reiner Ersttermin-Sonderfall mehr.
+  const KANBAN_STAGES = ['neuer_lead','ersttermin_vereinbart','angebot_versendet','zweittermin','nicht_erschienen','gewonnen','verloren','dauerbrenner'];
   const KANBAN_STAGE_META = {
     neuer_lead: {icon:'🚩', label:'Neuer Lead'},
     ersttermin_vereinbart: {icon:'📜', label:'Ersttermin vereinbart'},
@@ -9062,8 +9166,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const contact = kanbanBundleCache ? kanbanBundleCache.contacts.find(c=>c.id===contactId) : null;
     if(!contact) return;
 
-    if(toStage==='nicht_erschienen' && fromStage!=='ersttermin_vereinbart'){
-      alert('"Nicht erschienen" ist nur vom Ersttermin aus erreichbar.');
+    if(toStage==='nicht_erschienen' && fromStage!=='ersttermin_vereinbart' && fromStage!=='zweittermin'){
+      alert('"Nicht erschienen" ist nur vom Ersttermin oder Zweittermin aus erreichbar.');
       return;
     }
 
@@ -9072,7 +9176,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     let ok = true;
     if(toStage==='nicht_erschienen'){
-      ok = await logKanbanAction(contact, 'termin_nicht_wahrgenommen');
+      // Herkunft entscheidet, welcher Termin nicht wahrgenommen wurde --
+      // seit "Nicht erschienen" auch vom Zweittermin aus erreichbar ist
+      // (Akquise-Trichter, siehe CLAUDE.md), reicht die Zielspalte allein
+      // nicht mehr zur Unterscheidung.
+      ok = await logKanbanAction(contact, fromStage==='zweittermin' ? 'zweittermin_nicht_wahrgenommen' : 'termin_nicht_wahrgenommen');
     } else if(fromTerminal && toActive){
       ok = await logKanbanAction(contact, 'kundenausbau');
     } else if(toStage==='ersttermin_vereinbart'){
@@ -9087,6 +9195,24 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     // neuer_lead, dauerbrenner, verloren: keine automatische Aktion
 
     if(!ok) return;
+
+    // Abgeleitete "wahrgenommen"-Markierungen für den Akquise-Trichter
+    // (Statistik-Seite, siehe CLAUDE.md) -- zusätzlich zur oben schon
+    // geloggten Hauptaktion, energy:0, blockiert die Aktion deshalb nie
+    // am Tagesbudget. Bewusst eigene, unabhängige Bedingungen (nicht Teil
+    // der if/else-Kette oben): ein Ersttermin gilt als wahrgenommen, sobald
+    // die Karte von dort aus WEITER wandert (auch nach Verloren -- "Termin
+    // fand statt, hat aber zu nichts geführt"), unabhängig davon, welche
+    // Hauptaktion dabei geloggt wurde.
+    if(fromStage==='ersttermin_vereinbart' && ['angebot_versendet','zweittermin','gewonnen','verloren'].includes(toStage)){
+      await logKanbanAction(contact, 'termin_wahrgenommen');
+    }
+    if(fromStage==='zweittermin' && ['gewonnen','verloren'].includes(toStage)){
+      await logKanbanAction(contact, 'zweittermin_wahrgenommen');
+    }
+    if(toStage==='zweittermin'){
+      await logKanbanAction(contact, 'zweittermin_vereinbart');
+    }
 
     const res = await updateContactWithLockCheck(contactId, { kanban_stage: toStage }, contact.updated_at);
     if(res.error){ reportError('Kanban-Spalte aktualisieren', res.error); return; }

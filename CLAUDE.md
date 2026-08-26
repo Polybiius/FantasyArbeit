@@ -549,10 +549,10 @@ vom Plan). Dieser Absatz ist der Beleg dafür, kein technischer Auftrag.
 
 ## Level-/XP-System (wichtig für jede Regelwerk-Änderung)
 
-- Aktuelle Kurve (seit Patch 50, 2026-08-17): `levelBase = 5.80`,
-  `levelExponent = 1.5` → `XP für Level L = 5.80 * L^1.5`. Ziel: bei
-  durchschnittlicher Vertriebsleistung soll Level 100 nach **10 Jahren**
-  erreicht werden (200 Arbeitstage/Jahr angenommen).
+- Aktuelle Kurve (seit 2026-08-26, Akquise-Trichter-Neukalibrierung):
+  `levelBase = 6.75`, `levelExponent = 1.5` → `XP für Level L = 6.75 *
+  L^1.5`. Ziel: bei durchschnittlicher Vertriebsleistung soll Level 100
+  nach **10 Jahren** erreicht werden (200 Arbeitstage/Jahr angenommen).
 - Diese Kalibrierung wurde mehrfach neu gerechnet, wenn sich das Regelwerk
   änderte (z.B. als Quest-Boni dazukamen, als "Ansprache" vereinheitlicht
   wurde, als Konversions-Bonus/-Malus eingeführt wurde). **Jede substanzielle
@@ -800,11 +800,15 @@ HISTORY.md).
 
 ## Kanban (Questpfad / Gildenbrett / Feldzug), seit Patch 18
 
-Acht feste Spalten (Reihenfolge in `KANBAN_STAGES` in `index.html`): Neuer Lead
-→ Ersttermin vereinbart → Nicht erschienen / Angebot versendet → Zweittermin →
-Gewonnen / Verloren → Dauerbrenner. **Bewusst fest im Code**, nicht
-konfigurierbar (Rule of Three — erst wenn eine zweite Organisation ansteht,
-lohnt sich die Abstraktion; vorher würden wir nur raten).
+Acht feste Spalten (Reihenfolge in `KANBAN_STAGES` in `index.html`, seit
+2026-08-26): Neuer Lead → Ersttermin vereinbart → Angebot versendet →
+Zweittermin → Nicht erschienen → Gewonnen / Verloren → Dauerbrenner.
+**Bewusst fest im Code**, nicht konfigurierbar (Rule of Three — erst wenn
+eine zweite Organisation ansteht, lohnt sich die Abstraktion; vorher würden
+wir nur raten). "Nicht erschienen" saß ursprünglich direkt hinter
+Ersttermin vereinbart — seit "Nicht erschienen" auch vom Zweittermin aus
+erreichbar ist (siehe "Akquise-Trichter" unten), sitzt es jetzt als
+gemeinsames Auffangbecken hinter beiden "echten Treffen"-Spalten.
 
 **Optik als Wegkarte statt Büro-Spalten** (bewusste Design-Entscheidung, weil
 seitliches Scrollen zum "Questpfad"-Namen passt, wenn es sich wie eine Route
@@ -851,16 +855,20 @@ weiterhin zusätzlich, nichts wurde entfernt.
   zusätzlich nach Start-/Endzeit und legt bei Eingabe einen echten
   Kalendertermin an — überspringbar, sowohl über den Dungeon-Button als
   auch beim Ziehen einer bestehenden Karte.
-- → Nicht erschienen: **nur von Ersttermin vereinbart aus**, sonst Abbruch.
-  Loggt `termin_nicht_wahrgenommen` (−2 XP, der lange geplante
-  Konversions-Malus).
+- → Nicht erschienen: seit 2026-08-26 **von Ersttermin vereinbart ODER
+  Zweittermin aus**, sonst Abbruch. Loggt `termin_nicht_wahrgenommen`
+  (Herkunft Ersttermin) bzw. `zweittermin_nicht_wahrgenommen` (Herkunft
+  Zweittermin, neuer Aktions-Schlüssel), beide −2 XP.
 - → Angebot versendet: Aktion `pitch`, danach optionales Popup
   "Bedarfsanalyse geführt?" (kann übersprungen werden). **Kein**
   Termin-Popup — ein verschicktes Angebot ist kein Treffen.
 - → Zweittermin: dieselbe Aktion `pitch` + dieselbe Bedarfsanalyse-Nachfrage
   wie Angebot versendet, zusätzlich aber (seit Patch 33, extra entkoppelt)
   dasselbe überspringbare Termin-Popup wie bei Ersttermin — ein Zweittermin
-  ist ein echtes Treffen.
+  ist ein echtes Treffen. Loggt seit 2026-08-26 zusätzlich `zweittermin_
+  vereinbart` (0 XP, reine Zähl-Markierung fürs Akquise-Trichter-Diagramm,
+  siehe eigener Abschnitt unten) — vorher teilte sich Zweittermin die
+  Aktion `pitch` mit Angebot versendet, ließ sich also nicht separat zählen.
 - → Gewonnen: Aktion `abschluss`, danach Popup `recordWonSalesLoop()` —
   Produkt + Menge eintragen, "+ Produkt hinzufügen" für beliebig viele weitere
   Produkte desselben Abschlusses, "Fertig" zum Abschließen (je ein Insert in
@@ -891,6 +899,63 @@ Karte nicht verschoben, sondern nur eine Meldung gezeigt.
 Die Kanban-Stufe eines Kontakts lässt sich auch direkt im Kontaktformular
 setzen (`contactKanbanStageSelect`) — das ist eine reine Korrekturmöglichkeit
 ohne Aktions-Logging, nicht der normale Weg (der bleibt das Ziehen im Board).
+
+## Akquise-Trichter (Statistik-Seite), seit 2026-08-26
+
+Neue Kachel auf der Verkaufsstatistik-Seite (Kompendium/Kriegskasse/
+Trophäenkammer, zwischen "Konstanz" und dem Kategorie-Balkendiagramm):
+Ansprachen → Ersttermin vereinbart → Ersttermin wahrgenommen →
+Zweittermin vereinbart → Zweittermin wahrgenommen → Gewonnen, als
+schmaler werdende Balken (Trichter-Optik), plus zwei Kennzahlen darunter
+("Ansprachen pro Abschluss", "Ersttermine (wahrgenommen) pro Abschluss").
+Ursprung: der Nutzer nutzt privat eine Excel-Vorlage
+(`Conversion_Funnel_Blanko.xlsx`) für genau diese Kennzahl, wollte sie
+als echte, live berechnete Statistik im Programm.
+
+**Bewusst kein Kanal-Unterschied** (Krankenhaus vor Ort vs. Telefon) —
+ursprünglich in der Excel-Vorlage vorhanden, vom Nutzer explizit
+verworfen ("wie der Termin zustande gekommen ist, ist egal, Akquise ist
+Akquise"). "Ansprachen" zählt deshalb jede Form der Erstkontaktaufnahme
+zusammen: Aktion `ansprache` (vor Ort) + `kalttelefonie` + `telefon_5`
+(×5, ein Log-Eintrag steht für 5 gewählte Nummern, gleicher Faktor wie
+bei der Konstanz-Kachel).
+
+**Reine Ableitung aus dem eigenen `action_log`**, nichts wird extra
+gespeichert (`computeAcquisitionFunnel()`/`logForPeriod()` in
+`index.html`, gleiches Zeitraum-Prinzip wie der Rest der Seite — Jahr-
+oder Monats-Reiter, org-lokales Kalenderjahr). "Ersttermin wahrgenommen"/
+"Zweittermin wahrgenommen" sind KEINE manuellen Zusatzklicks mehr,
+sondern werden von `moveKanbanCard()` automatisch mitgeloggt, sobald
+eine Karte vom jeweiligen Termin aus **weiterwandert** — auch wenn das
+Ziel "Verloren" ist ("Termin fand statt, hat aber zu nichts geführt",
+ausdrückliche Nutzer-Entscheidung). Genauer:
+- Ersttermin vereinbart → {Angebot versendet, Zweittermin, Gewonnen,
+  Verloren}: loggt zusätzlich `termin_wahrgenommen` (bestehende Aktion,
+  vorher praktisch nie automatisch ausgelöst).
+- Zweittermin → {Gewonnen, Verloren}: loggt zusätzlich
+  `zweittermin_wahrgenommen` (neue Aktion, 12 XP).
+- → Zweittermin (aus beliebiger Herkunft): loggt zusätzlich
+  `zweittermin_vereinbart` (neue Aktion, 0 XP, reine Zähl-Markierung —
+  die eigentliche Belohnung bleibt bei der unveränderten `pitch`-Aktion,
+  15 XP, sonst würde derselbe Kanban-Schritt doppelt kassieren).
+
+**Level-Kurve neu kalibriert, weil `termin_wahrgenommen`/
+`zweittermin_wahrgenommen` jetzt eine häufige statt einer seltenen
+XP-Quelle sind** (Nutzer-Entscheidung: die automatische XP bleibt
+bestehen, dafür wird die Kurve angepasst). `levelBase` 5,80 → **6,75**
+(+16,5%, Methodik wie bei Patch 50 — wöchentliches Zusatz-XP-Budget
+geschätzt aus der bereits bestehenden Konstanz-Schwelle "5–7 Termine
+wahrgenommen/Woche", hält "Level 100 nach 10 Jahren" stabil trotz der
+neuen automatischen Quelle). Migration
+`supabase/migrations/20260826180000_zweittermin_actions_und_levelkurve.sql`.
+
+**Farbe: ein einfarbiger Verlauf hell → dunkel aus der aktiven
+Klassenfarbe**, per CSS `color-mix()` gegen die live gesetzte
+`--arcane`-Variable (`FUNNEL_RAMP` in `index.html`) — passt sich dadurch
+automatisch jeder der drei Klassen an, ohne einen eigenen Farbsatz pro
+Klasse im JS zu brauchen. Entspricht der etablierten Diagramm-Richtlinie
+für Rang-/Trichterdaten (eine Farbe, monotone Helligkeitsstufen, nicht
+mehrere Kategorie-Farben).
 
 ## Produktkatalog & Verkaufshistorie, seit Patch 23
 
@@ -2448,7 +2513,7 @@ selbst statt in ein `stages`-Array zu schauen. Duplikat-Schutz: pro
 Stufe **und Jahr** einmal (`meta.year` zusätzlich zu `questTreeId`/
 `stageId` in der Prüfung).
 
-Aktuelle Kalibrierung: `levelBase`=5,80 (siehe "Level-/XP-System"
+Aktuelle Kalibrierung: `levelBase`=6,75 (siehe "Level-/XP-System"
 oben), 78 Stufen + 11 Epics mit `bonus`-Feld (15-450 XP je Stufe,
 100-800 je Epic, gestaffelt nach Ladder-Länge/Position bzw. Anzahl/
 Schwere der Voraussetzungen).
