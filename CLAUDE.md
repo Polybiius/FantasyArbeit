@@ -1231,6 +1231,21 @@ unabhängig von vergebenen Ausführungsrechten — als "von anon/
 authenticated ausführbar" gemeldete Trigger-Funktionen sind deshalb
 i.d.R. unbedenklich.
 
+**Stolperstein beim `revoke execute ... from anon`:** eine neue
+`CREATE FUNCTION` bekommt von Postgres automatisch einen zusätzlichen
+`EXECUTE`-Grant für die Pseudo-Rolle `PUBLIC` (unabhängig von den
+projekteigenen `ALTER DEFAULT PRIVILEGES`-Regeln für `anon`/
+`authenticated`). Ein reines `revoke execute ... from anon` wirkt
+deshalb NICHT — `anon` behält den Zugriff über den `PUBLIC`-Eintrag.
+Immer `revoke execute ... from public, anon` schreiben und per
+`has_function_privilege('anon', ..., 'EXECUTE')` im Dry-Run verifizieren
+(Fund/Beleg: Supabase-Advisor-Triage 2026-08-26, Migration
+`20260826103300_advisor_anon_revoke_schreibfunktionen.sql`, sperrt 15
+der damals 33 anon-ausführbaren Schreib-RPCs — die übrigen 18 bleiben
+bewusst offen, siehe Migrationskommentar dort: 8 sind
+`returns trigger`-Fehlalarme, 10 sind Lese-Hilfsfunktionen, die aus
+RLS-Policies heraus als aufrufende Rolle ausgewertet werden).
+
 **Feldlängen-Konvention** für neue Freitextfelder (reine UX-Hygiene,
 kein Sicherheitsmechanismus): Namen/Orte/Titel 60–150 Zeichen,
 Notizfelder 1000–3000, bewusst großzügige Felder (z.B. die 5
