@@ -1252,9 +1252,14 @@ Notizfelder 1000–3000, bewusst großzügige Felder (z.B. die 5
 Tagebuch-Fragen) bis 5000. Reine Such-/Autocomplete-Felder und der
 admin-only `configEditor` (roher JSON) bleiben unbegrenzt.
 
-**Bekannte, noch offene Kleinigkeit:** "Leaked Password Protection" im
-Supabase-Dashboard ist aus — reiner Klick, kein SQL, noch nicht
-aktiviert.
+**"Leaked Password Protection" im Supabase-Dashboard ist aus — bewusst,
+kein offener Punkt:** das Feature ist ein Pro-Plan-Feature, auf dem
+aktuellen Free Plan nicht einschaltbar (gleiches Muster wie die
+fehlenden automatischen Backups, siehe Claudes Erinnerung
+`project_supabase_backups`). Taucht bei jedem `supabase db advisors`-
+Lauf weiterhin als Fund auf — das ist kein neuer Hinweis, nicht von
+selbst als Handlungsaufforderung vorschlagen, erst wieder relevant bei
+einem ohnehin anstehenden Plan-Upgrade.
 
 ## Abenteuerlog-Seite (Kalender/Tagebuch/Foto)
 
