@@ -2980,6 +2980,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     restoreLastPage();
     loadUnseenPatches();
     loadUnseenSecurityAlerts();
+    cleanupQueuedContactFilesIfAdmin();
     startTaskDayRolloverWatcher();
   }
 
@@ -6097,6 +6098,33 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       }
     });
     return files.length;
+  }
+
+  // Räumt Storage-Objekte auf, deren contact_files-Zeile bereits weg ist
+  // (v.a. durch die automatische Kontakt-Löschung, DSGVO-Vorbereitung,
+  // supabase/migrations/20260826160000_contact_files_storage_cleanup_queue.sql)
+  // -- die Zeile kaskadiert mit, das Objekt im Bucket überlebt ohne diesen
+  // Schritt. Läuft nur für Admins, still im Hintergrund beim Login, gleiches
+  // Muster wie grantDailyManatrank()/syncBirthdayTasksIfNeeded(): kein neues
+  // Geheimnis in der Datenbank nötig, die Storage-API wird ausschließlich
+  // über die normale, authentifizierte Admin-Sitzung aufgerufen.
+  async function cleanupQueuedContactFilesIfAdmin(){
+    if(profile.role!=='admin') return;
+    const { data, error } = await sb.from('contact_file_deletion_queue').select('id, storage_path');
+    if(error){ logSilentError('Datei-Aufräum-Warteschlange laden', error); return; }
+    if(!data || data.length===0) return;
+    const { data: removed, error: rmErr } = await sb.storage.from(CONTACT_FILE_BUCKET).remove(data.map(r=>r.storage_path));
+    if(rmErr){ logSilentError('Verwaiste Kontakt-Dateien aus dem Speicher entfernen', rmErr); return; }
+    // Nur Warteschlangen-Zeilen leeren, deren Pfad remove() tatsächlich
+    // bestätigt hat -- bleibt ein Pfad aus (RLS-Sonderfall, Netzwerkfehler
+    // bei einer einzelnen Datei), bleibt der Eintrag stehen und wird beim
+    // nächsten Admin-Login erneut versucht, statt stillschweigend verloren
+    // zu gehen.
+    const removedPaths = new Set((removed||[]).map(r=>r.name));
+    const clearedIds = data.filter(r=>removedPaths.has(r.storage_path)).map(r=>r.id);
+    if(clearedIds.length===0) return;
+    const { error: clearErr } = await sb.rpc('clear_contact_file_cleanup_queue', { p_ids: clearedIds });
+    if(clearErr) logSilentError('Datei-Aufräum-Warteschlange leeren', clearErr);
   }
 
   // Chronik-Reiter am Kontakt: echte CRM-Fakten (Anrufe, Emails, Termine,

@@ -2036,6 +2036,106 @@ direkt auf `#kontakt/<id>` der im HTML hart hinterlegte Default
 ("🧙 Charakter") aktiv markiert, obwohl inhaltlich die Kontakt-Seite
 angezeigt wurde (Bugfix-Verlauf: HISTORY.md).
 
+## Storage-Aufräum-Warteschlange für gelöschte Kontakt-Dateien
+
+Schließt die früher dokumentierte Lücke (siehe "Bekannte, bewusst in
+Kauf genommene Lücken" oben): die automatische Löschung inaktiver
+Kontakte (`auto_delete_inactive_contacts()`, DSGVO-Vorbereitung) lässt
+`contact_files`-Zeilen kaskadieren, aber das eigentliche Objekt im
+Storage-Bucket `contact-files` blieb bisher liegen — Supabase blockiert
+eine direkte SQL-Löschung von `storage.objects`
+(`storage.protect_delete()`-Trigger), nur die Storage-API kann wirklich
+löschen, die von reinem SQL/pg_cron aus nicht ohne ein zusätzliches
+Geheimnis in der Datenbank erreichbar ist (widerspräche dem
+Architekturprinzip "kein versteckter Backend-Schlüssel").
+
+**Lösung: Warteschlange + Admin-Login-Aufräumung**, gleiches Muster wie
+der Geburtstags-/Manatrank-Nachtrag — kein neues Geheimnis nötig, die
+Storage-API wird weiterhin nur über die normale, authentifizierte
+Browser-Sitzung eines Admins aufgerufen
+(`supabase/migrations/20260826160000_contact_files_storage_cleanup_queue.sql`).
+
+**Erste Fassung hatte zwei echte, blockierende Lücken** — von einer
+unabhängigen Zweitmeinung (blinder Review, kein Kontext der Bau-Sitzung)
+gefunden, siehe Konvention `feedback_independent_review_and_rollback_gate`:
+
+1. Die bestehenden Storage-Policies (`contact_files_storage_select`/
+   `_delete`) hängen an "gehört noch ein passender `contacts`-Datensatz
+   zum Pfad" — nach der Kontakt-Löschung existiert der per Definition
+   nicht mehr, die Aufräumung hätte RLS-bedingt **nichts** gelöscht
+   (Supabase Storage liefert bei einem per RLS leer gefilterten
+   `remove()`-Aufruf `200 OK` mit leerem Ergebnis statt eines Fehlers —
+   die Warteschlange wäre trotzdem geleert worden, ohne dass je etwas
+   entfernt wurde). **Fix:** beide Policies bekommen einen zweiten,
+   warteschlangen-verankerten Zweig (Admin der eigenen Organisation UND
+   ein passender Eintrag in `contact_file_deletion_queue`).
+2. `contact_files.storage_path` wurde beim Insert nie gegen `contact_id`
+   geprüft — ein Gildenmitglied mit Lesezugriff auf einen fremden
+   Kontakt (kennt dadurch dessen `storage_path`) hätte unter einem
+   eigenen, beschreibbaren Kontakt eine `contact_files`-Zeile mit dem
+   fremden Pfad anlegen und sofort wieder löschen können; die
+   Warteschlange hätte beim nächsten Admin-Login die noch aktiv
+   referenzierte Fremd-Datei gelöscht (erst durch Fund 1s Fix überhaupt
+   ausnutzbar, aber unabhängig davon eine echte Lücke). **Fix:**
+   `CHECK`-Constraint, `storage_path` muss mit `<contact_id>/` beginnen
+   — exakt die Konvention, nach der der Pfad im Frontend ohnehin immer
+   gebildet wird (0 betroffene Bestandszeilen, per Abfrage bestätigt).
+
+**Zusätzliche Härtung beim Beheben von Fund 1** (kein eigener Fund,
+aber naheliegend): der Trigger queued nur, wenn der Eltern-Kontakt
+tatsächlich nicht mehr existiert. Verhindert, dass ein Mitarbeiter-
+Offboarding (`contact_files.uploaded_by ... on delete cascade` — der
+Kontakt selbst bleibt am Leben, wandert nur in den Gilden-Pool) künftig
+aktiv genutzte Dateien lebender Kontakte löscht. Vorher wäre so ein
+Objekt ohnehin nur "verwaist", jetzt würde es durch die neue
+Warteschlange sonst tatsächlich entfernt.
+
+**Bausteine der finalen Fassung:**
+
+- **`contact_file_deletion_queue`** — neue Tabelle, admin-lesbar (eigene
+  Organisation), kein Insert/Update/Delete für normale Clients.
+- **`queue_contact_file_for_storage_cleanup()`** — `BEFORE DELETE`-
+  Trigger auf `contact_files`, trägt `storage_path`+`org_id` einer
+  gelöschten Zeile NUR ein, wenn `contacts` den Eltern-Kontakt nicht
+  mehr enthält (echter Cascade-Waisenfall). Feuert bei Cascade- UND
+  bei direkten Löschungen gleichermaßen (Postgres führt Cascade-
+  Löschungen über echte `DELETE`-Befehle auf der Kind-Tabelle aus,
+  Zeilen-Trigger feuern dabei normal mit) — der Kontakt-Existenz-Check
+  filtert die Fälle heraus, in denen nichts zu tun ist (manuelles
+  Löschen im Dateien-Reiter räumt den Speicher ohnehin bereits selbst,
+  Mitarbeiter-Offboarding betrifft einen weiterhin lebenden Kontakt).
+- **`contact_files_storage_path_matches_contact`** — `CHECK`-Constraint
+  gegen Fund 2 (siehe oben).
+- **`clear_contact_file_cleanup_queue(p_ids)`** — einzige Möglichkeit,
+  Zeilen aus der Warteschlange zu entfernen, `SECURITY DEFINER`,
+  admin-only, org-scoped.
+- **Storage-Policies** — die beiden bestehenden Policies aus Patch 42
+  bekommen den warteschlangen-verankerten Zweig gegen Fund 1 (siehe
+  oben) per `ALTER POLICY` dazu, unverändert ansonsten.
+- **Frontend:** `cleanupQueuedContactFilesIfAdmin()` (`index.html`,
+  läuft nur für Admins, ungefragt/still im Hintergrund beim Login,
+  gleiches Aufrufmuster wie `loadUnseenSecurityAlerts()`) liest die
+  Warteschlange, ruft `sb.storage.remove()` mit allen ausstehenden
+  Pfaden auf einmal auf, und leert über die RPC **nur** die Zeilen,
+  deren Pfad `remove()` tatsächlich bestätigt hat (nicht blind alle
+  angefragten) — bleibt ein Pfad aus irgendeinem Grund aus, bleibt der
+  Eintrag stehen und wird beim nächsten Login erneut versucht, statt
+  stillschweigend verloren zu gehen.
+
+**Dry-Run-Verifikation vor dem Push** (gegen echte Testprofile,
+`set_config('request.jwt.claim.sub', ...)` + `set role authenticated`
+für RLS/RPC-Fälle, ein fingiertes `storage.objects`-Testobjekt für die
+Storage-Policy-Fälle, komplett zurückgerollt): Trigger queued korrekt
+NUR bei echter Cascade-Löschung über den Eltern-Kontakt, NICHT bei
+einer Löschung mit weiterhin existierendem Kontakt; `CHECK`-Constraint
+weist einen nicht zum Kontakt passenden `storage_path` zurück; Admin
+sieht Warteschlangen-Einträge der eigenen Organisation, Nicht-Admin und
+Admin einer fremden Organisation sehen keine; weder Nicht-Admin noch
+Admin können die Warteschlange direkt per `DELETE` leeren (keine Policy
+dafür, nur die RPC), die RPC selbst leert korrekt; die erweiterte
+Storage-Policy lässt ein warteschlangen-verankertes Objekt für den
+zuständigen Admin sichtbar werden, für einen fremd-org-Admin nicht.
+
 ## Chronik-Sichtbarkeit folgt der Kontakt-Freigabe
 
 Nutzerentscheidung, klar und ohne Umweg: "keine eigene Einstellung.
@@ -3023,23 +3123,9 @@ sich ein gemeinsames Backend-Muster.
 
 ## Bekannte, bewusst in Kauf genommene Lücken
 
-- **Dateien in `contact-files` überleben die automatische Kontakt-
-  Löschung.** Die `contact_files`-Datenbankzeile kaskadiert mit, das
-  eigentliche Objekt im Storage-Bucket nicht — live bestätigt: Supabase
-  blockiert eine direkte SQL-Löschung von `storage.objects` ausdrücklich
-  (`storage.protect_delete()`-Trigger, "Use the Storage API instead"),
-  nur die Storage-API kann wirklich löschen, die von reinem SQL/pg_cron
-  aus nicht ohne ein zusätzliches Geheimnis in der Datenbank erreichbar
-  ist (widerspräche dem Architekturprinzip "kein versteckter
-  Backend-Schlüssel", siehe Sicherheitswarnungen-Abschnitt oben).
-  Betrifft nur Kontakte, die nie Kunde wurden (Ex-Kunden sind von der
-  Auto-Löschung bereits komplett ausgenommen) — Nutzer-Entscheidung
-  2026-08-25: heute ohne Datei-Aufräumung live gehen. Sauberer
-  Nachfolge-Mechanismus, falls das Thema wieder aufkommt: eine kleine
-  Warteschlangen-Tabelle (Cron-Funktion merkt sich die Datei-Pfade vor
-  dem Löschen), abgearbeitet beim nächsten Admin-Login über die normale,
-  authentifizierte Storage-API — gleiches Muster wie der Geburtstags-/
-  Manatrank-Nachtrag, kein neues Geheimnis in der Datenbank nötig.
+- ~~Dateien in `contact-files` überleben die automatische Kontakt-
+  Löschung~~ — **behoben, 2026-08-26**, siehe eigener Abschnitt
+  "Storage-Aufräum-Warteschlange für gelöschte Kontakt-Dateien" unten.
 - ~~"Zuletzt kontaktiert"/Kontakt-Chronik zeigen nur eigene Einträge~~ —
   **behoben, Patch 45, 2026-08-10**, siehe eigener Abschnitt "Chronik-
   Sichtbarkeit folgt der Kontakt-Freigabe". "Zuletzt kontaktiert (von
