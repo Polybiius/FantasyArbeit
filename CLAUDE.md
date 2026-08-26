@@ -1703,19 +1703,10 @@ gruppiert nach `vertragsbeginn` (Fallback `datum`).
 existieren, aber es gibt noch keine Zählquelle dafür im Aktions-Log.
 
 ## Bewusst aufgeschobene Ideen (NICHT vergessen, aber NICHT von selbst bauen)
-- **Notfall-Quest vor automatischer Kontakt-Löschung** — vom Nutzer am
-  2026-08-25 direkt im Anschluss an die automatische Löschung inaktiver
-  Kontakte (siehe "DSGVO-Vorbereitung" oben) vorgeschlagen: kurz bevor
-  ein Kontakt wegen Inaktivität automatisch gelöscht würde, könnte das
-  System eine Aufgabe/einen Quest erzeugen ("Kontakt X droht bald
-  gelöscht zu werden, jetzt nochmal melden") — rettet potenziell den
-  Lead UND ist ein sinnvoller neuer Gamification-Baustein statt reiner
-  Bürokratie. Technisch naheliegend über das bestehende Aufgaben-System
-  (`tasks`, gleiches Prinzip wie automatische Geburtstags-/
-  Wiedervorlage-Aufgaben) lösbar — bräuchte eine Vorlaufzeit-Konfiguration
-  und eine Prüfung "steht kurz vor der automatischen Löschung". Nur als
-  Idee festgehalten, ausdrücklicher Nutzerwunsch ("nur speichern die
-  Idee") — nicht von selbst bauen, erst auf erneuten Anstoß.
+- ~~**Notfall-Quest vor automatischer Kontakt-Löschung**~~ — **fertig
+  gebaut, live, 2026-08-26**, siehe eigener Abschnitt "Sonderquest-
+  Hinweise: automatisiertes Erkennungssystem" unten. Kein offener Punkt
+  mehr.
 - ~~**Outlook-artige abhakbare Aufgaben**~~ — **fertig gebaut, live,
   2026-08-20, Patch 51**, siehe eigener Abschnitt "Aufgaben-System: echte,
   abhakbare Aufgaben (Outlook-Stil)" oben. Neue Tabelle `tasks`, neuer
@@ -3428,6 +3419,68 @@ oben) — beide fanden echte Logikfehler der jeweiligen Vorfassung
 (fehlender Aktivitäts-Anker, fehlender Ex-Kunden-Ausschluss, fehlende
 Untergrenze gegen einen Konfigurations-Tippfehler), alle behoben und
 per Dry-Run mit 9 Testszenarien gegen die echte DB verifiziert.
+
+## Sonderquest-Hinweise: automatisiertes Erkennungssystem
+
+Erster Baustein, der auf der automatischen Kontakt-Löschung (siehe oben)
+aufsetzt statt sie nur zu protokollieren: 1 Monat bevor ein eigener
+Kontakt ohne jemals gewonnenen Vertrag automatisch gelöscht wird,
+erscheint in den täglichen Quests (`#page-handlungen`) eine zusätzliche
+Kachel "Sonderquest — Vorname Nachname kontaktieren", Rahmen dezent in
+der Klassenfarbe (`--arcane`) hervorgehoben, Löschdatum als Unterzeile.
+Jede betroffene eigene Person bekommt das für ihre eigenen Kontakte,
+nicht nur eine Ansicht für Admins.
+
+**Datenquelle:** `contacts_pending_deletion_for_self()` (Migration
+`20260826150000_notfall_quest_kontakt_loeschung.sql`), eine reine
+Lese-`SECURITY DEFINER`-Funktion, fest auf `auth.uid()` verdrahtet (kein
+Parameter von außen — es gibt keinen Weg, fremde Kontakte abzufragen).
+Spiegelt exakt denselben Aktivitäts-Anker wie
+`auto_delete_inactive_contacts()` — **bei künftigen Änderungen an diesem
+Anker beide Funktionen anfassen**, sonst laufen Warnung und tatsächliche
+Löschung auseinander. Fenster: `deletion_date` liegt zwischen heute
+(inklusive — der Cron löscht erst um 03:17 UTC, der Fälligkeitstag
+selbst ist noch der letzte Rettungstag) und heute+30 Tage.
+
+**Bewusst kein Extra-XP-Bonus fürs Retten** (Nutzerentscheidung
+2026-08-26) — die normale Aktions-XP, mit der der Kontakt berührt wird
+(Anruf/Termin/etc.), reicht als Belohnung. **Kein "erledigt"-Feld
+nötig**: sobald der Kontakt wieder angefasst wird, rückt sein
+Aktivitäts-Anker vor, die Kachel verschwindet beim nächsten Laden von
+selbst — gleiches Ableitungs-Prinzip wie überall sonst im Projekt
+(XP/Level, Streaks, Kalender-Aufgaben). Geladen einmal pro Login
+(`enterApp()`) und zusätzlich bei jedem Öffnen der Handlungen-Seite
+(`showPage()`), bewusst NICHT nach jeder einzelnen Aktion neu abgefragt.
+
+**Frontend bewusst generisch gehalten** (`specialQuestItems`/
+`specialQuestTilesHtml()`, neben `renderDailyQuestTiles()`): ein
+künftiger zweiter Hinweistyp reiht seine Einträge einfach in dasselbe
+Array ein, ohne die Render-Logik anzufassen — direkte Umsetzung des
+Nutzerwunsches vom 2026-08-26, an dieses System künftig noch nicht
+konkretisierte weitere automatisierte Hinweise anzuhängen.
+
+**Schwellenwert für eine echte Verallgemeinerung (Rule of Three, analog
+zu den übrigen Schwellen in diesem Dokument):** solange es nur diesen
+einen Hinweistyp gibt, bleibt das Backend bewusst eine eigene, schmale
+Funktion pro Konzern (gleiches Muster wie `log_action_for_self`/
+`grant_quest_bonus_to_self`/`friend_skill_totals` — jede Sorge bekommt
+ihre eigene, klar benannte Funktion). **Erst sobald ein DRITTER
+Sonderquest-Hinweistyp ansteht**, lohnt sich ein gemeinsames Backend-
+Muster (z.B. eine generische Tabelle/Sicht statt einer eigenen Funktion
+pro Typ) — nicht vorher, das wäre Raten auf Vorrat für eine noch
+unbekannte künftige Form. Bis dahin: bei jedem neuen Hinweistyp einfach
+nach diesem Muster eine weitere eigene Funktion + weitere Einträge im
+`specialQuestItems`-Array ergänzen.
+
+Live gegen die echte DB per Dry-Run verifiziert (7 Testkontakte: fällig
+in 25 Tagen, zu früh, bereits überfällig, Ex-Kunde mit Vertrag, fremder
+Besitzer, kürzlich gerettet per Anruf, sowie der Grenzfall "Löschung
+exakt heute"). Eine unabhängige Zweitmeinung fand einen echten
+Off-by-one-Fehler an der Datumsgrenze (`>` statt `>=`, hätte die Warnung
+am eigentlichen letzten Rettungstag schon verschwinden lassen) sowie
+zwei Konventions-Abweichungen (fehlender `html`-Tag statt manuellem
+`escHtml()`, fehlender Staleness-Schutz nach dem `eaSearchRequestId`-
+Muster) — alle drei behoben.
 
 ## Bekannte, bewusst in Kauf genommene Lücken
 
