@@ -942,13 +942,28 @@ ausdrückliche Nutzer-Entscheidung). Genauer:
 Diese drei abgeleiteten Markierungen laufen seit 2026-08-27 über
 `logKanbanAction(..., {defer:true})` — `moveKanbanCard()` bündelt bis zu
 4 Log-Aufrufe pro Kartenzug und zieht Quest-Check + `render()` genau
-**einmal** nach (`flushKanbanActionPost()`), statt pro Aufruf. Zusätzlich
-werden `termin_wahrgenommen`/`zweittermin_wahrgenommen`/
-`zweittermin_vereinbart` **je Kontakt und Geschäftsjahr nur einmal**
-automatisch geloggt (`hasFunnelMarkerThisYear()`) — mehrfaches
-Hin-und-Her-Ziehen einer Karte kann die Trichterzahlen/XP dadurch nicht
-mehr vervielfachen. Manuelle Pfade (Dauerbrenner-`offerExtraAction`)
-sind davon nicht betroffen.
+**einmal** nach (`flushKanbanActionPost()`), statt pro Aufruf. Drei
+Schutzschichten gegen aufgeblähte Trichterzahlen:
+- **`hasFunnelMarkerThisYear()`** — `termin_wahrgenommen`/
+  `zweittermin_wahrgenommen`/`zweittermin_vereinbart` werden je Kontakt
+  und Geschäftsjahr nur einmal automatisch geloggt; mehrfaches
+  Hin-und-Her-Ziehen kann Trichterzahlen/XP nicht mehr vervielfachen.
+- **`!isKunde`** (`contact.status !== 'kunde'`) — ist der Kontakt schon
+  Kunde, wird KEINE der drei Markierungen geloggt: der 3./4. Termin
+  eines Bestandskunden (Kundenausbau) ist reine Betreuung, keine
+  Erfolgsmessung. `'verloren'` bleibt bewusst drin (kommt ein verlorener
+  Kontakt doch noch, war der Durchlauf mehr wert als gedacht). Der
+  `!fromTerminal`-Schutz bei `zweittermin_vereinbart` fängt nur den
+  direkten Rücksprung ab, nicht das erneute Vorwärtswandern danach —
+  `!isKunde` schließt diese Lücke.
+- Manuelle Pfade (Dauerbrenner-`offerExtraAction`) sind ohnehin nicht
+  betroffen.
+
+**Bewusst noch offen (Nutzer-Entscheidung 2026-08-27, "wir bleiben
+zunächst im Kanban, die Handlungen werden noch überarbeitet"):** ein
+Kundenausbau-Abschluss (`abschluss` bei einem Bestandskunden) zählt
+weiterhin im Trichter-Balken "Gewonnen" mit — `abschluss` ist eine
+Hauptaktion mit XP/Verkaufs-Wirkung, wird nicht unterdrückt.
 
 **Level-Kurve neu kalibriert, weil `termin_wahrgenommen`/
 `zweittermin_wahrgenommen` jetzt eine häufige statt einer seltenen

@@ -9235,17 +9235,26 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     // die Karte von dort aus WEITER wandert (auch nach Verloren -- "Termin
     // fand statt, hat aber zu nichts geführt"), unabhängig davon, welche
     // Hauptaktion dabei geloggt wurde.
-    // hasFunnelMarkerThisYear(): pro Kontakt/Jahr nur einmal, gegen
-    // Vervielfachung durch mehrfaches Hin-und-Her-Ziehen (Code-Review 2026-08-27).
-    if(fromStage==='ersttermin_vereinbart' && ['angebot_versendet','zweittermin','gewonnen','verloren'].includes(toStage)
+    //
+    // Zwei Schutzschichten gegen aufgeblähte Trichterzahlen:
+    //  - !isKunde: ist der Kontakt schon Kunde, ist jede weitere Terminkette
+    //    (3./4. Termin, Kundenausbau) reine Betreuung, keine Erfolgsmessung --
+    //    der !fromTerminal-Schutz allein fängt nur den direkten Rücksprung ab,
+    //    nicht das erneute Vorwärtswandern danach (Nutzer-Entscheidung
+    //    2026-08-27; 'verloren' bleibt bewusst drin: kommt ein verlorener
+    //    Kontakt doch noch, war der Trichter-Durchlauf mehr wert als gedacht).
+    //  - hasFunnelMarkerThisYear(): pro Kontakt/Jahr nur einmal, gegen
+    //    Vervielfachung durch mehrfaches Hin-und-Her-Ziehen (Code-Review 2026-08-27).
+    const isKunde = contact.status === 'kunde';
+    if(!isKunde && fromStage==='ersttermin_vereinbart' && ['angebot_versendet','zweittermin','gewonnen','verloren'].includes(toStage)
        && !hasFunnelMarkerThisYear(contact.id,'termin_wahrgenommen')){
       await logKanbanAction(contact, 'termin_wahrgenommen', null, {defer:true});
     }
-    if(fromStage==='zweittermin' && ['gewonnen','verloren'].includes(toStage)
+    if(!isKunde && fromStage==='zweittermin' && ['gewonnen','verloren'].includes(toStage)
        && !hasFunnelMarkerThisYear(contact.id,'zweittermin_wahrgenommen')){
       await logKanbanAction(contact, 'zweittermin_wahrgenommen', null, {defer:true});
     }
-    if(toStage==='zweittermin' && !fromTerminal
+    if(!isKunde && toStage==='zweittermin' && !fromTerminal
        && !hasFunnelMarkerThisYear(contact.id,'zweittermin_vereinbart')){
       // !fromTerminal schließt den Kundenausbau-Fall aus (Karte kommt von
       // Gewonnen/Verloren zurück auf Zweittermin) -- das ist keine neue
