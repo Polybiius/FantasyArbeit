@@ -2646,4 +2646,29 @@ Optimierungsdinger nie liegen lassen"):
   "PUSH OK … kein Sicherheits- oder Berechtigungsrisiko". Angewendet per
   `supabase db push`, live verifiziert (alle 6: `wrapped_uid=1`).
   Commit `f3bc6a6`. Beide Regressionssuiten grün (33/33, 11/11).
+  `supabase db advisors --type performance` danach: keine
+  `auth_rls_initplan`-Funde mehr (storage.objects war die letzte Quelle),
+  nur noch die bekannten `unused_index`-INFOs (Testdatenmenge).
+
+**Direkt danach, gleiche Sitzung — Bestandskunden-Termine aus dem
+Trichter genommen.** Nutzer-Hinweis: "wir zählen ja auch in der
+Kundendokumentation 3./4. Termin. Diese sind für den Trichter nicht
+relevant, weil dort ein Kunde bereits Kunde ist und wir keine
+Erfolgsmessung brauchen." Analyse ergab: der `!fromTerminal`-Schutz
+(2026-08-26) fing nur den direkten Gewonnen→Zweittermin-Rücksprung ab —
+sobald die Karte eines Kunden danach wieder vorwärts wanderte
+(Ersttermin→Angebot/Zweittermin, der eigentliche 3./4. Termin), feuerten
+`termin_wahrgenommen` (+5 XP) / `zweittermin_vereinbart` /
+`zweittermin_wahrgenommen` (+12 XP) erneut und blähten den Trichter auf.
+Fix (`0d6124a`): `const isKunde = contact.status === 'kunde'` vor dem
+Marker-Block, alle drei Marker mit `!isKunde` gated. Reihenfolge stimmt —
+die Marker werden vor `recordWinOrLoss()` ausgewertet, das den Status
+erst danach auf `kunde` setzt, der Erst-Abschluss zählt also voll.
+Nutzer-Entscheidungen dazu: (1) nur `'kunde'` ausschließen, `'verloren'`
+bleibt drin ("wenn ein verlorener Kunde doch noch kommt, war doch mehr
+richtig als gedacht"); (2) Kundenausbau-`abschluss` zählt vorerst weiter
+im "Gewonnen"-Balken — "wir bleiben zunächst nur im Kanban und tracken
+primär diese Themen über Kanban, die Handlungen werden noch überarbeitet"
+(siehe Erinnerung `project_b2c_to_b2b_action_rework`). Regressionssuiten
+grün (33/33, 11/11).
 
