@@ -1596,7 +1596,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
       <!-- SEITE: FEHLERPROTOKOLL (nur Admins) -->
       <div class="page" id="page-fehlerprotokoll" style="display:none;">
-        <div class="card">
+        <div class="card" id="deletionRequestsCard" style="display:none;">
+          <h2>Löschanfragen <span class="tag">nur für Admins sichtbar</span></h2>
+          <div class="empty-page-hint" style="margin-bottom:8px;">Ein Gildenmitglied mit Schreibrecht kann einen fremden, geteilten Kontakt nicht mehr selbst endgültig löschen — nur eine Anfrage stellen, die du hier freigeben oder ablehnen musst.</div>
+          <div id="deletionRequestsList"></div>
+        </div>
+        <div class="card" style="margin-top:18px;">
           <h2>Sicherheitswarnungen <span class="tag">nur für Admins sichtbar</span></h2>
           <div class="empty-page-hint" style="margin-bottom:8px;">Abgewehrte Manipulationsversuche (z.B. Selbst-Admin-Versuche, erfundene Level-Werte) — läuft serverseitig, greift auch wenn jemand unsere Oberfläche umgeht.</div>
           <div id="securityAlertsList"></div>
@@ -5917,7 +5922,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   async function renderContactPageContent(c, bundle){
-    const canEdit = c.owner_id===profile.id || profile.role==='admin' || myGuildContactWriteMemberIds.has(c.owner_id);
+    // isOwnerOrAdmin entscheidet zusätzlich über "Löschen" (sofort) vs.
+    // "Löschanfrage stellen" (muss von einem Admin freigegeben werden,
+    // siehe request_contact_deletion() weiter unten) -- Nutzerwunsch
+    // 2026-08-27: ein Gildenmitglied mit bloßem Schreibrecht soll einen
+    // geteilten Kontakt nicht selbst endgültig löschen können ("sonst
+    // könnte ein verprellter Mitarbeiter einfach die Datenbank löschen").
+    const isOwnerOrAdmin = c.owner_id===profile.id || profile.role==='admin';
+    const canEdit = isOwnerOrAdmin || myGuildContactWriteMemberIds.has(c.owner_id);
     const fmtDate = (d) => d ? new Date(d+'T12:00:00').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
     document.getElementById('contactDetailTitle').textContent = c.name;
 
@@ -5941,7 +5953,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       <button id="cdLogActionBtn">Aktion loggen</button>
       <button id="cdActivityBtn">Anruf/Email loggen</button>
       <button id="cdTerminBtn">Termin eintragen</button>
-      ${canEdit ? `<button id="cdEditBtn">Bearbeiten</button><button id="cdDeleteBtn">Löschen</button>` : ''}
+      ${canEdit ? `<button id="cdEditBtn">Bearbeiten</button><button id="cdDeleteBtn">${isOwnerOrAdmin ? 'Löschen' : 'Löschanfrage stellen'}</button>` : ''}
     `;
 
     const myEntries = log.filter(e=>e.contact_id===c.id);
@@ -6007,7 +6019,20 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const editBtn = document.getElementById('cdEditBtn');
     if(editBtn) editBtn.addEventListener('click', ()=>{ showPage('kontakte'); startEditContact(c); });
     const delBtn = document.getElementById('cdDeleteBtn');
-    if(delBtn) delBtn.addEventListener('click', async ()=>{
+    if(delBtn) delBtn.addEventListener('click', withClickGuard('cdDeleteBtn', async ()=>{
+      // Gildenmitglied mit bloßem Schreibrecht (nicht Eigentümer/Admin)
+      // löscht nicht direkt, sondern stellt eine Anfrage, die ein Admin
+      // freigeben oder ablehnen muss (contacts_delete_owner_or_admin
+      // erlaubt so jemandem serverseitig ohnehin kein direktes Löschen
+      // mehr -- siehe CLAUDE.md, "Löschanfrage statt Direktlöschung für
+      // Gildenmitglieder").
+      if(!isOwnerOrAdmin){
+        if(!confirm('Löschanfrage für diesen Kontakt an einen Admin senden?')) return;
+        const { error: reqErr } = await sb.rpc('request_contact_deletion', { p_contact_id: c.id });
+        if(reqErr){ reportError('Löschanfrage stellen', reqErr); return; }
+        alert('Löschanfrage gesendet — ein Admin muss sie bestätigen.');
+        return;
+      }
       if(!confirm('Kontakt wirklich löschen?')) return;
       // Offene Wiedervorlage-Aufgabe VOR dem Kontakt löschen, nicht danach:
       // die Fremdschlüssel-Regel (ON DELETE SET NULL) setzt tasks.contact_id
@@ -6018,17 +6043,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       await syncWiedervorlageTask(c.id, c.name, null);
       // .select('id') erzwingt eine Rückgabe der betroffenen Zeile(n) --
       // ohne das liefert PostgREST bei einem durch RLS auf 0 Zeilen
-      // gefilterten Delete weder Fehler noch Hinweis (Fund einer
-      // Zweitmeinungsrunde: eine zwischenzeitlich vom Gildenführer
-      // entzogene Schreibberechtigung, bei der die eigene Sitzung
-      // myGuildContactWriteMemberIds noch nicht neu geladen hat, hätte
-      // sonst "gelöscht" angezeigt, obwohl der Kontakt weiter existiert).
+      // gefilterten Delete weder Fehler noch Hinweis.
       const { data, error } = await sb.from('contacts').delete().eq('id', c.id).select('id');
       if(error){ reportError('Kontakt löschen', error); return; }
       if(!data || data.length===0){ alertConflict('Dieser Kontakt'); return; }
       showPage('kontakte');
       await renderContactsPage();
-    });
+    }));
   }
   document.getElementById('kdBackBtn').addEventListener('click', ()=> showPage('kontakte'));
 
@@ -10073,6 +10094,47 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   });
 
   // ---- Fehlerprotokoll-Seite (nur Admins) ----
+  // ---- Löschanfragen (nur Admins) ----
+  // Nutzerwunsch 2026-08-27: ein Gildenmitglied mit bloßem Schreibrecht auf
+  // einen geteilten Kontakt löscht nicht mehr direkt, sondern stellt eine
+  // Anfrage (request_contact_deletion()) -- contacts_delete_owner_or_admin
+  // erlaubt so jemandem serverseitig gar kein direktes Löschen mehr.
+  // Gleiches Kartenmuster wie die Gilden-/Termin-Einladungen: Karte bleibt
+  // versteckt, solange nichts offen ist.
+  async function renderDeletionRequests(){
+    const card = document.getElementById('deletionRequestsCard');
+    if(profile.role!=='admin'){ card.style.display='none'; return; }
+    const { data, error } = await sb.from('contact_deletion_requests')
+      .select('*, requester:requested_by(display_name,real_name)')
+      .eq('status', 'offen')
+      .order('created_at', {ascending:true});
+    if(error){ logSilentError('Löschanfragen laden', error); card.style.display='none'; return; }
+    if(!data || data.length===0){ card.style.display='none'; return; }
+    card.style.display='block';
+    const listEl = document.getElementById('deletionRequestsList');
+    listEl.innerHTML = data.map(r=>html`
+      <div class="friend-req-row">
+        <span>${r.contact_name_snapshot} — angefragt von ${r.requester ? (r.requester.real_name || r.requester.display_name) : '?'} (${fmtTime(r.created_at)})</span>
+        <div class="freq-actions">
+          <button class="freq-accept" id="${'deletionReqApprove-'+r.id}">Genehmigen</button>
+          <button class="freq-decline" id="${'deletionReqReject-'+r.id}">Ablehnen</button>
+        </div>
+      </div>`).join('');
+    data.forEach(r=>{
+      document.getElementById('deletionReqApprove-'+r.id).addEventListener('click', withClickGuard('deletionReqApprove-'+r.id, async ()=>{
+        if(!confirm('Diesen Kontakt jetzt endgültig löschen?')) return;
+        const { error: rpcErr } = await sb.rpc('approve_contact_deletion_request', { p_request_id: r.id });
+        if(rpcErr){ reportError('Löschanfrage genehmigen', rpcErr); return; }
+        await renderDeletionRequests();
+      }));
+      document.getElementById('deletionReqReject-'+r.id).addEventListener('click', withClickGuard('deletionReqReject-'+r.id, async ()=>{
+        const { error: rpcErr } = await sb.rpc('reject_contact_deletion_request', { p_request_id: r.id });
+        if(rpcErr){ reportError('Löschanfrage ablehnen', rpcErr); return; }
+        await renderDeletionRequests();
+      }));
+    });
+  }
+
   async function renderErrorLog(){
     const listEl = document.getElementById('errorLogList');
     if(profile.role!=='admin') return;
@@ -10233,7 +10295,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     // lassen würde die Adressleiste dauerhaft auf dem falschen Wert lassen).
     if(updateHash!==false || pageName!==requestedPage) location.hash = pageName;
     if(pageName==='dungeons'){ ensureDungeonMap(); if(dungeonMap) setTimeout(()=>dungeonMap.invalidateSize(),150); }
-    if(pageName==='fehlerprotokoll'){ renderSecurityAlerts(); renderErrorLog(); }
+    if(pageName==='fehlerprotokoll'){ renderDeletionRequests(); renderSecurityAlerts(); renderErrorLog(); }
     if(pageName==='notfallzugriff') renderEmergencyAccessPage();
     if(pageName==='produkte') renderProductsPage();
     if(pageName==='team-reporting') renderTeamReportingPage();

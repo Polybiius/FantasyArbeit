@@ -2441,6 +2441,90 @@ Korrektheits-Funde, Migration hält die RLS-Performance-Konventionen
 ((select auth.uid()) gewrappt, keine zusätzliche parallele Policy) sauber
 ein.
 
+## Löschanfrage statt Direktlöschung für Gildenmitglieder
+
+Direkte Folge-Entscheidung des Nutzers, noch am selben Tag: "Die
+Löschanfrage eines Gildenmitglieds soll nicht direkt löschen, sondern
+erst beim Admin landen. Sonst könnte ein verprellter Mitarbeiter einfach
+die Datenbank löschen." Betrifft ausschließlich den Fall "Gildenmitglied
+löscht einen fremden, geteilten Kontakt über Schreibrecht" — Eigentümer
+und Admins löschen weiterhin sofort, unverändert (bestätigt vom Nutzer:
+"das löschen und write... passt", die serverseitige Prüfung im
+Hintergrund reicht als Kontrolle — nur eben nicht für den Fremdkontakt-
+Fall).
+
+**Technik** (Migration
+`20260827181923_kontakt_loeschanfrage_admin_freigabe.sql`, gleiches
+Härtungsmuster wie `guild_invitations`/`termin_invitations`):
+`contacts_delete_owner_or_admin` verliert den erst Stunden zuvor
+hinzugefügten `guild_contact_permission`-Zweig wieder (die `org_id`-
+Grenze von vorher bleibt) — ein Gildenmitglied kann per RLS gar nicht
+mehr direkt löschen. Neue Tabelle `contact_deletion_requests`
+(`contact_name_snapshot` als Schattenfeld, `contact_id` `on delete set
+null`, `requested_by`/`reviewed_by` `on delete cascade` wie beim
+strukturell gleichen `access_audit_log`), keine Insert/Update/Delete-
+Policy für Clients. Drei `SECURITY DEFINER`-Funktionen:
+- `request_contact_deletion(contact_id)` — nur wer tatsächlich
+  `guild_contact_permission(owner_id, true)` hat, aber NICHT Eigentümer/
+  Admin ist (die lehnt die Funktion explizit ab, sollen direkt löschen).
+  `on conflict` auf einen partiellen Unique-Index (`where status='offen'`)
+  verhindert Dubletten bei mehrfachem Klicken.
+- `approve_contact_deletion_request(id)` — admin-only, markiert zuerst
+  `genehmigt` (mit `status='offen'`-Bedingung auch im `UPDATE` selbst,
+  nicht nur in der vorherigen Prüf-`SELECT` — schützt gegen zwei
+  gleichzeitige Genehmigungen), räumt danach die offene Wiedervorlage-
+  Aufgabe des Kontakts weg (gleiche Reihenfolge/Begründung wie beim
+  manuellen Löschweg: VOR dem Kontakt, sonst Karteileiche), löscht dann
+  wirklich.
+- `reject_contact_deletion_request(id)` — admin-only, Kontakt bleibt
+  bestehen.
+
+**`resolve_orphaned_deletion_requests()`** — `BEFORE DELETE`-Trigger auf
+`contacts` (bewusst BEFORE, nicht AFTER: muss vor dem eigenen
+`on-delete-set-null`-Fremdschlüssel laufen, sonst ist `contact_id` in
+`contact_deletion_requests` zu dem Zeitpunkt schon `NULL`). Löst eine noch
+offene Anfrage automatisch auf (`status='genehmigt'`, `reviewed_by`
+bleibt `NULL` — unterscheidbar von einer echten Admin-Aktion), sobald der
+Kontakt auf IRGENDEINEM Weg verschwindet, nicht nur über
+`approve_contact_deletion_request()` selbst (Direktlöschung durch
+Eigentümer/Admin während eine Anfrage noch offen ist, künftig auch
+`auto_delete_inactive_contacts()`) — sonst hätte eine solche verwaiste
+Anfrage in der Admin-Liste weiter als "offen" gestanden, und ein späteres
+"Genehmigen" wäre ein stiller Leerlauf gewesen (beide DELETEs träfen 0
+Zeilen wegen `= NULL`, kein Fehler).
+
+**Frontend:** "Löschen"-Button auf der Kontakt-Seite heißt für
+Gildenmitglieder ohne Eigentümerschaft/Admin-Rolle jetzt "Löschanfrage
+stellen" (eigener `isOwnerOrAdmin`-Flag neben `canEdit`), löst
+`request_contact_deletion()` statt direktem Delete aus, mit Rückmeldung
+"Löschanfrage gesendet — ein Admin muss sie bestätigen." Neue,
+admin-only Karte "Löschanfragen" ganz oben auf der Fehlerprotokoll-/
+Sicherheitswarnungen-Seite (Nutzer-Entscheidung: reicht als Sammelort,
+kein zusätzliches Login-Popup wie bei Sicherheitswarnungen nötig) — bleibt
+versteckt, solange nichts offen ist, gleiches Karten-Muster wie
+Gilden-/Termin-Einladungen (Annehmen/Ablehnen-Buttons,
+`.friend-req-row`/`.freq-accept`/`.freq-decline`).
+
+**Zwei Zweitmeinungsrunden vor dem Push, mehrere echte Funde, alle
+behoben:** fehlende `ON DELETE`-Aktion auf `requested_by`/`reviewed_by`
+(hätte ein Mitarbeiter-Offboarding blockiert), die Race-Condition beim
+gleichzeitigen Genehmigen, das fehlende Wiedervorlage-Aufräumen, die
+verwaiste-Anfrage-Lücke (löst den `resolve_orphaned_deletion_requests()`-
+Trigger aus), `withClickGuard()` beim neuen "Löschanfrage stellen"-Zweig
+nachgerüstet, ein totes `data-request`-Attribut entfernt. **Eine
+Review-Anregung bewusst NICHT übernommen:** das Wiedervorlage-Aufräumen
+in `approve_contact_deletion_request()` auf `owner_id` der handelnden
+Person einzuschränken (wie es `syncWiedervorlageTask()` im Frontend tut)
+— hier wird der ganze Kontakt gelöscht, nicht nur von einer Person
+bearbeitet, jede daran hängende Wiedervorlage-Aufgabe wird dadurch für
+JEDEN Besitzer bedeutungslos; eine Owner-Einschränkung hätte fremde
+Aufgaben als Karteileichen zurückgelassen — genau der Bug, den der Fix
+vermeiden soll. Dry-Run-Testreihen (echte Gildenmitglieder, Vorher/
+Nachher, Race-Szenario, Bypass-Szenario) durchgehend grün. Direkter
+Advisor-Nachlauf fand zwei fehlende FK-Indizes (`requested_by`/
+`reviewed_by`), reiner Struktur-Fix ohne Zweitmeinungs-Gate ergänzt
+(Migration `20260827184155_loeschanfrage_fk_indizes.sql`).
+
 ## Serverseitige Schreib-Härtung: user_inventory / action_log / sales / locations
 
 **Wiederkehrendes Muster über alle vier Tabellen** (Entstehung:
