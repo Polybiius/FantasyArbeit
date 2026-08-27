@@ -1910,9 +1910,15 @@ spätere Mitverwaltung, in Phase 1 noch nicht ausgewertet):
   pauschal für ALLE Kontakte eines Mitglieds auf einmal, unabhängig davon,
   ob sie einem Dungeon zugeordnet sind oder nicht (auch dungeon-lose
   Kontakte, z.B. niedergelassene Ärzte ohne Krankenhaus-Dungeon, müssen
-  teilbar sein). Kontakte haben deshalb **kein eigenes `guild_id`-Feld**,
-  die Prüfung läuft direkt über Eigentümer+Gilde (`guild_contact_permission()`,
-  Entstehung/Modellierungs-Korrektur: HISTORY.md).
+  teilbar sein). Für diesen normalen, eigentümerbasierten Freigabe-Fall
+  brauchen Kontakte **kein `guild_id`-Feld**, die Prüfung läuft direkt
+  über Eigentümer+Gilde (`guild_contact_permission()`, Entstehung/
+  Modellierungs-Korrektur: HISTORY.md). **Richtigstellung 2026-08-27:**
+  `contacts.guild_id` existiert seit demselben Tag trotzdem, aber für
+  einen anderen Zweck (Mitarbeiter-Offboarding-Pool weiter unten,
+  eigentümerlose Kontakte) — die Aussage "kein `guild_id`-Feld" galt nie
+  uneingeschränkt, sondern nur für den hier beschriebenen Fall mit
+  Eigentümer.
 - **Dungeons** sind bewusst nur die spielerische Organisationsschicht
   obendrüber ("Gimmick", O-Ton Nutzer) — `locations.guild_id` (NULL =
   privat). Neue Dungeons eines Mitglieds mit `dungeons_access='write'`
