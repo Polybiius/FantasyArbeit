@@ -8891,7 +8891,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // "if(!ok)"-Prüfungen an allen Aufrufstellen bleiben unverändert gültig)
   // statt nur `true` - damit lässt sich meta bei Bedarf auch nachträglich
   // per Update ergänzen, wenn der Kanal erst NACH dem Loggen bekannt wird.
-  async function logKanbanAction(contact, actionKey, extraMeta){
+  // opts.defer=true: nur loggen, NICHT sofort Quest-Check + render() nachziehen.
+  // moveKanbanCard() feuert pro Zug bis zu 4 logKanbanAction()-Aufrufe
+  // hintereinander (Hauptaktion + abgeleitete Trichter-Markierungen) -- ohne
+  // defer läuft dann jeder für sich durch checkAndAwardRecurringQuests() +
+  // checkAndAwardQuestTreeAndEpics() + vollen render(), obwohl nur der
+  // Endzustand zählt (Code-Review-Fund 2026-08-27). Mit defer sammelt der
+  // Aufrufer die Nacharbeit und ruft flushKanbanActionPost() genau einmal.
+  async function logKanbanAction(contact, actionKey, extraMeta, opts){
     const a = config.actions[actionKey];
     if(!a) return false;
     const remaining = config.energyMax - energyUsedToday();
@@ -8907,10 +8914,29 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     });
     if(error){ reportError(`Kanban-Aktion speichern (${a.label})`, error); return false; }
     log.push(data);
+    if(!(opts && opts.defer)) await flushKanbanActionPost();
+    return data.id;
+  }
+
+  // Einmalige Nacharbeit nach einem (oder mehreren gebündelten)
+  // logKanbanAction({defer:true})-Aufruf(en).
+  async function flushKanbanActionPost(){
     await checkAndAwardRecurringQuests();
     await checkAndAwardQuestTreeAndEpics();
     render();
-    return data.id;
+  }
+
+  // Fund-Schutz (Code-Review 2026-08-27): mehrfaches Hin-und-Her-Ziehen einer
+  // Karte (z.B. Ersttermin -> Angebot -> zurück -> Angebot) soll die
+  // abgeleiteten Trichter-Markierungen nicht vervielfachen. Eine Markierung
+  // pro Kontakt und Geschäftsjahr genügt -- der Akquise-Trichter zählt ohnehin
+  // je Zeitraum, und ein zweiter identischer "wahrgenommen"-Eintrag für
+  // denselben Termin ist keine neue Information (der 5-Sekunden-Duplikatschutz
+  // von log_action_for_self() greift bei langsamem Klicken nicht).
+  function hasFunnelMarkerThisYear(contactId, actionKey){
+    const year = String(currentBusinessYear());
+    return log.some(e=> e.action_key===actionKey && e.contact_id===contactId
+      && (todayKey(e.created_at)||'').slice(0,4)===year);
   }
 
   // Trägt den Kanal nachträglich in eine bereits geloggte Aktion ein - für
@@ -9185,21 +9211,21 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       // seit "Nicht erschienen" auch vom Zweittermin aus erreichbar ist
       // (Akquise-Trichter, siehe CLAUDE.md), reicht die Zielspalte allein
       // nicht mehr zur Unterscheidung.
-      ok = await logKanbanAction(contact, fromStage==='zweittermin' ? 'zweittermin_nicht_wahrgenommen' : 'termin_nicht_wahrgenommen');
+      ok = await logKanbanAction(contact, fromStage==='zweittermin' ? 'zweittermin_nicht_wahrgenommen' : 'termin_nicht_wahrgenommen', null, {defer:true});
     } else if(fromTerminal && toActive){
-      ok = await logKanbanAction(contact, 'kundenausbau');
+      ok = await logKanbanAction(contact, 'kundenausbau', null, {defer:true});
     } else if(toStage==='ersttermin_vereinbart'){
-      ok = await logKanbanAction(contact, 'termin_vereinbart');
+      ok = await logKanbanAction(contact, 'termin_vereinbart', null, {defer:true});
     } else if(toStage==='angebot_versendet'){
-      ok = await logKanbanAction(contact, 'pitch');
+      ok = await logKanbanAction(contact, 'pitch', null, {defer:true});
     } else if(toStage==='zweittermin'){
-      ok = await logKanbanAction(contact, 'pitch');
+      ok = await logKanbanAction(contact, 'pitch', null, {defer:true});
     } else if(toStage==='gewonnen'){
-      ok = await logKanbanAction(contact, 'abschluss');
+      ok = await logKanbanAction(contact, 'abschluss', null, {defer:true});
     }
     // neuer_lead, dauerbrenner, verloren: keine automatische Aktion
 
-    if(!ok) return;
+    if(!ok) return; // Hauptaktion nicht geloggt -> nichts nachzuziehen
 
     // Abgeleitete "wahrgenommen"-Markierungen für den Akquise-Trichter
     // (Statistik-Seite, siehe CLAUDE.md) -- zusätzlich zur oben schon
@@ -9209,19 +9235,28 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     // die Karte von dort aus WEITER wandert (auch nach Verloren -- "Termin
     // fand statt, hat aber zu nichts geführt"), unabhängig davon, welche
     // Hauptaktion dabei geloggt wurde.
-    if(fromStage==='ersttermin_vereinbart' && ['angebot_versendet','zweittermin','gewonnen','verloren'].includes(toStage)){
-      await logKanbanAction(contact, 'termin_wahrgenommen');
+    // hasFunnelMarkerThisYear(): pro Kontakt/Jahr nur einmal, gegen
+    // Vervielfachung durch mehrfaches Hin-und-Her-Ziehen (Code-Review 2026-08-27).
+    if(fromStage==='ersttermin_vereinbart' && ['angebot_versendet','zweittermin','gewonnen','verloren'].includes(toStage)
+       && !hasFunnelMarkerThisYear(contact.id,'termin_wahrgenommen')){
+      await logKanbanAction(contact, 'termin_wahrgenommen', null, {defer:true});
     }
-    if(fromStage==='zweittermin' && ['gewonnen','verloren'].includes(toStage)){
-      await logKanbanAction(contact, 'zweittermin_wahrgenommen');
+    if(fromStage==='zweittermin' && ['gewonnen','verloren'].includes(toStage)
+       && !hasFunnelMarkerThisYear(contact.id,'zweittermin_wahrgenommen')){
+      await logKanbanAction(contact, 'zweittermin_wahrgenommen', null, {defer:true});
     }
-    if(toStage==='zweittermin' && !fromTerminal){
+    if(toStage==='zweittermin' && !fromTerminal
+       && !hasFunnelMarkerThisYear(contact.id,'zweittermin_vereinbart')){
       // !fromTerminal schließt den Kundenausbau-Fall aus (Karte kommt von
       // Gewonnen/Verloren zurück auf Zweittermin) -- das ist keine neue
       // Terminvereinbarung, sonst würde der Trichter hier künstlich
       // aufgebläht (Fund einer Zweitmeinung, 2026-08-26).
-      await logKanbanAction(contact, 'zweittermin_vereinbart');
+      await logKanbanAction(contact, 'zweittermin_vereinbart', null, {defer:true});
     }
+
+    // Gebündelte Nacharbeit der oben deferten Aktionen (Quest-Check + render),
+    // genau einmal statt bis zu 4-mal pro Zug.
+    await flushKanbanActionPost();
 
     const res = await updateContactWithLockCheck(contactId, { kanban_stage: toStage }, contact.updated_at);
     if(res.error){ reportError('Kanban-Spalte aktualisieren', res.error); return; }
