@@ -2616,3 +2616,34 @@ Rückbau-Aufwand. `supabase db advisors` bestätigte: keine neuen
 Sicherheits-Funde durch den Trichter selbst. Details:
 CLAUDE.md, Abschnitt "Akquise-Trichter (Statistik-Seite)".
 
+**Nachtrag 2026-08-27, zweite Sitzung — die drei zurückgestellten Funde
+doch abgearbeitet** (Nutzer: "du darfst solche Performance- und
+Optimierungsdinger nie liegen lassen"):
+- **Fund 1 (Mehrfach-Ziehen vervielfacht Wahrgenommen-XP):** neuer
+  Guard `hasFunnelMarkerThisYear(contactId, actionKey)` in `index.html`
+  neben `logKanbanAction()` — `termin_wahrgenommen` /
+  `zweittermin_wahrgenommen` / `zweittermin_vereinbart` werden pro
+  Kontakt und Geschäftsjahr nur einmal automatisch geloggt (deckt sich
+  mit der zeitraumbezogenen Zählweise des Trichters). Manuelle Pfade
+  (Dauerbrenner-`offerExtraAction`) unberührt.
+- **Fund 2 (mehrere Re-Renders pro Kanban-Zug):** `logKanbanAction()`
+  bekam `opts.defer` — bei `true` nur loggen, Quest-Check + `render()`
+  auslassen. `moveKanbanCard()` ruft alle bis zu 4 Log-Aufrufe mit
+  `{defer:true}` und zieht die Nacharbeit über `flushKanbanActionPost()`
+  genau einmal nach. Commit `55533c2`.
+- **Fund 3 (`auth.uid()` nicht gewrappt):** Migration
+  `20260827120000_contact_files_storage_policy_authuid_wrap.sql`
+  (schema_patch 56) wrappt `auth.uid()` -> `(select auth.uid())` in
+  **allen 6** Policies auf `storage.objects` (die Zweitmeinung wies
+  darauf hin, dass auch `photo_select/update/insert_own_folder` und
+  `contact_files_storage_insert` betroffen sind, nicht nur die zwei aus
+  dem Fund). Reine Performance (InitPlan statt Pro-Zeile-Auswertung),
+  keine Verhaltensänderung — mechanisch als identisch nachgewiesen,
+  Dry-Run mit `begin`/`rollback` gegen die echte DB (alle 6 Policies:
+  Metadaten unverändert, `auth.uid()`-Anzahl je Policy unverändert,
+  jetzt alle gewrappt; queue-Zweig/guild-Flags/bucket-Filter erhalten;
+  Rückbau auf Rohform getestet). Unabhängige blinde Zweitmeinung (Opus):
+  "PUSH OK … kein Sicherheits- oder Berechtigungsrisiko". Angewendet per
+  `supabase db push`, live verifiziert (alle 6: `wrapped_uid=1`).
+  Commit `f3bc6a6`. Beide Regressionssuiten grün (33/33, 11/11).
+

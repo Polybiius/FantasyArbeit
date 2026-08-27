@@ -939,6 +939,17 @@ ausdrückliche Nutzer-Entscheidung). Genauer:
   die eigentliche Belohnung bleibt bei der unveränderten `pitch`-Aktion,
   15 XP, sonst würde derselbe Kanban-Schritt doppelt kassieren).
 
+Diese drei abgeleiteten Markierungen laufen seit 2026-08-27 über
+`logKanbanAction(..., {defer:true})` — `moveKanbanCard()` bündelt bis zu
+4 Log-Aufrufe pro Kartenzug und zieht Quest-Check + `render()` genau
+**einmal** nach (`flushKanbanActionPost()`), statt pro Aufruf. Zusätzlich
+werden `termin_wahrgenommen`/`zweittermin_wahrgenommen`/
+`zweittermin_vereinbart` **je Kontakt und Geschäftsjahr nur einmal**
+automatisch geloggt (`hasFunnelMarkerThisYear()`) — mehrfaches
+Hin-und-Her-Ziehen einer Karte kann die Trichterzahlen/XP dadurch nicht
+mehr vervielfachen. Manuelle Pfade (Dauerbrenner-`offerExtraAction`)
+sind davon nicht betroffen.
+
 **Level-Kurve neu kalibriert, weil `termin_wahrgenommen`/
 `zweittermin_wahrgenommen` jetzt eine häufige statt einer seltenen
 XP-Quelle sind** (Nutzer-Entscheidung: die automatische XP bleibt
