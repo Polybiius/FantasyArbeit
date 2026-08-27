@@ -2495,3 +2495,124 @@ Funde bewusst unangetastet (siehe Claudes Erinnerung
 Feature ist, das auf dem aktuellen Free Plan gar nicht einschaltbar
 ist.
 
+## 2026-08-26: Storage-Aufräum-Warteschlange für gelöschte Kontakt-Dateien
+
+Schloss die bis dahin dokumentierte, bewusst in Kauf genommene Lücke:
+Dateien im `contact-files`-Bucket überlebten die automatische Löschung
+inaktiver Kontakte, nur die `contact_files`-DB-Zeile kaskadierte mit.
+Lösung wie in CLAUDE.md skizziert: Warteschlangen-Tabelle
+(`contact_file_deletion_queue`) + `BEFORE DELETE`-Trigger auf
+`contact_files` + Admin-Login-Aufräumung über die normale,
+authentifizierte Storage-API — kein neues Geheimnis in der Datenbank.
+
+**Erste Fassung hatte zwei echte, blockierende Lücken**, gefunden von
+einer unabhängigen Zweitmeinung (blinder Review, kein Kontext der
+Bau-Sitzung):
+1. Die bestehenden Storage-Policies hingen an "gehört noch ein
+   passender `contacts`-Datensatz zum Pfad" — nach der Kontakt-Löschung
+   existiert der nicht mehr, die Aufräumung hätte RLS-bedingt **nichts**
+   gelöscht, die Warteschlange aber trotzdem geleert (Supabase Storage
+   liefert bei leer gefiltertem `remove()` `200 OK` statt Fehler). Fix:
+   ein zweiter, warteschlangen-verankerter Policy-Zweig.
+2. `contact_files.storage_path` wurde beim Insert nie gegen
+   `contact_id` geprüft — ein Gildenmitglied mit nur Lesezugriff auf
+   einen fremden Kontakt hätte dessen Pfad unter einem eigenen,
+   beschreibbaren Kontakt einschleusen und die Warteschlange zur
+   Löschung einer fremden, noch aktiv referenzierten Datei missbrauchen
+   können. Fix: `CHECK`-Constraint, `storage_path` muss mit
+   `<contact_id>/` beginnen (0 betroffene Bestandszeilen).
+
+Zusätzlich naheliegend beim Beheben von Fund 1: der Trigger queued nur,
+wenn der Eltern-Kontakt tatsächlich weg ist — sonst hätte ein
+Mitarbeiter-Offboarding (`contact_files.uploaded_by ... on delete
+cascade`, Kontakt selbst bleibt am Leben) künftig aktiv genutzte
+Dateien lebender Kontakte gelöscht statt sie nur (wie bisher) zu
+verwaisen. Dry-Run mit 13 Testfällen gegen echte Testprofile
+(`set_config('request.jwt.claim.sub', ...)`, ein fingiertes
+`storage.objects`-Testobjekt für die Policy-Fälle) bestätigte alle
+Fixes vor dem Push. Details/Endzustand: CLAUDE.md, Abschnitt
+"Storage-Aufräum-Warteschlange für gelöschte Kontakt-Dateien".
+
+## 2026-08-26: Nie fertig definierte Planungsfelder entfernt
+
+Beim Versuch, die seit Längerem in den Einstellungen sichtbaren, aber
+funktionslosen Felder "Planung Verkaufsgespräche"/"Planung
+Fachkontakte (FA)" (`planung_vks`/`planung_fa`) endlich mit einer
+echten Zählquelle zu verbinden (nächster Punkt der Roadmap), stellte
+sich nach mehreren Rückfragen heraus: der Nutzer wusste selbst nicht
+mehr, wofür die beiden Felder ursprünglich gedacht waren — "hat sich
+hereingeschlichen". Statt zu raten: komplett entfernt (Einstellungs-UI,
+`profiles`-Spalten, CLAUDE.md-Erwähnung). Ungefährlich, da 0 von 8
+Profilen je einen Wert eingetragen hatten.
+
+## 2026-08-26/27: Akquise-Trichter — Conversion-Funnel als echte Statistik-Kachel
+
+Der Nutzer zeigte eine private Excel-Vorlage
+(`Conversion_Funnel_Blanko.xlsx`, Kennzahl Ansprachen→Ersttermin→
+Zweittermin→Won/Lost, je Kanal Krankenhaus/Telefon) und wollte sie als
+echte, live berechnete Statistik im Programm. Mehrere Klärungsrunden
+vor dem Bauen (Nutzer-Wunsch "lass uns langsam anfangen, was hast du
+erst rausgefunden" — Erklärung vor Multiple-Choice-Fragen):
+
+- **Kein Kanal-Unterschied**: "wie der Termin zustande gekommen ist,
+  ist egal, Akquise ist Akquise" — vereinfachte die Statistik auf eine
+  einzige, undifferenzierte Trichter-Kette.
+- **Ersttermin/Zweittermin "wahrgenommen"** wird jetzt automatisch aus
+  dem Kanban abgeleitet: verschiebt sich eine Karte vom jeweiligen
+  Termin aus WEITER (auch nach Verloren — "Termin fand statt, hat aber
+  zu nichts geführt"), gilt er als wahrgenommen. Dafür bekam der
+  Zweittermin eigene, neue Aktions-Schlüssel (`zweittermin_vereinbart`/
+  `_wahrgenommen`/`_nicht_wahrgenommen`) statt sich weiter die Aktion
+  `pitch` mit "Angebot versendet" zu teilen, und "Nicht erschienen" ist
+  jetzt auch vom Zweittermin aus erreichbar (Nutzer-Wunsch: die
+  Kanban-Spalte "Nicht erschienen" gleich zwei Positionen nach hinten
+  verschieben, hinter beide "echte Treffen"-Spalten — "wäre etwas
+  eleganter").
+- **XP-Konsequenz durchgesprochen, bevor gebaut wurde**: automatische
+  XP für die jetzt viel häufigere "Termin wahrgenommen"-Aktion hätte
+  die Level-Kurve ungeplant beschleunigt. Nutzer bestätigte explizit
+  "wenn aus dem Kanban ersichtlich wird, dass ein Termin wahrgenommen
+  worden ist, dann gibt es die XP" — `levelBase` deshalb von 5,80 auf
+  6,75 neu kalibriert (Methodik wie bei Patch 50: wöchentliches
+  Zusatz-XP-Budget aus der bestehenden Konstanz-Schwelle "5–7 Termine
+  wahrgenommen/Woche" geschätzt, hält "Level 100 nach 10 Jahren"
+  stabil).
+- **Optik**: Nutzer verwies auf ein Referenz-Dashboard
+  (windsor.ai/Salesforce-Trichter, per Screenshot statt Live-Fetch
+  geteilt, da die Seite selbst nur Marketing-Text lieferte) — "ein
+  eleganter Trichter von groß zu klein, 5 Abschnitte farblich
+  absteigend im selben Ton, an den Schnittstellen absolute Zahlen mit
+  Statistik". Zwei Artifact-Mockup-Runden (`dataviz`-Skill bestätigte:
+  Trichterstufen sind der Lehrbuchfall für eine Ordinal-Farbskala, ein
+  Farbton mit monotonen Helligkeitsstufen) vor dem echten Bauen — erste
+  Runde zeigte Schritt-für-Schritt-Umwandlung, zweite (auf Nutzer-
+  Wunsch) zeigte stattdessen den Anteil jeder Stufe an den
+  ursprünglichen Ansprachen (100%-Basis) plus zwei Kennzahlen-Kacheln
+  ("Ansprachen pro Abschluss", "Ersttermine (wahrgenommen) pro
+  Abschluss").
+- **Farbe im echten Produkt**: `color-mix()` gegen die live gesetzte
+  `--arcane`-CSS-Variable statt fester Hex-Werte — passt sich dadurch
+  automatisch allen drei Klassenfarben an, per Playwright-Screenshot in
+  allen dreien bestätigt (Zauberer-Lila/Krieger-Rot/Schütze-Grün).
+
+**Nachtrag 2026-08-27, nach einer über Nacht abgebrochenen Sitzung:**
+Nutzerfrage "ist Sicherheit, Effizienz, zweiter Agent, und Bugs alles
+geprüft?" — ehrliche Antwort: nein, noch nicht (die Regressionssuiten
+sind reine Lese-Tests, hätten einen Bug in der neuen Schreiblogik gar
+nicht gefangen). `/code-review high` mit vier parallelen Prüf-Agenten
+nachgeholt, fand zwei echte, bestätigte Bugs: (1) die
+Zweittermin-vereinbart-Markierung feuerte auch beim
+Kundenausbau-Rücksprung (Gewonnen/Verloren zurück auf Zweittermin) mit,
+obwohl kein neuer Zweittermin zustande kam, verfälschte den Trichter;
+(2) die drei neuen 0-Energie-Markierungen konnten fälschlich am
+Tagesenergie-Budget scheitern, wenn die direkt zuvor geloggte
+Hauptaktion desselben Kanban-Zugs das Budget schon ausgeschöpft hatte.
+Beide behoben (Commit `653d96b`). Drei weitere Funde (Mehrfach-Ziehen
+kann Wahrgenommen-XP theoretisch vervielfachen, mehrere sequenzielle
+Re-Renders pro Kanban-Zug, `auth.uid()` in den Storage-Policies der
+Datei-Aufräumung vom Vortag nicht performance-gewrappt) bewusst nicht
+behoben — keine Korrektheitslücke bzw. zu klein für einen eigenen
+Rückbau-Aufwand. `supabase db advisors` bestätigte: keine neuen
+Sicherheits-Funde durch den Trichter selbst. Details:
+CLAUDE.md, Abschnitt "Akquise-Trichter (Statistik-Seite)".
+
