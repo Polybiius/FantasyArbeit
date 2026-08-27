@@ -8895,7 +8895,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const a = config.actions[actionKey];
     if(!a) return false;
     const remaining = config.energyMax - energyUsedToday();
-    if(a.energy > remaining){ alert(`Nicht genug Energie heute für "${a.label}".`); return false; }
+    // a.energy>0-Zusatz: eine echt kostenlose Aktion (energy:0, z.B. die
+    // abgeleiteten Akquise-Trichter-Markierungen) darf nie am Budget
+    // scheitern, auch wenn `remaining` durch die gerade zuvor geloggte
+    // Hauptaktion desselben Kanban-Zugs bereits auf 0 oder knapp darunter
+    // steht (Fund einer Zweitmeinung, 2026-08-26).
+    if(a.energy > 0 && a.energy > remaining){ alert(`Nicht genug Energie heute für "${a.label}".`); return false; }
     const { data, error } = await sb.rpc('log_action_for_self', {
       p_action_key: actionKey, p_context: contact.name, p_location_id: contact.location_id||null,
       p_contact_id: contact.id, p_meta: extraMeta || null
@@ -9210,7 +9215,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(fromStage==='zweittermin' && ['gewonnen','verloren'].includes(toStage)){
       await logKanbanAction(contact, 'zweittermin_wahrgenommen');
     }
-    if(toStage==='zweittermin'){
+    if(toStage==='zweittermin' && !fromTerminal){
+      // !fromTerminal schließt den Kundenausbau-Fall aus (Karte kommt von
+      // Gewonnen/Verloren zurück auf Zweittermin) -- das ist keine neue
+      // Terminvereinbarung, sonst würde der Trichter hier künstlich
+      // aufgebläht (Fund einer Zweitmeinung, 2026-08-26).
       await logKanbanAction(contact, 'zweittermin_vereinbart');
     }
 
