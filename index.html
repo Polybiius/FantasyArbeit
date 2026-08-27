@@ -2979,7 +2979,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('navFehlerprotokollBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
     document.getElementById('navNotfallzugriffBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
     document.getElementById('navProdukteBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
-    await loadMyFoundedGuilds();
+    await Promise.all([loadMyFoundedGuilds(), loadMyGuildContactWriteAccess()]);
     if(profile.role==='admin'){
       document.getElementById('classSwitcher').style.display='flex';
       updateClassSwitcherActive();
@@ -5088,6 +5088,37 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     myFoundedGuildIds = (data||[]).map(g=>g.id);
     document.getElementById('navTeamReportingBtn').style.display = myFoundedGuildIds.length ? 'inline-block' : 'none';
   }
+
+  // Für canEdit auf der Kontakt-Seite (siehe dort): ob ein fremder Kontakt
+  // bearbeitet werden darf, hängt davon ab, ob dessen Eigentümer Mitglied
+  // derselben Gilde ist UND ich dort Kontakt-Schreibrecht habe -- exakt das,
+  // was guild_contact_permission() serverseitig ohnehin schon prüft (RLS
+  // erlaubt es längst, die UI kannte es nur nicht). Einmal pro Login
+  // geladen + nach jeder Gilden-Zustandsänderung über loadGuildState() neu
+  // (statt eines RPC-Aufrufs bei jedem einzelnen Kontakt-Seitenaufruf) --
+  // da guild_members.member_id Primärschlüssel ist, ist man immer nur in
+  // genau einer Gilde, der Datensatz bleibt also winzig, auch mit mehr
+  // Gilden künftig.
+  //
+  // knownOwnMembership: optionaler, bereits geladener eigener
+  // guild_members-Datensatz (loadGuildState() hat den ohnehin schon per
+  // select('*') -- ohne diesen Parameter würde hier dieselbe Zeile ein
+  // zweites Mal abgefragt, gefunden bei der Zweitmeinungs-Runde zu diesem
+  // Fix selbst). Ohne Parameter (z.B. beim Login in enterApp(), wo noch
+  // nichts geladen ist) holt die Funktion die Zeile selbst.
+  let myGuildContactWriteMemberIds = new Set();
+  async function loadMyGuildContactWriteAccess(knownOwnMembership){
+    let mine = knownOwnMembership;
+    if(mine === undefined){
+      const { data, error } = await sb.from('guild_members').select('guild_id,contacts_access').eq('member_id', profile.id).maybeSingle();
+      if(error){ logSilentError('loadMyGuildContactWriteAccess', error); myGuildContactWriteMemberIds = new Set(); return; }
+      mine = data;
+    }
+    if(!mine || mine.contacts_access !== 'write'){ myGuildContactWriteMemberIds = new Set(); return; }
+    const { data: members, error: mErr } = await sb.from('guild_members').select('member_id').eq('guild_id', mine.guild_id);
+    if(mErr){ logSilentError('loadMyGuildContactWriteAccess (Mitglieder)', mErr); myGuildContactWriteMemberIds = new Set(); return; }
+    myGuildContactWriteMemberIds = new Set((members||[]).map(m=>m.member_id));
+  }
   let statsSyncTimer = null;
 
   function syncProfileStatsCache(totalXp, level){
@@ -5886,7 +5917,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   async function renderContactPageContent(c, bundle){
-    const canEdit = c.owner_id===profile.id || profile.role==='admin';
+    const canEdit = c.owner_id===profile.id || profile.role==='admin' || myGuildContactWriteMemberIds.has(c.owner_id);
     const fmtDate = (d) => d ? new Date(d+'T12:00:00').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
     document.getElementById('contactDetailTitle').textContent = c.name;
 
@@ -5985,8 +6016,16 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       // finden (per Playwright-Test entdeckt: Aufräumen NACH dem Löschen
       // griff nicht, die Aufgabe blieb als Karteileiche stehen).
       await syncWiedervorlageTask(c.id, c.name, null);
-      const { error } = await sb.from('contacts').delete().eq('id', c.id);
+      // .select('id') erzwingt eine Rückgabe der betroffenen Zeile(n) --
+      // ohne das liefert PostgREST bei einem durch RLS auf 0 Zeilen
+      // gefilterten Delete weder Fehler noch Hinweis (Fund einer
+      // Zweitmeinungsrunde: eine zwischenzeitlich vom Gildenführer
+      // entzogene Schreibberechtigung, bei der die eigene Sitzung
+      // myGuildContactWriteMemberIds noch nicht neu geladen hat, hätte
+      // sonst "gelöscht" angezeigt, obwohl der Kontakt weiter existiert).
+      const { data, error } = await sb.from('contacts').delete().eq('id', c.id).select('id');
       if(error){ reportError('Kontakt löschen', error); return; }
+      if(!data || data.length===0){ alertConflict('Dieser Kontakt'); return; }
       showPage('kontakte');
       await renderContactsPage();
     });
@@ -6086,10 +6125,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // Kontakt-Freigabe (Storage-/Tabellen-RLS prüft guild_contact_permission()
   // auf den Kontakt-Eigentümer, siehe supabase/migrations/*_contact_files.sql).
   // canEdit hier ist derselbe Client-Flag wie bei "Bearbeiten"/"Löschen" am
-  // Kontakt selbst -- ein Gildenmitglied mit Schreibrecht, das (noch) nicht
-  // Owner/Admin ist, sieht die Upload-Buttons deshalb aktuell nicht, obwohl
-  // die RLS es erlauben würde (bekannte, vorbestehende Lücke bei canEdit,
-  // nicht Teil dieses Features -- siehe CLAUDE.md).
+  // Kontakt selbst -- berücksichtigt seit 2026-08-27 auch
+  // myGuildContactWriteMemberIds, siehe dort.
   async function renderContactFilesTab(c, canEdit){
     const wrap = document.getElementById('contactDetailFiles');
     wrap.innerHTML = '<div class="empty-page-hint">Lade Dateien…</div>';
@@ -6699,8 +6736,21 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   async function loadGuildState(){
+    // Läuft nach jeder Gilden-Zustandsänderung (Beitritt/Austritt/Einladung
+    // angenommen/Rechte geändert) -- deshalb hier auch
+    // myGuildContactWriteMemberIds mit auffrischen, nicht nur beim Login.
+    // Bewusst sequenziell (nicht Promise.all): membership wird gleich
+    // weiterverwendet UND an loadMyGuildContactWriteAccess() gereicht,
+    // damit die eigene guild_members-Zeile nicht zweimal abgefragt wird.
+    // Bei einem Ladefehler NICHT die (dann bedeutungslose) null-Zeile
+    // durchreichen -- loadMyGuildContactWriteAccess() würde das sonst als
+    // "definitiv keine Gilde" werten statt als "unbekannt", und
+    // myGuildContactWriteMemberIds bei einem reinen Netzwerk-Blip fälschlich
+    // leeren (Fund einer Zweitmeinungsrunde). undefined lässt die Funktion
+    // stattdessen ihre eigene, unabhängige Abfrage versuchen.
     const { data: membership, error } = await sb.from('guild_members').select('*').eq('member_id', profile.id).maybeSingle();
     if(error) logSilentError('Gildenmitgliedschaft laden', error);
+    await loadMyGuildContactWriteAccess(error ? undefined : membership);
     const friendCard = document.getElementById('friendCard');
     if(!membership){
       currentGuild = null;

@@ -2086,17 +2086,9 @@ Reiter "Dateien" am Kontakt (`renderContactFilesTab()`), gleiches
   Eigentümer-Ordner (Storage-Policies joinen auf `contacts` +
   `guild_contact_permission()`, dieselbe Bedingung wie bei der
   `contact_files`-Tabelle selbst).
-- **Bekannte, bewusst nicht mitgefixte Einschränkung:** `canEdit` auf der
-  Kontakt-Seite (`c.owner_id===profile.id || profile.role==='admin'`)
-  entscheidet, ob die Upload-/Löschen-Buttons überhaupt angezeigt werden,
-  und berücksichtigt **kein** `guild_contact_permission('write')`. Ein
-  Gildenmitglied mit Schreibrecht auf einen fremden, geteilten Kontakt
-  sieht die Datei-Upload-Buttons deshalb aktuell nicht, obwohl die RLS es
-  erlauben würde — vorbestehende Lücke (betraf vorher schon
-  "Bearbeiten"/"Löschen"), keine neue, nicht Teil dieses Patches. Bei
-  Gelegenheit gemeinsam mit einer echten UI-Prüfung für
-  Gilden-Schreibrechte am Kontakt beheben (betrifft dann mehrere Stellen
-  auf einmal, nicht nur Dateien).
+- ~~**Bekannte, bewusst nicht mitgefixte Einschränkung**~~ — **behoben,
+  2026-08-27**, siehe Abschnitt "Rechtemodell-Lücke: canEdit berücksichtigt
+  Gilden-Schreibrecht" weiter unten.
 
 **RLS-Lehre aus einem echten Bugfix** (Debugging-Verlauf: HISTORY.md):
 bei RLS-Policies mit einer Subquery auf eine andere Tabelle immer
@@ -2323,10 +2315,9 @@ verstecken. "Bearbeiten" springt zur Kontakte-Seite und öffnet dort das
 bestehende Inline-Formular (`startEditContact()`, unverändert), "Löschen"
 navigiert danach zurück zu Kontakte.
 
-**Bekannte, bewusst nicht mitgefixte Einschränkung (identisch zum
-Datei-Upload-Punkt oben, jetzt an einer Stelle sichtbar für ALLE
-Aktions-Buttons):** `canEdit` berücksichtigt weiterhin kein
-`guild_contact_permission('write')`.
+~~**Bekannte, bewusst nicht mitgefixte Einschränkung**~~ — **behoben,
+2026-08-27**, siehe Abschnitt "Rechtemodell-Lücke: canEdit berücksichtigt
+Gilden-Schreibrecht" weiter unten.
 
 Verifikations-Verlauf: HISTORY.md.
 
@@ -2335,6 +2326,114 @@ strukturell (nicht nur per Klassenname) im selben Container wie die
 bestehenden Seiten stehen (`.content`-Wrapper), sonst greift das
 Sidebar-Layout nicht — vor dem ersten Screenshot direkt gegenprüfen,
 nicht erst nach Nutzer-Beschwerde (Bug-Verlauf: HISTORY.md).
+
+## Rechtemodell-Lücke: canEdit berücksichtigt Gilden-Schreibrecht
+
+Löst die seit der Gilden-Sichtbarkeit Phase 1 (2026-08-08) bekannte,
+mehrfach dokumentierte Lücke: `canEdit` auf der Kontakt-Seite prüfte nur
+"gehört mir" oder "ich bin Admin", nicht das längst von der RLS erlaubte
+dritte Recht — Gildenmitglied mit `contacts_access='write'` auf den
+Eigentümer. Ein Kollege mit erteiltem Schreibrecht sah "Bearbeiten"/
+"Löschen"/"+ Verkauf eintragen"/Datei-Upload auf einem geteilten Kontakt
+schlicht nicht, obwohl zumindest "Bearbeiten" und Datei-Upload/-Löschen
+schon gegangen wären.
+
+**Lösung — Preload statt RPC-Aufruf pro Kontakt-Seitenaufruf:** neues
+`myGuildContactWriteMemberIds` (`Set`, neben `myFoundedGuildIds`), gefüllt
+von `loadMyGuildContactWriteAccess()` — liest die eigene
+`guild_members`-Zeile (`guild_id`+`contacts_access`), bei `write` zusätzlich
+alle `member_id`s derselben Gilde. Geladen einmal pro Login (`enterApp()`)
+und zusätzlich bei jeder Gilden-Zustandsänderung erneut (`loadGuildState()`,
+läuft ohnehin nach Beitritt/Austritt/Einladung angenommen/Rechte geändert)
+— **kein Extra-Request pro Kontakt-Seitenaufruf**, weil `guild_members.
+member_id` Primärschlüssel ist (man ist immer nur in genau einer Gilde),
+der Datensatz bleibt also winzig, auch mit mehr Gilden künftig. `canEdit`
+([index.html](index.html)) ist jetzt `c.owner_id===profile.id ||
+profile.role==='admin' || myGuildContactWriteMemberIds.has(c.owner_id)`.
+`loadGuildState()` reicht die dort ohnehin schon geladene eigene
+Mitgliedschaftszeile direkt an `loadMyGuildContactWriteAccess()` weiter
+(Parameter `knownOwnMembership`), statt sie ein zweites Mal abzufragen;
+`enterApp()` lädt `loadMyFoundedGuilds()`/`loadMyGuildContactWriteAccess()`
+parallel (`Promise.all`) — beide Feinschliffe kamen aus einer
+Zweitmeinungs-Runde direkt nach dem ersten Bauversuch.
+
+**Bewusst nur Kontakte, nicht Dungeons:** geprüft, ob es eine parallele
+Lücke bei Dungeons gibt (`guild_dungeon_permission`/`dungeons_access`) —
+gibt es nicht. Die einzigen ownership-gebundenen Dungeon-Schreibwege sind
+bereits korrekt admin-exklusiv (Pool-Neuzuweisung, `renderAccountPool()`)
+bzw. gründer-exklusiv (Aufnahme in den Gilden-Pool,
+`loadGuildRightsPoolList()`) — beides bewusst so, kein Analogon zu
+"Bearbeiten"/"Löschen" am Kontakt. "Termin vereinbart" an einem Dungeon ist
+ohnehin nie ownership-gebunden (jedes Team-Mitglied darf dort einen Lead
+anlegen). Kein Fix nötig, nur bei einer künftigen echten Dungeon-Bearbeiten-
+Funktion von Anfang an mitdenken.
+
+**Backend musste in derselben Sitzung nachziehen — der erste Fassung war
+NICHT nur eine UI-Anzeige-Korrektur.** Eine erste Zweitmeinungsrunde
+(`/code-review high`, direkt nach dem Frontend-Fix) fand: drei der jetzt
+sichtbaren Aktionen hätten mit garantiertem Fehlschlag geendet, weil die
+zugehörige Berechtigungsprüfung `guild_contact_permission()` bisher NICHT
+kannte (anders als `contacts_writable()`, das "Bearbeiten" schon korrekt
+deckt) — "Löschen" (`contacts_delete_owner_or_admin`-Policy, RLS-DELETE
+betrifft 0 Zeilen, PostgREST liefert dafür KEINEN Fehler zurück, die App
+hätte fälschlich "gelöscht" angezeigt), "Gekündigt/ausgelaufen"
+(`sales_writable()`, Basis von `cancel_sale_locked()`, harter RPC-Fehler)
+und "+ Verkauf eintragen" (`sales_insert_like_contact`-Policy, harter
+RLS-Fehler). Migration
+`supabase/migrations/20260827174618_gilden_schreibrecht_delete_sales_erweiterung.sql`
+bringt alle drei auf denselben `guild_contact_permission(owner_id, true)`-
+Zweig wie `contacts_writable()`. **Zusätzlicher, beim eigenen Gegenlesen
+gefundener Fund (kein Teil des Zweitmeinungs-Berichts):**
+`contacts_delete_owner_or_admin` hatte — anders als die vier
+`*_writable()`-Funktionen seit deren eigener Nachbesserung
+(`20260824190000_locked_write_org_boundary_fix.sql`) — nie eine
+`org_id`-Grenze in der `is_admin()`-Bedingung; ein Admin hätte damit (nur
+per bekannter/erratener Kontakt-UUID) auch einen Kontakt einer FREMDEN
+Organisation löschen können. Beim aktuellen Einzel-Org-Betrieb folgenlos,
+aber exakt die Lückenklasse, die vor dem ersten zweiten zahlenden Kunden
+(Mandantentrennung, siehe "Technische Skalierungs-Schwellen") geschlossen
+sein muss — im selben Zug mit gefixt, da die Policy ohnehin angefasst
+wurde. Ob dasselbe Muster (`is_admin()` ohne `org_id`-Vergleich) noch an
+anderen, unangetasteten Policies im Schema existiert, ist bewusst NICHT
+Teil dieses Fixes — gehört in einen eigenen, systematischen Audit als Teil
+der eigentlichen Mandantentrennungs-Arbeit.
+
+Dry-Run gegen die echte DB (zwei echte Gildenmitglieder, einer davon
+Admin — bewusst der NICHT-Admin als Test-Akteur verwendet, um den
+`guild_contact_permission`-Zweig isoliert zu prüfen, ohne dass der
+Admin-Bypass das Ergebnis verdeckt): vor dem Fix lehnt
+`cancel_sale_locked()` den Gilden-Schreiber korrekt ab, danach lässt er
+ihn zu; Kontakt-Löschen/Verkauf-Anlegen funktionieren für den
+Gilden-Schreiber nach dem Fix, ein Profil ganz ohne Gilden-Mitgliedschaft
+bleibt in allen drei Fällen weiterhin blockiert.
+
+**Weitere Zweitmeinungsrunden (parallele Multi-Agenten-Reviews, insgesamt
+5) fanden noch drei kleinere, ebenfalls behobene Funde:**
+1. `sales_writable()`/`sales_insert_like_contact` kannten anfangs die
+   Pool-Kontakt-Ausnahme nicht, die `contacts_writable()` bereits hat
+   (`owner_id is null and guild_id is not null and
+   guild_leadership_permission(guild_id)`, für Kontakte aus dem
+   Mitarbeiter-Offboarding-Pool) — nachgezogen, `contacts.guild_id`
+   existiert entgegen einer älteren, inzwischen veralteten Notiz in
+   diesem Dokument tatsächlich (seit
+   `20260808211342_mitarbeiter_offboarding_gildenpool.sql`).
+2. `loadGuildState()` reichte bei einem Ladefehler die dadurch
+   bedeutungslose `null`-Zeile an `loadMyGuildContactWriteAccess()`
+   weiter, die das als "definitiv keine Gilde" statt als "unbekannt"
+   gewertet hätte — bei einem reinen Netzwerk-Blip wäre
+   `myGuildContactWriteMemberIds` fälschlich geleert worden. Fix: bei
+   Fehler wird `undefined` durchgereicht, die Funktion versucht dann
+   ihre eigene, unabhängige Abfrage.
+3. `sales_delete_like_contact` (aktuell inert, kein "Verkauf löschen"-
+   Button existiert) wurde aus Konsistenzgründen im selben Zug auf
+   denselben Stand gebracht wie ihre drei Schwester-Policies — sonst
+   wäre sie eine stille Falle für ein künftiges "Verkauf löschen"-
+   Feature gewesen.
+
+Letzte Zweitmeinungsrunde auf den finalen Diff: keine weiteren
+Korrektheits-Funde, Migration hält die RLS-Performance-Konventionen
+((select auth.uid()) gewrappt, keine zusätzliche parallele Policy) sauber
+ein.
 
 ## Serverseitige Schreib-Härtung: user_inventory / action_log / sales / locations
 
