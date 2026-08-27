@@ -2335,6 +2335,18 @@ nicht erst nach Nutzer-Beschwerde (Bug-Verlauf: HISTORY.md).
 
 ## Rechtemodell-Lücke: canEdit berücksichtigt Gilden-Schreibrecht
 
+**Wichtig beim Lesen dieses Abschnitts:** er beschreibt den ERSTEN
+Bauversuch von diesem Tag — "Bearbeiten", "Löschen", "+ Verkauf
+eintragen"/"Gekündigt/ausgelaufen" wurden hier alle vier gleich
+behandelt (Gilden-Schreibrecht reicht). Noch am selben Tag hat der
+Nutzer das für "Löschen" explizit zurückgenommen (Risiko eines
+"verprellten Mitarbeiters", der Kontakte einfach löscht) — seitdem
+löst "Löschen" für ein Gildenmitglied ohne Eigentümerschaft/Admin-Rolle
+nur noch eine Anfrage aus, die ein Admin freigeben muss. Bearbeiten/
+Verkauf/Dateien bleiben wie hier beschrieben. Siehe Abschnitt
+"Löschanfrage statt Direktlöschung für Gildenmitglieder" weiter unten
+für den aktuell gültigen Stand des Löschens.
+
 Löst die seit der Gilden-Sichtbarkeit Phase 1 (2026-08-08) bekannte,
 mehrfach dokumentierte Lücke: `canEdit` auf der Kontakt-Seite prüfte nur
 "gehört mir" oder "ich bin Admin", nicht das längst von der RLS erlaubte

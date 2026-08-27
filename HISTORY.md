@@ -2672,3 +2672,76 @@ primär diese Themen über Kanban, die Handlungen werden noch überarbeitet"
 (siehe Erinnerung `project_b2c_to_b2b_action_rework`). Regressionssuiten
 grün (33/33, 11/11).
 
+## 2026-08-27, dritte Sitzung — Rechtemodell-Lücke + Löschanfrage-Workflow
+
+Aufsetzend auf die "Nächster struktureller Schritt"-Reflexion vom
+Touchdown der Vortagessitzung: der Nutzer wollte einen der beiden
+Kandidaten (Rechtemodell-Lücke vs. Mandantentrennung) angehen. Ausführliches
+Vorgespräch zu beiden Themen zuerst (siehe Erinnerung
+`project_naechster_struktureller_schritt` für die vollständige Mandanten-
+trennungs-Anforderungssammlung, kein Baubeginn dort) — dann konkret:
+"Lücke schließen. Auf Sicherheit und Performance achten. Abdecken mit
+einem anderen Agent und es langfristig denken."
+
+**Teil 1: canEdit berücksichtigt Gilden-Schreibrecht.** `canEdit` auf der
+Kontakt-Seite prüfte seit der Gilden-Sichtbarkeit Phase 1 (2026-08-08)
+nie das dritte, von der RLS längst erlaubte Recht (Gildenmitglied mit
+`contacts_access='write'`) — Preload-Ansatz (`myGuildContactWriteMemberIds`,
+neu geladen bei Login + jeder Gilden-Zustandsänderung, kein Extra-Request
+pro Kontakt-Seitenaufruf, da `guild_members.member_id` Primärschlüssel
+ist). Fünf parallele Zweitmeinungsrunden (`/code-review high`, jede
+Runde mehrere gleichzeitige Finder-Agenten) fanden nacheinander: drei
+Backend-Berechtigungsstellen (Kontakt-Löschen, `sales_writable()`/
+`cancel_sale_locked()`, Sales-Insert) kannten `guild_contact_permission()`
+noch nicht und hätten stille bzw. harte Fehlschläge produziert; eine seit
+jeher fehlende `org_id`-Grenze bei `contacts_delete_owner_or_admin`
+(hätte theoretisch organisationsübergreifendes Admin-Löschen erlaubt);
+eine fehlende Pool-Kontakt-Ausnahme bei den Sales-Policies; ein
+Ladefehler-Edgecase, der Schreibrechte fälschlich hätte leeren können;
+ein stiller 0-Zeilen-Delete bei zwischenzeitlich entzogenem Schreibrecht.
+Alle behoben, per Dry-Run gegen echte Testprofile verifiziert (Vorher/
+Nachher, Negativ-Kontrolle ohne Gildenmitgliedschaft). Migration
+`20260827174618_gilden_schreibrecht_delete_sales_erweiterung.sql`,
+Commit `444f464`. Nebenbei eine veraltete CLAUDE.md-Aussage korrigiert
+(`contacts.guild_id` existiert entgegen der alten Notiz doch, seit dem
+Mitarbeiter-Offboarding-Pool), Commit `44ac812`.
+
+**Teil 2: Löschanfrage statt Direktlöschung für Gildenmitglieder.**
+Direkte Nutzer-Reaktion auf Teil 1: "Die Löschanfrage eines
+Gildenmitglieds soll nicht direkt löschen, sondern erst beim Admin
+landen. Sonst könnte ein verprellter Mitarbeiter einfach die Datenbank
+löschen." `contacts_delete_owner_or_admin` verliert den Gilden-Zweig aus
+Teil 1 wieder (Eigentümer/Admin bleiben unverändert direkt löschberechtigt),
+neue Tabelle `contact_deletion_requests` + drei `SECURITY DEFINER`-
+Funktionen (`request_contact_deletion`/`approve_contact_deletion_request`/
+`reject_contact_deletion_request`, gleiches Härtungsmuster wie
+`guild_invitations`/`termin_invitations`) + ein `BEFORE DELETE`-Trigger
+(`resolve_orphaned_deletion_requests()`), der eine offene Anfrage
+automatisch auflöst, falls der Kontakt auf einem anderen Weg verschwindet
+(sonst hätte eine verwaiste Anfrage später einen stillen Leerlauf beim
+"Genehmigen" produziert). Zwei weitere Zweitmeinungsrunden fanden: eine
+fehlende `ON DELETE`-Aktion auf `requested_by`/`reviewed_by` (hätte ein
+künftiges Mitarbeiter-Offboarding blockiert, jetzt `on delete cascade`
+wie beim strukturell gleichen `access_audit_log`), eine Race-Condition
+beim gleichzeitigen Genehmigen (UPDATE bekam dieselbe
+`status='offen'`-Bedingung wie beim Ablehnen), fehlendes Wiedervorlage-
+Aufräumen vor dem eigentlichen Löschen (reproduzierte einen früher schon
+einmal gefundenen Karteileichen-Bug), `withClickGuard()` beim neuen
+Button-Zweig nachgerüstet, ein totes `data-request`-Attribut entfernt.
+Eine Review-Anregung bewusst nicht übernommen (Wiedervorlage-Aufräumen
+NICHT auf `owner_id` der handelnden Person einschränken, da der ganze
+Kontakt verschwindet, nicht nur eine Bearbeitung — Begründung in
+CLAUDE.md). Migrationen `20260827181923_kontakt_loeschanfrage_admin_
+freigabe.sql` + `20260827184155_loeschanfrage_fk_indizes.sql` (zwei
+fehlende FK-Indizes, direkter Advisor-Nachlauf), Commit `d27402f`.
+
+Beide Teile: `supabase db advisors` nach jedem Push geprüft (keine neuen
+Sicherheits-Funde außer den erwarteten/bereits triagierten Kategorien),
+beide Regressionssuiten vor jedem Push grün (33/33 + 11/11). Volle
+technische Details in CLAUDE.md, Abschnitte "Rechtemodell-Lücke: canEdit
+berücksichtigt Gilden-Schreibrecht" und "Löschanfrage statt
+Direktlöschung für Gildenmitglieder". Damit ist der erste der beiden am
+Vortag reflektierten strukturellen Kandidaten vollständig abgeschlossen —
+Mandantentrennung bleibt der einzige offene Punkt in
+`project_naechster_struktureller_schritt`.
+
