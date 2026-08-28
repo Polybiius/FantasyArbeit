@@ -986,6 +986,10 @@
       <div class="admin-hint">
         Hier bearbeitest du das komplette Regelwerk als JSON — Aktionen, XP-Werte, Energie, Skills, Level-Kurve, Quests und Quest-Ketten. Änderungen gelten sofort für alle Mitglieder deiner Organisation.
       </div>
+      <div id="platformAdminOrgPicker" style="display:none;margin-bottom:10px;">
+        <label for="platformAdminOrgSelect" style="display:block;margin-bottom:4px;opacity:.85;">Organisation (Plattformadmin)</label>
+        <select id="platformAdminOrgSelect"></select>
+      </div>
       <textarea id="configEditor" spellcheck="false"></textarea>
       <div class="admin-actions">
         <button id="saveConfigBtn">Regelwerk speichern</button>
@@ -2167,6 +2171,9 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   let session=null, profile=null, org=null, config=null, log=[];
+  // Org-Pool-Verteilung (Aufgabe 1) + Plattformadmin (Aufgabe 3), beide
+  // einmal pro Login in enterApp() geladen -- siehe dort.
+  let isPoolDistributor=false, isPlatformAdmin=false;
   let products=[];
   let phoneTally = 0;
   let locationTypeById = {}; // {location_id: 'krankenhaus'|...} - fürs Questbaum-Engine, siehe evaluateLadderQuest() etc.
@@ -2256,6 +2263,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
   async function assignLocationOwnerLocked(locationId, ownerId, expectedUpdatedAt){
     return rpcLockedUpdate('assign_location_owner_locked', { p_id: locationId, p_owner_id: ownerId, p_expected_updated_at: expectedUpdatedAt });
+  }
+  // Org-Pool-Kontakte umverteilen (renderAccountPool()) -- p_newGuildId
+  // bewusst immer null hier: die Pool-Oberfläche weist einer PERSON zu,
+  // nicht einer Gilde (Gilden-Pool-Aufnahme läuft weiterhin über den
+  // bestehenden, separaten Weg am Kontaktformular/der Gilden-Seite).
+  async function adminReassignContact(contactId, ownerId, expectedUpdatedAt){
+    return rpcLockedUpdate('admin_reassign_contact', { p_contact_id: contactId, p_new_owner_id: ownerId, p_new_guild_id: null, p_expected_updated_at: expectedUpdatedAt });
   }
   // Verkäufe: einziger Schreibvorgang ist Kündigen (vertragsende setzen).
   async function cancelSaleLocked(saleId, vertragsende, expectedUpdatedAt){
@@ -3149,6 +3163,16 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('navNotfallzugriffBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
     document.getElementById('navProdukteBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
     await Promise.all([loadMyFoundedGuilds(), loadMyGuildContactWriteAccess()]);
+    // Org-Pool-Verteilung (alleiniger Gildenführer einer Ein-Gilde-Org)
+    // + Plattformadmin -- beide reine Lese-Flags, einmal pro Login.
+    const [poolDistRes, platAdminRes] = await Promise.all([
+      sb.rpc('is_sole_guild_founder_of_org', { p_org_id: profile.org_id }),
+      sb.rpc('is_platform_admin')
+    ]);
+    if(poolDistRes.error) logSilentError('Pool-Verteiler-Status laden', poolDistRes.error);
+    else isPoolDistributor = !!poolDistRes.data;
+    if(platAdminRes.error) logSilentError('Plattformadmin-Status laden', platAdminRes.error);
+    else isPlatformAdmin = !!platAdminRes.data;
     if(profile.role==='admin'){
       document.getElementById('classSwitcher').style.display='flex';
       updateClassSwitcherActive();
@@ -3170,6 +3194,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     restoreLastPage();
     loadUnseenPatches();
     loadUnseenSecurityAlerts();
+    checkNewPoolAssignments();
     cleanupQueuedContactFilesIfAdmin();
     startTaskDayRolloverWatcher();
   }
@@ -3190,12 +3215,43 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     enterProfileOnboarding(profile);
   });
 
-  // ---- Admin: Regelwerk bearbeiten ----
-  document.getElementById('adminToggleBtn').addEventListener('click', ()=>{
+  // ---- Admin: Regelwerk bearbeiten (+ Plattformadmin: fremde Org wählbar) ----
+  // Aufgabe 3 (Plattformadmin-Fundament): platformAdminOrgPicker bleibt für
+  // normale Admins unsichtbar (kein isPlatformAdmin) -- unverändertes
+  // Verhalten für alle, die keine Plattformadmins sind.
+  async function loadConfigEditorForOrg(orgId){
+    if(orgId === profile.org_id){
+      document.getElementById('configEditor').value = JSON.stringify(config, null, 2);
+      return;
+    }
+    const { data, error } = await sb.from('rule_configs').select('config').eq('org_id', orgId).maybeSingle();
+    if(error){ reportError('Fremdes Regelwerk laden', error); return; }
+    document.getElementById('configEditor').value = JSON.stringify(data ? data.config : {}, null, 2);
+  }
+  document.getElementById('adminToggleBtn').addEventListener('click', async ()=>{
     const panel = document.getElementById('adminPanel');
     const open = panel.style.display==='block';
     panel.style.display = open ? 'none' : 'block';
-    if(!open) document.getElementById('configEditor').value = JSON.stringify(config, null, 2);
+    if(open) return;
+    document.getElementById('configEditor').value = JSON.stringify(config, null, 2);
+    const pickerEl = document.getElementById('platformAdminOrgPicker');
+    if(!isPlatformAdmin){ pickerEl.style.display = 'none'; return; }
+    pickerEl.style.display = 'block';
+    const sel = document.getElementById('platformAdminOrgSelect');
+    // Sofort (synchron, vor dem await) auf einen leeren, "eigene Org"
+    // bedeutenden Zustand zurücksetzen -- verhindert, dass ein schnelles
+    // Speichern während des Ladens noch die STALE Auswahl einer vorherigen
+    // Panel-Öffnung sieht (Fund einer Zweitmeinungsrunde: ohne diesen Reset
+    // hätte ein sehr schnelles erneutes Öffnen+Speichern das Regelwerk der
+    // zuletzt gewählten fremden Org treffen können, obwohl der Editor
+    // gerade erst neu befüllt wurde).
+    sel.innerHTML = '<option value="">Lädt…</option>';
+    sel.value = '';
+    const { data: orgs, error } = await sb.rpc('platform_admin_list_orgs');
+    if(error){ logSilentError('Organisationen laden (Plattformadmin)', error); return; }
+    sel.innerHTML = (orgs||[]).map(o=>`<option value="${o.id}">${escHtml(o.name)}${o.id===profile.org_id?' (eigene Org)':''}</option>`).join('');
+    sel.value = profile.org_id;
+    sel.onchange = ()=> loadConfigEditorForOrg(sel.value); // Property-Zuweisung statt addEventListener -- verhindert Listener-Stacking bei mehrfachem Öffnen
   });
   document.getElementById('cancelConfigBtn').addEventListener('click', ()=>{
     document.getElementById('adminPanel').style.display='none';
@@ -3204,12 +3260,21 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     let parsed;
     try{ parsed = JSON.parse(document.getElementById('configEditor').value); }
     catch(err){ alert('Ungültiges JSON: '+err.message); return; }
-    const { error } = await sb.from('rule_configs').update({config:parsed, updated_at:new Date().toISOString()}).eq('org_id', profile.org_id);
-    if(error){ reportError('Regelwerk speichern', error); return; }
-    config = parsed;
+
+    const pickerVisible = document.getElementById('platformAdminOrgPicker').style.display==='block';
+    const targetOrgId = pickerVisible ? (document.getElementById('platformAdminOrgSelect').value || profile.org_id) : profile.org_id;
+
+    if(targetOrgId === profile.org_id){
+      const { error } = await sb.from('rule_configs').update({config:parsed, updated_at:new Date().toISOString()}).eq('org_id', profile.org_id);
+      if(error){ reportError('Regelwerk speichern', error); return; }
+      config = parsed;
+      buildActionGrid();
+      render();
+    } else {
+      const { error } = await sb.rpc('platform_admin_update_rule_config', { p_org_id: targetOrgId, p_config: parsed });
+      if(error){ reportError('Regelwerk speichern (fremde Org)', error); return; }
+    }
     document.getElementById('adminPanel').style.display='none';
-    buildActionGrid();
-    render();
   });
 
   // ---- Sigil zeichnen (mit Obergrenze, damit Luft nach oben bleibt) ----
@@ -3957,6 +4022,28 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     profile.last_seen_patch_number = maxSeen;
     const { error: updErr } = await sb.from('profiles').update({ last_seen_patch_number: maxSeen }).eq('id', profile.id);
     if(updErr) logSilentError('Gesehene Patches speichern', updErr);
+  }
+
+  // Org-Pool-Verteilung (Aufgabe 1): Hinweis, wenn seit dem letzten
+  // Login neue Kontakte/Dungeons zugewiesen wurden -- bewusst als
+  // schlanker Toast (settingsShowToast()) statt eines eigenen Modals,
+  // betrifft JEDES Teammitglied (nicht nur Admins/Pool-Verteiler), da
+  // jeder Empfänger einer Zuweisung sein kann.
+  async function checkNewPoolAssignments(){
+    const since = profile.last_seen_pool_assignment || '1970-01-01T00:00:00Z';
+    const { data, error } = await sb.from('pool_zuweisung_log')
+      .select('assigned_at')
+      .eq('new_owner_id', profile.id)
+      .gt('assigned_at', since);
+    if(error){ logSilentError('Pool-Zuweisungen prüfen', error); return; }
+    if(!data || data.length===0) return;
+
+    settingsShowToast(`🔔 Dir wurden ${data.length} neue Kontakt(e)/Dungeon(s) zugewiesen.`);
+
+    const maxSeen = data.reduce((m,r)=> r.assigned_at > m ? r.assigned_at : m, since);
+    profile.last_seen_pool_assignment = maxSeen;
+    const { error: updErr } = await sb.from('profiles').update({ last_seen_pool_assignment: maxSeen }).eq('id', profile.id);
+    if(updErr) logSilentError('Gesehene Pool-Zuweisung speichern', updErr);
   }
 
   // Belohnungs-Toast bei erfüllter Quest: links die XP, rechts (falls
@@ -5192,10 +5279,16 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(!name){ resultEl.innerHTML=''; return; }
     resultEl.innerHTML = '<div class="empty-page-hint">Suche …</div>';
 
-    const { data: matches, error } = await sb.from('profiles')
-      .select('id,display_name,character_class')
-      .eq('org_id', profile.org_id)
-      .ilike('display_name', name); // exakte Übereinstimmung, Groß-/Kleinschreibung egal
+    // App-weit statt org-gebunden seit 2026-08-30 (Nutzer-Entscheidung:
+    // "kann ja sein, dass ich in einem anderen unternehmen einen freund
+    // habe"). Läuft über eine eigene RPC statt eines direkten
+    // profiles-Selects, weil profiles_select_visible weiterhin org-
+    // gebunden ist (id=self OR org_id=current_org_id()) -- ein rohes
+    // Aufweiten dieser Policy würde auch Klarnamen/Firma/Provisions-
+    // sätze fremder Personen offenlegen. search_profile_for_friend()
+    // liefert bewusst nur die drei für die Anzeige nötigen Spalten,
+    // exact-match wie zuvor.
+    const { data: matches, error } = await sb.rpc('search_profile_for_friend', { p_name: name });
 
     if(error){ reportError('Nach Freund suchen', error, resultEl); return; }
     const match = (matches||[]).find(m=>m.id!==profile.id);
@@ -5222,7 +5315,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         <button class="cal-nav-btn" id="friendConfirmAddBtn">Anfrage senden</button>
       </div>`;
     document.getElementById('friendConfirmAddBtn').addEventListener('click', async ()=>{
-      const { error: insErr } = await sb.from('friends').insert({ owner_id:profile.id, friend_id:match.id, org_id:profile.org_id, status:'pending' });
+      const { error: insErr } = await sb.from('friends').insert({ owner_id:profile.id, friend_id:match.id, status:'pending' });
       if(insErr){ reportError('Freundschaftsanfrage senden', insErr, resultEl); return; }
       document.getElementById('friendSearchInput').value = '';
       resultEl.innerHTML = '<div class="empty-page-hint">Anfrage gesendet, wartet auf Bestätigung.</div>';
@@ -7400,6 +7493,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
       if(profile.role==='admin'){
         document.getElementById('dungeonAddRow').style.display='flex';
+      }
+      if(profile.role==='admin' || isPoolDistributor){
         document.getElementById('accountPoolCard').style.display='block';
       }
     }
@@ -7414,33 +7509,81 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // dieselben Zeilen weiter statt sie ein zweites Mal zu holen).
   async function refreshDungeonData(){
     const locs = await loadAndRenderLocations();
-    if(profile.role==='admin') await renderAccountPool(locs);
+    if(profile.role==='admin' || isPoolDistributor) await renderAccountPool(locs);
   }
 
+  // Seit Aufgabe 1 (Org-Pool-Verteilung) zweigeteilt: Dungeons (wie
+  // bisher, zeigt ALLE Dungeons der Org, Dropdown deckt auch die
+  // Rückgabe in den Pool ab) + ein neuer Abschnitt "Herrenlose Kontakte"
+  // (bewusst NUR echte Org-Pool-Kontakte -- owner_id UND guild_id beide
+  // NULL -- nicht alle Org-Kontakte, da diese Liste über die Zeit groß
+  // werden kann, anders als die naturgemäß wenigen Dungeons).
   async function renderAccountPool(locs){
     const listEl = document.getElementById('accountPoolList');
     const { data: members, error: memErr } = await sb.from('profiles').select('id,display_name').eq('org_id', profile.org_id);
     if(memErr) logSilentError('Team-Mitglieder laden', memErr);
-    if(!locs || locs.length===0){ listEl.innerHTML = '<div class="empty-page-hint">Noch keine Accounts angelegt.</div>'; return; }
-    const sortedLocs = [...locs].sort((a,b)=>a.name.localeCompare(b.name));
     const memberOptions = (members||[]).map(m=>`<option value="${m.id}">${escHtml(m.display_name)}</option>`).join('');
-    listEl.innerHTML = sortedLocs.map(l=>`
-      <div class="account-row">
-        <span>${escHtml(l.name)}</span>
-        <select data-assign="${l.id}">
-          <option value="">— Im Pool —</option>
-          ${memberOptions}
-        </select>
-      </div>`).join('');
-    listEl.querySelectorAll('[data-assign]').forEach(sel=>{
-      const loc = locs.find(l=>l.id===sel.dataset.assign);
+
+    const dungeonsHtml = (!locs || locs.length===0)
+      ? '<div class="empty-page-hint">Noch keine Accounts angelegt.</div>'
+      : [...locs].sort((a,b)=>a.name.localeCompare(b.name)).map(l=>`
+          <div class="account-row">
+            <span>${escHtml(l.name)}</span>
+            <select data-assign-loc="${l.id}">
+              <option value="">— Im Pool —</option>
+              ${memberOptions}
+            </select>
+          </div>`).join('');
+
+    const { data: poolContacts, error: pcErr } = await sb.from('contacts')
+      .select('id,name,updated_at')
+      .eq('org_id', profile.org_id)
+      .is('owner_id', null)
+      .is('guild_id', null);
+    if(pcErr) logSilentError('Herrenlose Kontakte laden', pcErr);
+
+    const contactsHtml = (!poolContacts || poolContacts.length===0)
+      ? '<div class="empty-page-hint">Keine herrenlosen Kontakte.</div>'
+      : [...poolContacts].sort((a,b)=>a.name.localeCompare(b.name)).map(c=>`
+          <div class="account-row">
+            <span>${escHtml(c.name)}</span>
+            <select data-assign-contact="${c.id}">
+              <option value="">— Im Pool —</option>
+              ${memberOptions}
+            </select>
+          </div>`).join('');
+
+    listEl.innerHTML = `
+      <div style="font-weight:600;opacity:.85;margin-bottom:4px;">Dungeons</div>
+      ${dungeonsHtml}
+      <div style="font-weight:600;opacity:.85;margin:14px 0 4px;">Herrenlose Kontakte</div>
+      ${contactsHtml}`;
+
+    listEl.querySelectorAll('[data-assign-loc]').forEach(sel=>{
+      const loc = locs.find(l=>l.id===sel.dataset.assignLoc);
       sel.value = loc.owner_id || '';
       sel.addEventListener('change', async ()=>{
         const newOwner = sel.value || null;
-        const res = await assignLocationOwnerLocked(sel.dataset.assign, newOwner, loc.updated_at);
+        const res = await assignLocationOwnerLocked(sel.dataset.assignLoc, newOwner, loc.updated_at);
         if(res.error){ reportError('Account-Zuweisung ändern', res.error); return; }
         if(res.conflict){ alertConflict('Dieser Dungeon'); sel.value = loc.owner_id || ''; return; }
         loc.updated_at = res.data.updated_at;
+      });
+    });
+
+    listEl.querySelectorAll('[data-assign-contact]').forEach(sel=>{
+      sel.addEventListener('change', async ()=>{
+        const contactId = sel.dataset.assignContact;
+        const contact = (poolContacts||[]).find(c=>c.id===contactId);
+        const newOwner = sel.value || null;
+        if(!newOwner) return; // "— Im Pool —" ist bereits der Ist-Zustand, kein Aufruf nötig
+        const res = await adminReassignContact(contactId, newOwner, contact.updated_at);
+        if(res.error){ reportError('Kontakt-Zuweisung ändern', res.error); return; }
+        if(res.conflict){ alertConflict('Dieser Kontakt'); sel.value = ''; return; }
+        // Zugewiesener Kontakt verschwindet aus dem Pool -- bei der
+        // erwarteten Listengröße (10-120) ist ein kompletter Neu-Render
+        // einfacher als gezieltes Entfernen der einzelnen Zeile.
+        await renderAccountPool(locs);
       });
     });
   }
