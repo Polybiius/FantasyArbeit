@@ -4,6 +4,91 @@ Dieses Dokument ist der Gedächtnis-Ersatz für eine lange Chat-Konversation, in
 dieses Projekt von Grund auf entstanden ist. Lies es vollständig, bevor du an
 irgendetwas im Repo arbeitest.
 
+---
+
+# 🚧🚧🚧 VERBINDLICHER FAHRPLAN, ab 2026-08-29 — ZUERST LESEN 🚧🚧🚧
+
+Nutzer-Auftrag, wörtlich: "Wo gehobelt wird, fallen Späne. Wir brauchen
+nun einen straffen Fahrplan... alles was mit dem Aufreißen dieser
+Thematik entstanden ist, müssen wir in den nächsten Sitzungen komplett
+durchdenken. Danach brauchen wir wieder die 5 Agents, weil das
+Kernstück des CRM absolut genial funktionieren muss. Wenn wir alle
+Baustellen beseitigt haben, gehen wir an die Anwenderoberfläche und das
+Framework ran." Ausgelöst durch das Pool-Feature/die Mandantentrennung
+(2026-08-27 bis 29, siehe Abschnitt "Pool-Feature" weiter unten) — ein
+großer struktureller Umbau, der bewusst mehrere Folgefragen offen
+gelassen hat, statt sie im selben Rutsch mitzubauen.
+
+**Reihenfolge, verbindlich, nicht überspringen:**
+
+### Phase 1 (JETZT): Vollständig durchdenken, was die Mandantentrennung aufgerissen hat
+Nur besprechen/klären, NICHT bauen, bis jeder Punkt durchgesprochen ist
+(gilt weiterhin: "erst durchsprechen, dann bauen"). Bekannte offene
+Fäden, Stand 2026-08-29 (Liste vermutlich noch nicht vollständig — beim
+Durchdenken selbst ergänzen, was sonst noch auffällt):
+- **Org-Pool-Verteilungsoberfläche** fehlt komplett — nur Datenmodell +
+  eine schmale Admin-RPC (`admin_reassign_contact()`) existieren, keine
+  echte Oberfläche (Regionalprinzip o.ä., bewusst auf "später"
+  vertagt).
+- **Freunde-Feature funktioniert im Pool-Zustand nicht** —
+  `friends.org_id` ist `NOT NULL`, bräuchte eine eigene Migration.
+  Bewusst zurückgestellt beim Bau des Warteraums.
+- **Zweistufiges Rollenmodell (Organisationsadmin vs. Plattformadmin)**
+  — von Claude vorgeschlagen (Break-Glass+Audit-Log-Muster wie beim
+  gildeninternen Notfallzugriff, organisationsübergreifend statt nur
+  innerhalb einer Gilde), vom Nutzer nie explizit bestätigt. Aktuell
+  gibt es nur `is_admin_of(org)`, keinen echten
+  Plattform-übergreifenden Adminzugriff.
+- **Automatisierte, individualisierte Regelwerk-Erzeugung pro Firma**
+  — `found_own_org()` kopiert aktuell nur 1:1 das Standard-Regelwerk
+  der Vorbild-Org. Die "eigentliche" Vision (Fragebogen → maßgeschneidertes
+  Regelwerk) ist weiterhin ein separates, größeres Vorhaben.
+- **Org-/Gilden-Auflösung nicht durchdacht** — `organizations` →
+  `profiles` ist `ON DELETE CASCADE`: eine gelöschte Org würde JEDEN
+  ihrer Mitglieder-Accounts hart mitlöschen, nicht nur in den Pool
+  zurückschicken. Bisher folgenlos (Löschen einer Org ist kein gebauter
+  Weg), wird aber relevant, sobald irgendwo eine Org-Lösch-Funktion
+  entsteht.
+- **Level-Kurven-Divergenz zwischen Organisationen** — Level bleibt nur
+  wirklich stabil beim Org-Wechsel, solange alle Orgs dieselbe
+  `levelBase`/`levelExponent`-Kurve haben (aktuell der Fall, weil jede
+  neue Org die Kurve 1:1 kopiert bekommt). Sobald eine Org ihre eigene
+  Kurve individualisiert, könnte sich das Level einer wechselnden
+  Person sichtbar verschieben — noch nicht entschieden, ob/wie das
+  abgefangen werden soll.
+- **Mehrere Gilden pro Org — bisher nur minimal getestet:** die
+  eigentliche Praxis (mehrere Gildenführer, Regionalprinzip, wie eine
+  Org ihre Gilden tatsächlich im Alltag organisiert) ist konzeptionell
+  geklärt, aber nie mit echten Nutzerzahlen durchdacht.
+- **Weltunternehmen-/Charakter-Portabilitäts-Vision** (Claudes
+  Erinnerung `project_naechster_struktureller_schritt`,
+  `project_business_fahrplan`) — die große Klammer, in die das
+  Pool-Feature als erster Schritt eingebettet ist. Noch nicht
+  entschieden, wie viel davon als Nächstes wirklich verfolgt wird.
+
+### Phase 2: 5-Agenten-Tiefenprüfung des CRM-Kernstücks
+Erst NACHDEM Phase 1 durchgesprochen (und die daraus resultierenden
+Bauaufgaben erledigt) ist. Nutzer-Vorgabe: "das Kernstück des CRM muss
+absolut genial funktionieren" — gleiches Muster wie der systematische
+12-Häppchen-Bugfix-Durchgang 2026-08-21/22 (siehe Abschnitt
+"Bugfix-Konventionen" weiter unten): mehrere parallele Review-Agenten
+pro Häppchen (Korrektheit/Effizienz/Cross-File/Zeile-für-Zeile/totes
+Verhalten), gezielt auf das CRM-Kernstück (Kontakte/Kanban/Verkauf/
+Dungeons — nicht Gamification-Beiwerk).
+
+### Phase 3: Anwenderoberfläche + Frontend-Framework-Frage
+Erst NACHDEM alle "Baustellen" (Phase 1+2) beseitigt sind. Betrifft die
+seit Langem dokumentierte, bisher nie ausgelöste "Frontend-Framework-
+Frage" (siehe Tech-Stack-Abschnitt weiter unten, Alarmglocken-Schwellen)
+UND einen echten UI/UX-Überarbeitungsdurchgang der Anwenderoberfläche.
+
+**Bei jeder neuen Session, solange dieser Fahrplan aktiv ist:** zuerst
+prüfen, in welcher Phase wir stehen, dann erst weiterarbeiten. Diesen
+Block hier ENTFERNEN (nicht nur abhaken), sobald Phase 3 abgeschlossen
+ist — er soll nicht dauerhaft am Dateianfang stehen bleiben.
+
+---
+
 ## Wegweiser: wo was steht
 
 - **Hier (CLAUDE.md)** — der aktuelle Zustand des Projekts, evergreen,
