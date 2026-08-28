@@ -622,8 +622,10 @@ der eigentliche Charakter erschaffen wird:
   Selbstständigkeit). **Wichtig, nicht verwechseln:** hat NICHTS mit dem
   Mandanten-System `organizations` zu tun — es wird keine echte Organisation
   ausgewählt oder gewechselt, nur ein Textfeld gespeichert. Eine echte
-  Mehrfach-Organisations-Auswahl wäre ein großer struktureller Umbau (aktuell
-  fest auf `DEFAULT_ORG_ID` verdrahtet) und war explizit nicht gemeint.
+  Organisationszugehörigkeit entsteht seit dem Pool-Feature (siehe eigener
+  Abschnitt weiter unten) über `found_own_org()`/Org-Einladung, nicht über
+  dieses Freitextfeld — war beim ursprünglichen Bau dieses Screens
+  explizit nicht gemeint.
 - **Charaktername** (wie bisher, jetzt nur räumlich auf diesen Screen
   verschoben statt auf dem Klassenwahl-Screen).
 
@@ -1508,11 +1510,10 @@ Beitritt gedacht. Bewusst **einmalig pro Version, keine Historien-Seite**
 **Bekannte, akzeptierte Grenze:** die Tabelle ist bewusst organisationsweit
 (kein `org_id`-Bezug, da Schema-Änderungen die ganze DB betreffen, nicht
 eine Organisation) — sobald es mehrere echte Kundenorganisationen auf
-derselben Datenbank gibt, würden alle Organisationen dieselben,
-möglicherweise fachlich irrelevanten Änderungen angezeigt bekommen. Passt zur
-bereits bekannten Lücke bei der Multi-Org-Loskopplung (`DEFAULT_ORG_ID`,
-siehe "Technische Skalierungs-Schwellen") — kein neues Problem, nicht vorab
-lösen.
+derselben Datenbank gibt (seit dem Pool-Feature technisch jederzeit
+möglich, siehe eigener Abschnitt weiter unten), würden alle
+Organisationen dieselben, möglicherweise fachlich irrelevanten Änderungen
+angezeigt bekommen — kein neues Problem, nicht vorab lösen.
 
 ## Sprite-Labor: Asset-Erstellungs-Werkzeug für neue Items
 
