@@ -220,32 +220,17 @@ sondern auf genau diese Auslöser warten:
 - **Automatische Backups (Supabase Pro-Plan-Upgrade):** sobald echte
   Kolleg:innen anfangen, Kundendaten einzutragen, auf die sie sich
   verlassen (siehe `project_supabase_backups`-Erinnerung).
-- **Multi-Org-Loskopplung** (`DEFAULT_ORG_ID` fest verdrahtet → echte
-  Organisationsauswahl/-Onboarding): sobald eine zweite, tatsächlich
-  zahlende Vertriebsorganisation real ansteht — nicht nur angedacht oder
-  als Fernziel erwähnt. **Onboarding-Modell geklärt (2026-08-17): kein
-  Self-Service — der Nutzer selbst richtet jede neue Kundenorganisation
-  persönlich nach deren Wünschen ein** (per SQL, wie bisher auch), kein
-  Assistenten-Interface nötig. Trotzdem noch echte Arbeit übrig: die
-  Registrierungsstelle im Code (`index.html`, `profiles`-Insert) trägt
-  aktuell JEDEN neuen Nutzer fest auf `DEFAULT_ORG_ID` ein, unabhängig
-  davon, wie viele `organizations`-Zeilen in der DB existieren — braucht
-  mindestens einen Einladungslink/-code pro Organisation, damit sich
-  Mitarbeiter der richtigen Firma zuordnen. Automatische Regelwerk-
-  Erzeugung (Questbaum + tägliche Quests + Provisions-/Erfolgsmessungs-
-  Logik automatisch statt von Hand pro Kunde befüllen) ist **explizit
-  eine spätere, eigene Aufgabe**, kein Teil dieser Schwelle — Details/
-  Kontext in `project_business_fahrplan`, Einträge 2026-08-17.
-  **Konzept-Skizze vom Nutzer, 2026-08-18, noch nicht gebaut:** wer sich
-  registriert, landet zunächst in einem organisationslosen Gesamt-Pool
-  aller angemeldeten Nutzer (nicht automatisch `DEFAULT_ORG_ID`, wie es
-  der Code heute noch macht). Der Nutzer (als Organisationsinhaber)
-  durchsucht diesen Pool und lädt einen erkannten Kollegen gezielt in
-  seine Organisation ein. Alternative für später: ein QR-Code, den ein
-  Mitarbeiter abfotografiert und dadurch direkt der richtigen
-  Organisation zugeordnet wird, ohne Pool-Suche. Beides nur Konzept,
-  keine Migration/kein Code dafür — relevant für den Tag, an dem diese
-  Schwelle tatsächlich erreicht wird.
+- ~~**Multi-Org-Loskopplung**~~ — **fertig gebaut, live, 2026-08-29**,
+  siehe eigener Abschnitt "Pool-Feature: Selbst-Gründung von
+  Organisationen/Gilden + Org-Austritt" weiter unten. `DEFAULT_ORG_ID`
+  bleibt als reine Vorlagen-Quelle für neu gegründete Organisationen
+  bestehen, ist aber im Frontend nicht mehr fest verdrahtet — neue
+  Registrierungen landen im Pool, nicht mehr automatisch dort.
+  Automatische, individualisierte Regelwerk-Erzeugung (Questbaum +
+  tägliche Quests + Provisions-/Erfolgsmessungs-Logik pro Kunde
+  maßgeschneidert statt kopiert) bleibt weiterhin **explizit eine
+  spätere, eigene Aufgabe** — Details/Kontext in
+  `project_business_fahrplan`.
 - **Rate Limiting:** sobald eine Organisation außerhalb der eigenen
   echten Zugriff bekommt (fremde Nutzer, potenziell missbräuchlich oder
   durch schieres Volumen andere Organisationen beeinträchtigend).
@@ -2595,6 +2580,169 @@ Nachher, Race-Szenario, Bypass-Szenario) durchgehend grün. Direkter
 Advisor-Nachlauf fand zwei fehlende FK-Indizes (`requested_by`/
 `reviewed_by`), reiner Struktur-Fix ohne Zweitmeinungs-Gate ergänzt
 (Migration `20260827184155_loeschanfrage_fk_indizes.sql`).
+
+## Pool-Feature: Selbst-Gründung von Organisationen/Gilden + Org-Austritt
+
+Löst die in "Technische Skalierungs-Schwellen" (oben) dokumentierte
+Multi-Org-Loskopplung — Voraussetzung war der direkt vorher gebaute
+Org-Grenze-Audit (siehe eigener Abschnitt oben). Ausführlich mit dem
+Nutzer durchgesprochen, Design-Entscheidungen und Herleitung: Claudes
+Erinnerung `project_naechster_struktureller_schritt`, Abschnitte 5-7.
+
+**Grundprinzip:** `profiles.org_id` ist jetzt nullable — jede neue
+Registrierung landet im **Pool** (org_id NULL) statt automatisch auf
+`DEFAULT_ORG_ID`. Ein Pool-Nutzer kann jederzeit selbst eine Gilde
+gründen (`found_own_org()`) — das erzeugt automatisch eine neue,
+leichte Organisation mit **kopiertem** Standard-Regelwerk (aus
+`DEFAULT_ORG_ID`, bewusst nur ein Platzhalter/Startpunkt, keine
+automatisierte Individualisierung — die bleibt ein eigenes, späteres
+Vorhaben) sowie kopiertem Produktkatalog. Der Gründer wird
+gleichzeitig Gildenführer UND de-facto Organisationsadmin dieser neuen
+Org.
+
+**Wichtige Verhaltensänderung:** ist ein Nutzer bereits in einer Org,
+kann er selbst KEINE weitere Gilde mehr gründen — das ist jetzt
+Admin-exklusiv (`admin_create_guild()`, designiert einen beliebigen
+Org-Mitgliedern als Gildenführer/Teamleiter). Der frühere
+`guildCreateBtn`-Direkt-Insert (jedes Org-Mitglied durfte gründen) ist
+komplett entfernt — fiel vorher nie auf, weil es nur eine Org gab.
+Nutzer-Zitat zur Begründung: "die Organisation muss schon als
+übergeordneter Admin zustimmen. Ein Mitarbeiter kann nicht einfach
+eigene Strukturen bauen."
+
+**Eine Org kann mehrere Gilden haben.** Alle Kunden gehören der Org,
+sie entscheidet, welcher Gildenführer welche Kunden sieht
+(Regionalprinzip o.ä.) — dafür existiert jetzt ein dritter
+Kontakt-/Dungeon-Zustand neben "privat" und "Gilden-Pool": der
+**Org-Pool** (`owner_id IS NULL AND guild_id IS NULL`). Bewusst nur im
+Datenmodell + einer schmalen Admin-RPC (`admin_reassign_contact()`, für
+`locations` reichen die bereits bestehenden `assign_location_owner_
+locked()`/`admit_location_to_guild_pool_locked()`) vorbereitet — die
+eigentliche Verteilungs-Oberfläche (Regionen/Filter) ist ein späterer,
+separater Schritt (Nutzer-Entscheidung).
+
+**Org-Einladung (Pool → Org) ist admin-exklusiv**, komplett getrennt
+von der bestehenden Gilden-Einladung (`guild_invitations`) — andere
+Suchmenge (Pool-weit statt org-intern) UND anderes Berechtigungsmodell.
+Neue Tabelle `org_pool_invitations` (Klon von `guild_invitations`) + 3
+Funktionen (`invite_to_org_pool()`/`respond_to_org_pool_invitation()`/
+`cancel_org_pool_invitation()`, Letztere bewusst für JEDEN Admin der
+einladenden Org nutzbar, nicht nur den ursprünglichen Einladenden).
+Sobald jemand in der Org ist, läuft eine Zuordnung zu einer konkreten
+Gilde unverändert über die bestehende `guild_invitations`-Kette.
+**Namenssuche im Pool ist exact-match** (`search_org_pool_candidates()`,
+serverseitige Gleichheitsprüfung statt `ilike()`) — bewusste, einzige
+v1-Datenschutz-Schranke, ein Admin muss den Namen schon von außerhalb
+kennen, kein Pool-Browsing möglich. Mehrere gleichzeitige offene
+Org-Einladungen an dieselbe Person (von verschiedenen Orgs) sind
+erlaubt — eine Exklusiv-Sperre ("nur bei uns") kommt erst auf
+konkreten Kundenwunsch.
+
+**Org verlassen (`leave_own_org()`) — Account bleibt bestehen**, nur
+`org_id`/`role` werden zurückgesetzt (Rückkehr in den Pool). War
+Gildenführer, greift dieselbe Nachfolgeregel wie beim bestehenden
+Mitarbeiter-Offboarding (als `reassign_guild_founder_on_departure()`
+aus dem bestehenden Trigger herausgezogen, jetzt aus beiden Kontexten
+aufrufbar). Eigene Kontakte/Dungeons wandern in den Gilden-Pool (falls
+Gilde vorhanden) oder in den neuen Org-Pool (falls nicht) — **niemals
+gelöscht**, Account-Austritt ist strukturell komplett neu, es gab
+vorher kein vergleichbares Verhalten.
+
+**Level/XP/bereits gewonnene Items bleiben beim Wechsel unverändert
+erhalten** (ausdrücklicher Nutzerwunsch — "anhand dessen sieht man ja,
+wie weit derjenige in seiner Berufslaufbahn ist"). Technisch bereits
+strukturell gegeben: `action_log.xp`/`user_inventory` sind organisationsweit
+personenbezogen (nur `user_id`-gefiltert, kein `org_id`-Bezug in der
+RLS), `sync_own_level_cache()` lehnt Aufrufe ohne Org ohnehin ab (der
+zuletzt synchronisierte Stand bleibt im Pool-Zustand einfach stehen).
+
+**Account-Löschung (bestehende `handle_member_offboarding()`) wurde im
+selben Zug angeglichen** — Rückfrage direkt beim Bauen, weil die neue
+Austritts-Logik sonst zwei unterschiedliche Antworten auf dieselbe
+Frage gegeben hätte. Nutzer-Entscheidung, wörtlich: "die bleiben bei
+der Firma, weil die Verträge laufen ja über die Firma" (+ "der
+Verkäufer hat natürlich Kundenschutz, wenn er seine Verträge macht,
+aber nach dem Verlassen der Firma brauchen die ja weiterhin
+Betreuung"). Der bisherige "gildenlos → hart löschen"-Zweig wandert
+jetzt ebenfalls in den Org-Pool statt zu löschen — betrifft
+ausschließlich Org-Mitglieder ohne eigene Gilde (ein reiner Pool-Nutzer
+kann per Konstruktion gar keine Kontakte besitzen, `contacts.org_id`
+ist `NOT NULL`). Freundschaften (`friends`) sind von alldem unberührt
+— waren es auch vorher schon, enden nie automatisch durch Firmen-/
+Gildenwechsel, nur durch bewusstes manuelles Entfernen.
+
+**Warteraum-Seite (`#page-organisation`) — echte App-Oberfläche, kein
+separates Gate-Screen.** Erste Fassung war eine komplett eigenständige,
+minimale Screen außerhalb von `#app` — nach Nutzer-Korrektur
+("die Anmeldungen dürfen schon auf unsere Plattform... haben halt noch
+keine Questbäume, Dungeons und Vertriebsstatistiken") umgebaut: Pool-
+Nutzer sehen den normalen Header/die normale Sidebar, landen aber
+zwangsweise auf einer neuen Seite "🏛 Organisation" (Gründen-Formular +
+Einladungsliste) — alle anderen Nav-Buttons sind ausgeblendet
+(`setPoolNavVisibility()`), `showPage()` erzwingt `'organisation'` als
+einzig erreichbare Seite, solange `profile.org_id === null` ist,
+unabhängig vom angefragten Hash/Deep-Link. **Freunde-Feature bewusst
+weiterhin zurückgestellt** ("das schieben wir auf") — `friends.org_id`
+ist heute `NOT NULL`, bräuchte eine eigene, hier nicht enthaltene
+Migration.
+
+**Zwei echte, beim Bauen selbst gefundene Bugs, beide behoben (nicht
+nur die eigentliche Zweitmeinungsrunde, siehe unten):**
+1. `search_org_pool_candidates()` (RETURNS TABLE mit einer Spalte
+   `id`) kollidierte mit einer bare `id`-Referenz im Funktionskörper —
+   "column reference id is ambiguous", per Dry-Run gefunden.
+2. **Vorbestehender, unabhängiger Bug seit 2026-08-22:**
+   `protect_location_owner_field()` (Tamper-Schutz gegen unbefugte
+   `owner_id`-Änderungen an Dungeons) korrigierte JEDE nicht-admin-
+   initiierte `owner_id`-Änderung still zurück — traf sowohl das
+   bestehende Account-Löschungs-Trigger als auch das neue
+   `leave_own_org()` selbst (ein austretendes Nicht-Admin-Mitglied ist
+   ja selbst kein Admin). Ohne Fix wäre der komplette Dungeon-Teil
+   dieser Migration wirkungslos gewesen — nur durch einen echten
+   End-to-End-Dry-Run mit einem Wegwerf-Testaccount entdeckt (nicht nur
+   isolierte RPC-Logik-Tests). Fix: gleiche Sitzungs-Flag-Technik wie
+   sonst im Projekt (`app.trusted_location_owner_change`).
+
+**Unabhängige Zweitmeinung** (`/code-review high`, Pflichtregel bei
+Berechtigungslogik) fand sechs weitere echte Funde, alle behoben:
+- **Kritisch:** `reassign_guild_founder_on_departure()` hatte keinen
+  `revoke` — wäre über RPC von jedem eingeloggten Nutzer mit
+  beliebiger Ziel-UUID aufrufbar gewesen (Gildenführer-Kapern fremder
+  Gilden). Fix: `revoke ... from public, anon, authenticated` (rein
+  interne Helferfunktion, gleiches Muster wie
+  `auto_delete_inactive_contacts()`).
+- **Kritisch:** `protect_privileged_profile_fields()`s Admin-Bypass
+  (Patch 38/39, "Admin-Bypass bleibt bestehen") galt bisher auch für
+  `org_id`/`role` — bei genau einer Org folgenlos, aber mit
+  Selbst-Gründung ein echter Cross-Org-Eskalationsweg (ein Admin hätte
+  per einfachem Client-Update seine eigene `org_id` auf eine FREMDE Org
+  setzen und wäre dort sofort Admin gewesen). Fix: `role`/`org_id`
+  jetzt unabhängig von `is_admin()` geprüft, immer Trusted-Flag nötig;
+  `character_class`/`total_xp`/`level` behalten den Admin-Bypass
+  bewusst (keine Cross-Org-Wirkung, aktiv genutztes Selbsttest-Feature
+  für den Klassenschalter).
+- Race-Condition in `found_own_org()` (Netzwerk-Retry/zweiter Tab hätte
+  zwei Orgs gleichzeitig anlegen können) — Fix: `select ... for update`
+  sperrt die eigene `profiles`-Zeile für die Dauer des Aufrufs.
+- `cancel_org_pool_invitation()` war nur für den ursprünglichen
+  Einladenden nutzbar — ein zweiter Admin derselben Org klickte ins
+  Leere. Fix: erweitert auf `invited_by=self OR is_admin_of(org_id)`.
+- Vier neue, dynamisch gerenderte Buttons nutzten manuelles
+  `btn.disabled`-Toggling ohne `finally` — Fix: try/finally ergänzt.
+- `found_own_org()` kopierte `rule_configs.config` 1:1 von der echten
+  Vorbild-Org — deren `contactAutoDelete.enabled` stand dort auf
+  `true`, obwohl neue Organisationen laut CLAUDE.md zwingend mit
+  `enabled:false` starten müssen. Fix: nach dem Kopieren per
+  `jsonb_set()` erzwungen.
+
+Migrationen `20260829090000` bis `20260829095000`. Dry-Run gegen die
+echte, verlinkte DB (Haupttestblock + alle 6 Zweitmeinungs-Fix-
+Verifikationen + zwei echte Wegwerf-Account-Tests für beide
+Offboarding-Pfade) grün, `npm run lint` sauber, Playwright-Sichtprüfung
+der neuen Organisation-Seite (echter Login, Profil-Antwort synthetisch
+auf `org_id: null` gesetzt, nichts an der echten DB verändert) zeigt
+korrekt reduzierte Navigation ohne JS-Fehler. Beide Regressions-Suiten
+grün vor dem Push.
 
 ## Serverseitige Schreib-Härtung: user_inventory / action_log / sales / locations
 

@@ -2745,3 +2745,112 @@ Vortag reflektierten strukturellen Kandidaten vollständig abgeschlossen —
 Mandantentrennung bleibt der einzige offene Punkt in
 `project_naechster_struktureller_schritt`.
 
+## 2026-08-28/29: Org-Grenze-Audit + Pool-Feature (Multi-Org-Loskopplung fertig)
+
+Zwei Sitzungen, direkt aufeinander aufbauend.
+
+**Erste Sitzung (2026-08-28):** Nutzer wollte "das Fundament fertig
+bauen" für eine echte zweite, zahlende Organisation. Erster Plan-Entwurf
+(Einladungscode pro Org, `org_invitations`-Tabelle) wurde noch vor dem
+Bauen verworfen — Nutzer stellte klar: "jeder soll einfach im Pool
+landen. In einem neutralen Pool. Von dort aus kann dann jeder eingeladen
+werden. So war die Vorstellung eigentlich von Anfang an." Bei der
+Umsetzungsplanung fand eine unabhängige Zweitmeinung, dass 22 RLS-
+Policies + 1 Funktion nur "ist Admin" statt "Admin von welcher Org"
+prüfen — bei einer Org folgenlos, aber ein echtes Cross-Org-Datenleck
+sobald eine zweite Org mit eigenem Admin existiert (also genau beim
+geplanten Pool-Feature). Nutzer-Entscheidung: dieser Audit zuerst.
+Gebaut: neue Hilfsfunktion `is_admin_of(org_id)`, Migration
+`20260828140000_org_grenze_fuer_bare_is_admin_policies.sql`, zwei
+Dry-Run-Runden + Zweitmeinung mit vier echten, nicht-ausnutzbaren
+Funden, beide Regressionssuiten grün, Commit `db99405`.
+
+**Zweite Sitzung (2026-08-29), nach `/clear`:** Nutzer bat "stell mir
+alle Fragen zum Pool-Feature" — Claude stellte 10 gebündelte Fragen,
+alle in einer Nachricht beantwortet, plus eine gezielte
+`AskUserQuestion`-Nachfrage zur zentralen Scope-Gabelung: **Gilde-
+Gründung durch einen Pool-Nutzer ist Self-Service und erzeugt
+automatisch eine neue Org mit kopiertem Standard-Regelwerk** — bestätigt
+mit "Ja, Self-Service (Empfohlen)". Direkte Folgerunde klärte
+Mehrfach-Gilden-Orgs: eine Org kann mehrere Gilden haben (Org-Pool als
+dritter Kontakt-Zustand, aber "nur Datenmodell jetzt, Verteilungs-UI
+später"), aber innerhalb einer bestehenden Org gründet NICHT mehr jedes
+Mitglied selbst — "die Organisation muss schon als übergeordneter Admin
+zustimmen." Design vollständig geklärt, Plan-Mode-Runde (drei parallele
+Explore-Agenten + ein Plan-Agent) fand dabei mehrere Korrekturen
+gegenüber der ursprünglichen Skizze: `profiles.org_id` war `NOT NULL`
+(Schema-Migration nötig), `protect_privileged_profile_fields()`s
+Admin-Bypass hätte `found_own_org()`/`leave_own_org()` blockiert (Fix:
+Sitzungs-Flag-Erweiterung), `user_inventory`/`action_log` waren bereits
+vollständig portabel (keine Migration nötig, ursprüngliche Sorge
+unbegründet), und die vermutete neue SELECT-Policy für den Org-Pool
+erwies sich als unnötig (bestehende Policies gewähren `is_admin_of()`
+bereits unbedingt).
+
+**Gebaut:** sechs Migrationen (`20260829090000` bis `20260829095000`) —
+`found_own_org()`, `admin_create_guild()`, `org_pool_invitations` + 3
+Einladungs-RPCs, `search_org_pool_candidates()` (exact-match statt
+`ilike()`), `leave_own_org()`, `admin_reassign_contact()`. Dry-Run gegen
+die echte, verlinkte DB fand dabei selbst zwei echte Bugs (Ambiguous-
+Column-Kollision in der Such-Funktion, fehlendes explizites
+`founder_id=NULL`-Setzen im aus dem Account-Löschungs-Trigger
+herausgezogenen Nachfolge-Code), beide sofort behoben. Unabhängige
+Zweitmeinung (`/code-review high`) fand sechs weitere echte Funde,
+darunter zwei kritische (eine neue interne Funktion ohne Revoke, per RPC
+von jedem Nutzer zum Gildenführer-Kapern missbrauchbar; ein
+Jahre-alter Admin-Bypass in `protect_privileged_profile_fields()`, der
+mit Selbst-Gründung zu einem echten Cross-Org-Eskalationsweg geworden
+wäre) — alle behoben, erneut per Dry-Run verifiziert.
+
+**Direkter Nutzer-Rückfrage-Dialog danach, zwei Runden:** erste Frage
+("was passiert mit den Kontakten eines gildenlosen Mitarbeiters bei
+Account-Löschung, hart löschen oder Org-Pool?") führte zunächst zu
+Verwirrung ("diese können ja als Freunde einfach in seiner Kontaktliste
+bleiben... verstehst du das?") — Klärung ergab, der Nutzer sprach über
+die SOZIALE Freunde-Funktion (bereits unberührt), nicht die CRM-Kunden-
+Kontakte. Nach präzisierter Nachfrage die eigentliche Antwort: "die
+bleiben bei der Firma, weil die Verträge laufen ja über die Firma" +
+Folgeerklärung "der Verkäufer hat natürlich Kundenschutz, wenn er seine
+Verträge macht, aber nach dem Verlassen der Firma brauchen die ja
+weiterhin Betreuung." `handle_member_offboarding()`s "gildenlos"-Zweig
+entsprechend von hart löschen auf Org-Pool umgestellt. **Beim
+End-to-End-Dry-Run dieser Änderung (echter Wegwerf-Testaccount, nicht
+nur isolierte RPC-Tests) ein weiterer, komplett unabhängiger, seit
+2026-08-22 bestehender Bug gefunden:** `protect_location_owner_field()`
+(Tamper-Schutz gegen unbefugte `owner_id`-Änderungen an Dungeons)
+korrigierte JEDE nicht-admin-initiierte Änderung still zurück — hätte
+sowohl die Account-Löschung als auch `leave_own_org()` selbst
+wirkungslos gemacht (ein austretendes Nicht-Admin-Mitglied ist ja selbst
+kein Admin). Fix im selben Zug: weitere Sitzungs-Flag-Erweiterung
+(`app.trusted_location_owner_change`).
+
+**Zweite Rückfrage (Frontend):** die erste Warteraum-Fassung war eine
+komplett eigenständige Screen außerhalb der normalen App — Nutzer-
+Korrektur: "die Anmeldungen dürfen schon auf unsere Plattform. Dort
+können die ja bereits Freunde und so adden. Haben halt noch keine
+Questbäume, Dungeons und Vertriebsstatistiken (wenn das gerade eine zu
+große Baustelle ist, dann schieben wir das auf)." Per `AskUserQuestion`
+geklärt: Freunde-Feature bleibt vorerst zurückgestellt (`friends.org_id`
+ist `NOT NULL`, bräuchte eine eigene Migration), der Rest wird
+umgebaut — Pool-Nutzer sehen jetzt die normale App-Oberfläche (Header/
+Sidebar), landen aber zwangsweise auf einer neuen Seite "🏛 Organisation"
+(alle anderen Nav-Buttons ausgeblendet, `showPage()` erzwingt das
+unabhängig vom angefragten Hash/Deep-Link). Per Playwright visuell
+verifiziert (echter Login, `profiles`-Antwort synthetisch auf
+`org_id: null` gesetzt, nichts an der echten DB verändert).
+
+**Verifikation vor dem Push:** kompletter End-to-End-Dry-Run
+(Haupttestblock + alle 6 Zweitmeinungs-Fix-Verifikationen + zwei echte
+Wegwerf-Account-Tests für beide Offboarding-Pfade) grün, `npm run lint`
+sauber. Ein zwischenzeitlicher, verwirrender Testlauf-Fehlschlag stellte
+sich als eigener Test-Harness-Fehler heraus (veraltete Zwischenkopie der
+Migrationen in der kombinierten Testdatei, nicht der eigentliche Code) —
+nach frischem Neuaufbau lief alles grün durch. `supabase db push`
+angewendet (sechs Migrationen), beide Regressionssuiten danach grün
+(33/33 + 11/11, jeweils erster Lauf mit einem transienten "Unexpected
+end of JSON input"-Netzwerk-Hänger, beim Retry sauber). Volle technische
+Details in CLAUDE.md, Abschnitt "Pool-Feature: Selbst-Gründung von
+Organisationen/Gilden + Org-Austritt". Damit ist die in "Technische
+Skalierungs-Schwellen" dokumentierte Multi-Org-Loskopplung fertig — die
+Registrierungsstelle trägt niemanden mehr fest auf `DEFAULT_ORG_ID` ein.
+

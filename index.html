@@ -996,6 +996,7 @@
 
   <div class="app-shell">
     <nav class="sidebar">
+      <button class="nav-btn" data-page="organisation" id="navOrganisationBtn" style="display:none;">🏛 Organisation</button>
       <button class="nav-btn active" data-page="charakter">🧙 Charakter</button>
       <button class="nav-btn" data-page="handlungen">⚔ Handlungen</button>
       <button class="nav-btn" data-page="kontakte" id="navKontakteBtn">📇 Register</button>
@@ -1015,6 +1016,20 @@
     <div class="content">
 
       <!-- SEITE 1: CHARAKTER -->
+      <div class="page" id="page-organisation" style="display:none;">
+        <div class="card">
+          <h2>Organisation</h2>
+          <p class="charcreate-sub" id="waitingRoomWho"></p>
+          <p class="empty-page-hint">Du gehörst noch keiner Organisation an. Gründe deine eigene, oder warte auf eine Einladung. Andere Bereiche (Handlungen, Register, Dungeons, Kanban, Gilde, Kompendium usw.) hängen an einer Organisation und sind erst danach verfügbar.</p>
+          <div id="waitingRoomInvites"></div>
+          <p class="appearance-section-label">Eigene Organisation gründen</p>
+          <input class="settings-input" id="waitingRoomOrgName" maxlength="150" placeholder="Name der Organisation">
+          <input class="settings-input" id="waitingRoomGuildName" maxlength="150" placeholder="Name deiner ersten Gilde" style="margin-top:8px;">
+          <button class="auth-btn" id="waitingRoomFoundBtn" style="margin-top:12px;">Organisation gründen</button>
+          <div class="auth-error" id="waitingRoomError"></div>
+        </div>
+      </div>
+
       <div class="page" id="page-charakter">
         <div class="card char-art-placeholder">
           <div class="char-art-stack" id="charArtStack">
@@ -1112,13 +1127,40 @@
         <div class="card" style="margin-top:18px;" id="guildNoGuildCard">
           <h2 id="guildHeaderTitle">Gilde</h2>
           <div id="guildNoGuildView" style="display:none;">
-            <div class="guild-create-row">
-              <input type="text" id="guildNameInput" placeholder="Name deiner neuen Gilde" maxlength="60">
-              <button class="cal-nav-btn" id="guildCreateBtn">Gründen</button>
-            </div>
-            <div class="empty-page-hint" style="margin-top:6px;">oder einer bestehenden Gilde beitreten:</div>
+            <div class="empty-page-hint" style="margin-top:6px;">Einer bestehenden Gilde beitreten:</div>
             <div id="guildJoinList"></div>
           </div>
+        </div>
+
+        <!-- Admin-exklusiv: Pool-Nutzer per exaktem Namen suchen und in die
+        eigene Organisation einladen. Bewusst getrennt vom Gilden-Picker
+        (guildPickerCard) -- andere Suchmenge (Pool statt org-intern) UND
+        andere Berechtigung (Org-Admin statt Gildenführer). -->
+        <div class="card" style="margin-top:18px;display:none;" id="orgPoolInviteCard">
+          <h2>Aus dem Pool einladen</h2>
+          <div class="friend-search-row">
+            <input type="text" id="orgPoolSearchInput" placeholder="Exakter Name (Anzeige- oder echter Name)">
+            <button class="cal-nav-btn" id="orgPoolSearchBtn">Suchen</button>
+          </div>
+          <div id="orgPoolSearchResult"></div>
+          <div class="empty-page-hint" style="margin-top:10px;">Offene Einladungen:</div>
+          <div id="orgPoolOpenInvites"></div>
+        </div>
+
+        <!-- Admin-exklusiv: neue Gilde innerhalb der eigenen Org anlegen +
+        Gildenführer/Teamleiter designieren. Bewusst unabhängig von
+        guildNoGuildCard/guildMemberView sichtbar (ein Admin kann auch dann
+        eine weitere Gilde für ein anderes Mitglied gründen, wenn er selbst
+        schon in einer Gilde ist) -- Verhaltensänderung gegenüber vorher:
+        normale Mitglieder gründen keine eigenen Gilden mehr selbst. -->
+        <div class="card" style="margin-top:18px;display:none;" id="adminCreateGuildCard">
+          <h2>Neue Gilde anlegen</h2>
+          <div class="guild-create-row">
+            <input type="text" id="adminCreateGuildName" placeholder="Name der neuen Gilde" maxlength="150">
+            <select id="adminCreateGuildFounderSelect"></select>
+            <button class="cal-nav-btn" id="adminCreateGuildBtn">Anlegen</button>
+          </div>
+          <div class="auth-error" id="adminCreateGuildError"></div>
         </div>
 
         <!-- Gilden-Ansicht (nur Mitglieder): Gebäude oben wie die
@@ -1556,7 +1598,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         <div class="card settings-danger-zone" style="margin-top:18px;">
           <h2>⚠️ Danger Zone</h2>
           <div class="empty-page-hint" style="margin-bottom:8px;">Destruktive Aktionen — mit Vorsicht behandeln.</div>
-          <button class="cal-nav-btn settings-danger-btn" id="deleteAccountBtn">Account löschen</button>
+          <button class="cal-nav-btn settings-danger-btn" id="leaveOrgBtn">Organisation verlassen</button>
+          <button class="cal-nav-btn settings-danger-btn" id="deleteAccountBtn" style="margin-top:8px;">Account löschen</button>
         </div>
         <div class="settings-save-bar" id="settingsSaveBar">
           <span id="settingsSaveBarText"></span>
@@ -2121,7 +2164,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // ---- Verbindung zur Datenbank ----
   const SUPABASE_URL = 'https://aaqbbkcghxldsbhqwcyh.supabase.co';
   const SUPABASE_ANON_KEY = 'sb_publishable_X_ltuj_9Hejeu5WKENaSZQ_DfNmUNrK';
-  const DEFAULT_ORG_ID = '00000000-0000-0000-0000-000000000001';
   const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   let session=null, profile=null, org=null, config=null, log=[];
@@ -2834,7 +2876,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     };
     const { data: saved, error } = resumingProfileId
       ? await sb.from('profiles').update(fields).eq('id', resumingProfileId).select().single()
-      : await sb.from('profiles').insert({ id: session.user.id, org_id: DEFAULT_ORG_ID, role:'member', ...fields }).select().single();
+      // org_id bleibt bewusst unausgefüllt -> landet per profiles_insert_self-Policy
+      // im Pool (org_id NULL, role='member'). Jede weitere Organisationszugehörigkeit
+      // läuft ab hier ausschließlich über found_own_org()/respond_to_org_pool_invitation().
+      : await sb.from('profiles').insert({ id: session.user.id, role:'member', ...fields }).select().single();
     if(error){ reportError('Charakter erstellen', error, errEl); return; }
     profile = saved;
     resumingProfileId = null;
@@ -2924,6 +2969,106 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     await enterApp();
   }
 
+  // ---- Warteraum (Pool-Zustand, profile.org_id === null) ----
+  // Bewusst minimal (Nutzerentscheidung, siehe project_naechster_
+  // struktureller_schritt): nur Charakter/Profil sichtbar, keine
+  // Aktionen/Quests/XP -- das Regelwerk ist org-gebunden, ohne Org gibt
+  // es nichts zum Anzeigen. Ruft deshalb bewusst KEINE org-gebundene
+  // Funktion auf (kein loadConfig() o.ä.).
+  // Zeigt/versteckt die Nav-Buttons je nach Pool-Zustand -- alle Seiten
+  // außer "Organisation" hängen an einer Organisation, daher für
+  // Pool-Nutzer ausgeblendet statt kaputt/leer angezeigt. Muss auch beim
+  // ÜBERGANG aus dem Pool heraus (Org gegründet/beigetreten) wieder
+  // rückgängig gemacht werden -- die Buttons haben sonst kein eigenes
+  // "wieder einblenden" im normalen enterApp()-Pfad, weil sie im HTML
+  // standardmäßig sichtbar sind und dort nie extra ein-/ausgeblendet
+  // werden mussten, bevor es den Pool-Zustand gab.
+  const POOL_HIDDEN_NAV_PAGES = ['charakter','handlungen','kontakte','dungeons','kanban','inventar','gilde','tagebuch','statistik','einstellungen'];
+  function setPoolNavVisibility(isPool){
+    document.getElementById('navOrganisationBtn').style.display = isPool ? 'block' : 'none';
+    POOL_HIDDEN_NAV_PAGES.forEach(p=>{
+      const btn = document.querySelector(`.nav-btn[data-page="${p}"]`);
+      if(btn) btn.style.display = isPool ? 'none' : 'block';
+    });
+  }
+
+  async function renderWaitingRoom(){
+    setPoolNavVisibility(true);
+    // Header minimal von Hand befüllt statt render() aufzurufen -- render()
+    // setzt config/log als geladen voraus (Level-Kurve, Quests, Sigil),
+    // die es im Pool-Zustand nicht gibt.
+    document.getElementById('nameInput').value = profile.display_name;
+    document.getElementById('orgSubtitle').textContent = 'Noch keiner Organisation zugeordnet';
+    document.getElementById('waitingRoomWho').textContent =
+      `${profile.display_name} — ${CLASS_LABELS[profile.character_class] || profile.character_class}`;
+    showPage('organisation');
+    await renderWaitingRoomInvites();
+  }
+
+  async function renderWaitingRoomInvites(){
+    const wrap = document.getElementById('waitingRoomInvites');
+    const { data: invites, error } = await sb.from('org_pool_invitations')
+      .select('id, organizations(name)')
+      .eq('invited_user_id', profile.id)
+      .eq('status', 'offen');
+    if(error){ logSilentError('Offene Org-Einladungen laden', error); wrap.innerHTML = ''; return; }
+    if(!invites || invites.length === 0){ wrap.innerHTML = ''; return; }
+
+    wrap.innerHTML = html`
+      <p class="appearance-section-label">Offene Einladungen</p>
+      ${invites.map(inv => html`
+        <div class="friend-req-row">
+          <span>${inv.organizations?.name || 'Organisation'}</span>
+          <div class="freq-actions">
+            <button class="freq-accept" data-accept="${inv.id}">Annehmen</button>
+            <button class="freq-decline" data-decline="${inv.id}">Ablehnen</button>
+          </div>
+        </div>
+      `)}
+    `;
+    wrap.querySelectorAll('[data-accept]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        btn.disabled = true;
+        try{
+          const { error: rpcErr } = await sb.rpc('respond_to_org_pool_invitation', { p_invitation_id: btn.dataset.accept, p_accept: true });
+          if(rpcErr){ reportError('Einladung annehmen', rpcErr); return; }
+          const { data: fresh, error: reloadErr } = await sb.from('profiles').select('*').eq('id', profile.id).single();
+          if(reloadErr){ reportError('Profil neu laden', reloadErr); return; }
+          profile = fresh;
+          document.getElementById('waitingRoomScreen').style.display = 'none';
+          document.getElementById('loading').style.display = 'flex';
+          await enterApp();
+        } finally{ btn.disabled = false; }
+      });
+    });
+    wrap.querySelectorAll('[data-decline]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        btn.disabled = true;
+        try{
+          const { error: rpcErr } = await sb.rpc('respond_to_org_pool_invitation', { p_invitation_id: btn.dataset.decline, p_accept: false });
+          if(rpcErr){ reportError('Einladung ablehnen', rpcErr); return; }
+          await renderWaitingRoomInvites();
+        } finally{ btn.disabled = false; }
+      });
+    });
+  }
+
+  document.getElementById('waitingRoomFoundBtn').addEventListener('click', withClickGuard('waitingRoomFoundBtn', async ()=>{
+    const errEl = document.getElementById('waitingRoomError');
+    errEl.textContent = '';
+    const orgName = document.getElementById('waitingRoomOrgName').value.trim();
+    const guildName = document.getElementById('waitingRoomGuildName').value.trim();
+    if(!orgName || !guildName){ errEl.textContent = 'Bitte beide Namen ausfüllen.'; return; }
+    const { error } = await sb.rpc('found_own_org', { p_org_name: orgName, p_guild_name: guildName });
+    if(error){ reportError('Organisation gründen', error, errEl); return; }
+    const { data: fresh, error: reloadErr } = await sb.from('profiles').select('*').eq('id', profile.id).single();
+    if(reloadErr){ reportError('Profil neu laden', reloadErr, errEl); return; }
+    profile = fresh;
+    document.getElementById('waitingRoomScreen').style.display = 'none';
+    document.getElementById('loading').style.display = 'flex';
+    await enterApp();
+  }));
+
   // Dieselben Klassenitems, die vorher als CLASS_OUTFIT fest im Look
   // eingebrannt waren, jetzt als echte, ausziehbare Katalog-Items - müssen
   // im Regelwerk existieren (siehe sql/patch26_klassenitems.sql bzw.
@@ -2958,6 +3103,25 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   async function enterApp(){
+    // Pool-Zustand (org_id NULL): hier statt vor jedem einzelnen Aufrufer,
+    // weil enterApp() von mehreren Stellen aus aufgerufen wird (normaler
+    // Login, direkt nach der Charaktererstellung, sowie vom Admin-
+    // Debug-Knopf "🎭 Neu erschaffen") -- eine an nur EINER dieser Stellen
+    // vergessene Prüfung wäre genau die in CLAUDE.md dokumentierte
+    // Bug-Klasse. Ruft bewusst weder loadOrg()/loadConfig() (beide setzen
+    // org_id voraus) noch irgendeine andere org-gebundene Funktion auf.
+    if(profile.org_id === null){
+      document.getElementById('loading').style.display='none';
+      document.getElementById('app').style.display='block';
+      await renderWaitingRoom();
+      return;
+    }
+    // Übergang AUS dem Pool heraus (Org gerade gegründet/beigetreten,
+    // enterApp() wird danach erneut aufgerufen): Nav-Buttons, die für den
+    // Pool-Zustand ausgeblendet wurden, müssen wieder sichtbar werden --
+    // sie haben sonst keinen eigenen "wieder einblenden"-Weg im normalen
+    // Ablauf unten.
+    setPoolNavVisibility(false);
     applyClassTheme(profile.character_class);
     try{ await loadOrg(); await loadConfig(); await loadLog(); }
     catch{ document.getElementById('loading').style.display='none'; return; }
@@ -6772,6 +6936,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const { data: membership, error } = await sb.from('guild_members').select('*').eq('member_id', profile.id).maybeSingle();
     if(error) logSilentError('Gildenmitgliedschaft laden', error);
     await loadMyGuildContactWriteAccess(error ? undefined : membership);
+    await refreshOrgPoolInviteCard();
+    await refreshAdminCreateGuildCard();
     const friendCard = document.getElementById('friendCard');
     if(!membership){
       currentGuild = null;
@@ -6806,6 +6972,106 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       await renderGuildBuilding(guild.id);
     }
   }
+
+  // Admin-exklusive Karte "Neue Gilde anlegen" -- bewusst unabhängig von
+  // der eigenen Gildenmitgliedschaft sichtbar (siehe Kommentar am
+  // adminCreateGuildCard-Markup), lädt bei jedem loadGuildState()-Lauf
+  // die aktuell noch gildenlosen Org-Mitglieder neu.
+  async function refreshAdminCreateGuildCard(){
+    const card = document.getElementById('adminCreateGuildCard');
+    if(profile.role !== 'admin'){ card.style.display = 'none'; return; }
+    card.style.display = 'block';
+
+    const [{ data: orgMembers, error }, { data: existing, error: existErr }] = await Promise.all([
+      sb.from('profiles').select('id,display_name,real_name').eq('org_id', profile.org_id).order('display_name'),
+      sb.from('guild_members').select('member_id').eq('org_id', profile.org_id)
+    ]);
+    if(error){ logSilentError('Org-Mitglieder für Gildengründung laden', error); return; }
+    if(existErr) logSilentError('Bestehende Gildenmitglieder laden', existErr);
+    const guildedIds = new Set((existing||[]).map(m=>m.member_id));
+    const eligible = (orgMembers||[]).filter(m=>!guildedIds.has(m.id));
+
+    const sel = document.getElementById('adminCreateGuildFounderSelect');
+    sel.innerHTML = html`${eligible.map(m=>html`<option value="${m.id}">${m.real_name || m.display_name}</option>`)}`;
+  }
+
+  // Admin-exklusive Karte "Aus dem Pool einladen" -- Pendant zu
+  // refreshAdminCreateGuildCard() oben, aber für den Org-Beitritt statt
+  // der Gildengründung. Sucht/einladet über search_org_pool_candidates()/
+  // invite_to_org_pool() -- eigenständig, KEINE Erweiterung von
+  // searchGuildCandidates() (andere Suchmenge, andere Berechtigung).
+  async function refreshOrgPoolInviteCard(){
+    const card = document.getElementById('orgPoolInviteCard');
+    if(profile.role !== 'admin'){ card.style.display = 'none'; return; }
+    card.style.display = 'block';
+    await renderOrgPoolOpenInvites();
+  }
+
+  async function renderOrgPoolOpenInvites(){
+    const listEl = document.getElementById('orgPoolOpenInvites');
+    const { data, error } = await sb.from('org_pool_invitations')
+      .select('id,invitee:invited_user_id(display_name,real_name)')
+      .eq('org_id', profile.org_id).eq('status', 'offen');
+    if(error){ logSilentError('Offene Org-Einladungen laden', error); return; }
+    if(!data || data.length === 0){ listEl.innerHTML = '<div class="empty-page-hint">Keine offenen Einladungen.</div>'; return; }
+    listEl.innerHTML = html`${data.map(inv => html`
+      <div class="friend-req-row">
+        <span>${inv.invitee ? (inv.invitee.real_name || inv.invitee.display_name) : '?'}</span>
+        <button class="cal-nav-btn" data-cancel="${inv.id}">Zurückziehen</button>
+      </div>
+    `)}`;
+    listEl.querySelectorAll('[data-cancel]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        btn.disabled = true;
+        try{
+          const { error: rpcErr } = await sb.rpc('cancel_org_pool_invitation', { p_invitation_id: btn.dataset.cancel });
+          if(rpcErr){ reportError('Einladung zurückziehen', rpcErr); return; }
+          await renderOrgPoolOpenInvites();
+        } finally{ btn.disabled = false; }
+      });
+    });
+  }
+
+  document.getElementById('orgPoolSearchBtn').addEventListener('click', withClickGuard('orgPoolSearchBtn', async ()=>{
+    const q = document.getElementById('orgPoolSearchInput').value.trim();
+    const resultEl = document.getElementById('orgPoolSearchResult');
+    resultEl.innerHTML = '';
+    if(!q) return;
+    const { data, error } = await sb.rpc('search_org_pool_candidates', { p_name: q });
+    if(error){ reportError('Im Pool suchen', error); return; }
+    if(!data || data.length === 0){ resultEl.innerHTML = '<div class="empty-page-hint">Keine Treffer.</div>'; return; }
+    resultEl.innerHTML = html`${data.map(m => html`
+      <div class="friend-req-row">
+        <span>${CLASS_ICONS[m.character_class]||'❔'} ${m.real_name || m.display_name}</span>
+        <button class="cal-nav-btn" data-invite="${m.id}">Einladen</button>
+      </div>
+    `)}`;
+    resultEl.querySelectorAll('[data-invite]').forEach(btn=>{
+      btn.addEventListener('click', async ()=>{
+        btn.disabled = true;
+        try{
+          const { error: rpcErr } = await sb.rpc('invite_to_org_pool', { p_invited_user_id: btn.dataset.invite });
+          if(rpcErr){ reportError('Einladen', rpcErr); return; }
+          resultEl.innerHTML = '';
+          document.getElementById('orgPoolSearchInput').value = '';
+          await renderOrgPoolOpenInvites();
+        } finally{ btn.disabled = false; }
+      });
+    });
+  }));
+
+  document.getElementById('adminCreateGuildBtn').addEventListener('click', withClickGuard('adminCreateGuildBtn', async ()=>{
+    const errEl = document.getElementById('adminCreateGuildError');
+    errEl.textContent = '';
+    const name = document.getElementById('adminCreateGuildName').value.trim();
+    const founderId = document.getElementById('adminCreateGuildFounderSelect').value;
+    if(!name || !founderId){ errEl.textContent = 'Bitte Name und Gildenführer angeben.'; return; }
+    const { error } = await sb.rpc('admin_create_guild', { p_name: name, p_founder_user_id: founderId });
+    if(error){ reportError('Gilde anlegen', error, errEl); return; }
+    document.getElementById('adminCreateGuildName').value = '';
+    await loadGuildState();
+    await loadMyFoundedGuilds(); // relevant falls der Admin sich selbst als Gründer gewählt hat
+  }));
 
   // Gebäude-Anzeige: bewusst nur ein einfacher Text-/Icon-Platzhalter
   // (fertige Grafik ist ein eigener, viel späterer Schritt, siehe
@@ -6880,36 +7146,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     await loadGuildState();
   }
 
-  document.getElementById('guildCreateBtn').addEventListener('click', async (e)=>{
-    const btn = e.currentTarget;
-    const name = document.getElementById('guildNameInput').value.trim();
-    if(!name) return;
-    btn.disabled = true;
-    try{
-      const { data: guild, error } = await sb.from('guilds').insert({ org_id:profile.org_id, name, founder_id:profile.id }).select().single();
-      if(error){ reportError('Gilde gründen', error); return; }
-      // Gründer bekommt von Anfang an volle Rechte in der eigenen Gilde --
-      // keine Sinn ergebende Einschränkung gegen sich selbst.
-      const { error: memErr } = await sb.from('guild_members').insert({
-        member_id:profile.id, guild_id:guild.id, org_id:profile.org_id,
-        contacts_access:'write', dungeons_access:'write', team_rights:true
-      });
-      if(memErr){ reportError('Als Gildenmitglied eintragen', memErr); return; }
-      // Eigene, bisher private Dungeons (angelegt oder besessen) wandern
-      // automatisch in den Pool der neuen Gilde -- es ist die eigene Welt
-      // des Gründers, dafür braucht es keine gesonderte Prüfung wie beim
-      // Beitritt eines fremden Mitglieds.
-      const { error: locErr } = await sb.from('locations')
-        .update({ guild_id: guild.id })
-        .or(`owner_id.eq.${profile.id},created_by.eq.${profile.id}`)
-        .is('guild_id', null);
-      if(locErr) logSilentError('Eigene Dungeons in neue Gilde übernehmen', locErr);
-      await loadGuildState();
-      await loadMyFoundedGuilds();
-    }finally{
-      btn.disabled = false;
-    }
-  });
+  // Bewusst KEIN Client-seitiger guildCreateBtn-Handler mehr -- Gilde
+  // gründen läuft ab jetzt ausschließlich über found_own_org() (Pool ->
+  // eigene Org) bzw. admin_create_guild() (innerhalb einer bestehenden
+  // Org, admin-exklusiv), siehe renderWaitingRoom()/
+  // refreshAdminCreateGuildCard() oben. Ein normales Org-Mitglied gründet
+  // keine eigene Gilde mehr selbst.
 
   document.getElementById('guildLeaveBtn').addEventListener('click', async ()=>{
     if(!confirm('Gilde wirklich verlassen?')) return;
@@ -10004,6 +10246,18 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     settingsShowToast('Gespeichert.', null);
   });
 
+  document.getElementById('leaveOrgBtn').addEventListener('click', withClickGuard('leaveOrgBtn', async ()=>{
+    if(!confirm('Organisation wirklich verlassen? Du landest im Pool und siehst keine CRM-Daten mehr, bis du einer neuen Organisation beitrittst oder eine eigene gründest. Level, XP und bereits gewonnene Items bleiben erhalten.')) return;
+    const { error } = await sb.rpc('leave_own_org');
+    if(error){ reportError('Organisation verlassen', error); return; }
+    // Kompletter Reload statt Live-Teardown des ganzen org-gebundenen
+    // Zustands (config/log/products/currentGuild/Quest-Caches usw.) --
+    // pragmatischste korrekte Lösung angesichts der Menge an
+    // org-gebundenem In-Memory-Zustand, der enterApp() sonst überall
+    // durchzieht.
+    location.reload();
+  }));
+
   document.getElementById('deleteAccountBtn').addEventListener('click', ()=>{
     document.getElementById('deleteAccountModal').style.display = 'flex';
   });
@@ -10275,11 +10529,16 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   // ---- Seitennavigation ----
-  const VALID_PAGES = ['charakter','handlungen','inventar','gilde','dungeons','kontakte','tagebuch','kanban','statistik','einstellungen','fehlerprotokoll','produkte','notfallzugriff','team-reporting'];
+  const VALID_PAGES = ['organisation','charakter','handlungen','inventar','gilde','dungeons','kontakte','tagebuch','kanban','statistik','einstellungen','fehlerprotokoll','produkte','notfallzugriff','team-reporting'];
 
   function showPage(pageName, updateHash){
     const requestedPage = pageName;
     if(!VALID_PAGES.includes(pageName)) pageName = 'charakter';
+    // Pool-Zustand (org_id NULL): jede Seite außer "Organisation" hängt an
+    // rule_configs/log/etc., die es ohne Organisation nicht gibt -- egal
+    // was angefragt wurde (Deep-Link, Hash-Wiederherstellung), zurück auf
+    // die einzige Seite, die ohne Org funktioniert.
+    if(profile.org_id === null) pageName = 'organisation';
     if(pageName==='fehlerprotokoll' && profile.role!=='admin') pageName = 'charakter';
     if(pageName==='produkte' && profile.role!=='admin') pageName = 'charakter';
     if(pageName==='notfallzugriff' && profile.role!=='admin') pageName = 'charakter';
