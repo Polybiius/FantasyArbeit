@@ -2453,6 +2453,65 @@ Korrektheits-Funde, Migration hält die RLS-Performance-Konventionen
 ((select auth.uid()) gewrappt, keine zusätzliche parallele Policy) sauber
 ein.
 
+## Org-Grenze für "nackte" is_admin()-Prüfungen (Mandantentrennungs-Fundament)
+
+Der in "Rechtemodell-Lücke" oben als "eigener, systematischer Audit"
+vertagte Punkt — inzwischen erledigt, 2026-08-28. Auslöser: der Nutzer
+wollte das Fundament für eine echte zweite, zahlende Organisation legen
+("Weltunternehmen"-Vision, ein Nutzer soll perspektivisch über einen
+Firmenwechsel hinweg seinen Charakter behalten, siehe Erinnerung
+`project_naechster_struktureller_schritt`) — dabei wurde klar, dass
+`is_admin()` an vielen Stellen NUR die Rolle prüft, nicht zusätzlich die
+Organisation. Bisher folgenlos (nur eine Organisation, jeder Admin
+zwangsläufig der einzige), aber ein echtes Cross-Org-Datenleck sobald
+eine zweite Organisation mit eigenem Admin existiert.
+
+**Fund per echter `pg_policies`/`pg_proc`-Abfrage (nicht geraten): 22
+Policies (18 `public` + 3 `storage`) + 1 Funktion**
+(`guild_sales_metric_total`) betroffen — u.a. `contacts_select_visible`
+(die Kundendatenbank selbst), `sales_*`, `contact_files_*` (inkl. der
+drei `storage.objects`-Policies für den Datei-Bucket), `tasks_*`,
+`termine_*`/`termin_series_*`/`termin_invitations_select`,
+`guild_invitations_select`, `guild_quest_log_select`,
+`contact_activities_*`.
+
+**Technik:** neue wiederverwendbare Hilfsfunktion `is_admin_of(org_id)` =
+"ist Admin UND ist es von genau dieser Organisation" statt den Ausdruck
+19-mal zu wiederholen — gleiche Konvention wie `current_org_id()`/
+`guild_contact_permission()`. Bewusst auch für `anon` ausführbar (liefert
+dafür ohnehin immer `false`, kein Schreibpfad — eine erste Fassung hatte
+das versehentlich gesperrt, was jeden Zugriff ohne gültige Session mit
+einem harten Fehler statt einer leeren Liste hätte scheitern lassen).
+
+**Migration**
+`supabase/migrations/20260828140000_org_grenze_fuer_bare_is_admin_policies.sql`,
+Commit `db99405`. Zwei echte Dry-Run-Runden gegen die verlinkte DB
+(`begin`/`rollback`, echte Testprofile per `set_config('request.jwt.claim.sub', ...)`
++ `set local role`, ein Admin testweise in eine frisch angelegte
+Wegwerf-Organisation verschoben): vor dem Fix sah ein Fremd-Org-Admin
+8 von 8 geprüften Objekten, danach 0 von 8 — legitimer Zugriff eines
+zweiten Admins der eigenen Organisation blieb bei 9 von 9 unverändert.
+
+**Unabhängige Zweitmeinung** (Pflichtregel, Berechtigungslogik betroffen)
+fand vier echte, keiner davon live ausnutzbare Funde (alle transitiv
+schon durch `contacts_select_visible` abgedeckt gewesen, trotzdem
+mitgefixt, damit die Absicherung nicht an einer einzigen anderen Policy
+hängt): eine beim Umschreiben versehentlich verlorene Org-Grenze
+(`sales_select_like_contact`), die anon-Sperre oben, sowie vier beim
+ersten manuellen Zusammenstellen übersehene Stellen
+(`public.contact_files_insert` — exakt dasselbe Muster wie ihre bereits
+gefixten Geschwister — sowie die drei `storage.objects`-Policies, weil
+die ursprüngliche Bestandsaufnahme nur `schemaname='public'` abgefragt
+hatte). Beide Regressions-Suiten grün vor dem Push.
+
+**Bewusst nicht Teil dieses Fixes:** die "Locked"-`*_writable()`-
+Funktionen aus der Konflikt-Schutz-Härtung waren bereits korrekt
+org-gebunden, ebenso die beiden Trigger-Funktionen (nur nach
+vorherigem RLS-Durchlass erreichbar) und
+`approve/reject_contact_deletion_request` (Org-Grenze steckt dort schon
+in der `WHERE`-Klausel der eigentlichen Operation, auch wenn der
+Admin-Check selbst es nicht ist).
+
 ## Löschanfrage statt Direktlöschung für Gildenmitglieder
 
 Direkte Folge-Entscheidung des Nutzers, noch am selben Tag: "Die
