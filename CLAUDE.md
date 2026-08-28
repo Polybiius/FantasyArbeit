@@ -73,19 +73,27 @@ gestartet** (3 statt 5 parallele Agenten, ein Bereich nach dem anderen
 statt aller vier gleichzeitig) — kein Abweichen vom Prinzip, nur
 kleinere Häppchen.
 
-**Fortschritt:**
-- ✅ **Kanban** (2026-08-30) — 3 Agenten (Korrektheit/Zeile-für-Zeile/
-  Cross-File), 3 echte Bugs gefunden und behoben (Doppel-Escaping bei
-  Organisator-Namen; XP/Quest-Boni wurden vor der eigentlichen,
-  sperr-geprüften Zustandsänderung gebucht statt danach, gleicher
-  Fehler in zwei Einstiegspunkten `moveKanbanCard()`/
+**Fortschritt** (Matrix: 4 Bereiche × 5 Prüf-Linsen — pro Bereich bisher
+nur 3 der 5 Linsen gefahren, budgetbedingt; Effizienz + totes Verhalten
+fehlen überall noch, auch bei Kanban):
+- 🟡 **Kanban** (2026-08-30) — 3 von 5 Linsen gefahren (Korrektheit/
+  Zeile-für-Zeile/Cross-File), 3 echte Bugs gefunden und behoben
+  (Doppel-Escaping bei Organisator-Namen; XP/Quest-Boni wurden vor der
+  eigentlichen, sperr-geprüften Zustandsänderung gebucht statt danach,
+  gleicher Fehler in zwei Einstiegspunkten `moveKanbanCard()`/
   `logActionForContact()`; "Gewonnen"-XP wurde auch ohne bestätigten
   Verkauf gebucht — neuer gemeinsamer Helfer
   `moveContactToGewonnenAndRecordSale()` behebt beides). Beide
-  Regressions-Suiten grün, Commit `cf94df5`.
-- ⬜ Kontakte — noch offen
-- ⬜ Verkauf/Statistik — noch offen
-- ⬜ Dungeons — noch offen
+  Regressions-Suiten grün, Commit `cf94df5`. **Noch offen für Kanban:**
+  Effizienz + totes Verhalten (2 weitere Agenten).
+- ⬜ Kontakte — noch komplett offen (alle 5 Linsen)
+- ⬜ Verkauf/Statistik — noch komplett offen (alle 5 Linsen)
+- ⬜ Dungeons — noch komplett offen (alle 5 Linsen)
+
+**Nächster Schritt beim Wiedereinstieg:** entweder die 2 fehlenden
+Linsen (Effizienz/totes Verhalten) für Kanban nachholen, oder gleich
+mit Kontakte/Verkauf/Dungeons (je 3 Linsen) weitermachen — beides
+offen, Reihenfolge beim nächsten Anstoß mit dem Nutzer klären.
 
 ### Phase 3: Anwenderoberfläche + Frontend-Framework-Frage
 Erst NACHDEM alle "Baustellen" (Phase 1+2) beseitigt sind. Betrifft die
