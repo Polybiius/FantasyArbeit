@@ -6,7 +6,7 @@ irgendetwas im Repo arbeitest.
 
 ---
 
-# 🚧🚧🚧 VERBINDLICHER FAHRPLAN, ab 2026-08-29 — ZUERST LESEN 🚧🚧🚧
+# 🚧🚧 VERBINDLICHER FAHRPLAN, ab 2026-08-29 — ZUERST LESEN 🚧🚧
 
 Nutzer-Auftrag, wörtlich: "Wo gehobelt wird, fallen Späne. Wir brauchen
 nun einen straffen Fahrplan... alles was mit dem Aufreißen dieser
@@ -21,60 +21,71 @@ gelassen hat, statt sie im selben Rutsch mitzubauen.
 
 **Reihenfolge, verbindlich, nicht überspringen:**
 
-### Phase 1 (JETZT): Vollständig durchdenken, was die Mandantentrennung aufgerissen hat
-Nur besprechen/klären, NICHT bauen, bis jeder Punkt durchgesprochen ist
-(gilt weiterhin: "erst durchsprechen, dann bauen"). Bekannte offene
-Fäden, Stand 2026-08-29 (Liste vermutlich noch nicht vollständig — beim
-Durchdenken selbst ergänzen, was sonst noch auffällt):
-- **Org-Pool-Verteilungsoberfläche** fehlt komplett — nur Datenmodell +
-  eine schmale Admin-RPC (`admin_reassign_contact()`) existieren, keine
-  echte Oberfläche (Regionalprinzip o.ä., bewusst auf "später"
-  vertagt).
-- **Freunde-Feature funktioniert im Pool-Zustand nicht** —
-  `friends.org_id` ist `NOT NULL`, bräuchte eine eigene Migration.
-  Bewusst zurückgestellt beim Bau des Warteraums.
-- **Zweistufiges Rollenmodell (Organisationsadmin vs. Plattformadmin)**
-  — von Claude vorgeschlagen (Break-Glass+Audit-Log-Muster wie beim
-  gildeninternen Notfallzugriff, organisationsübergreifend statt nur
-  innerhalb einer Gilde), vom Nutzer nie explizit bestätigt. Aktuell
-  gibt es nur `is_admin_of(org)`, keinen echten
-  Plattform-übergreifenden Adminzugriff.
-- **Automatisierte, individualisierte Regelwerk-Erzeugung pro Firma**
-  — `found_own_org()` kopiert aktuell nur 1:1 das Standard-Regelwerk
-  der Vorbild-Org. Die "eigentliche" Vision (Fragebogen → maßgeschneidertes
-  Regelwerk) ist weiterhin ein separates, größeres Vorhaben.
-- **Org-/Gilden-Auflösung nicht durchdacht** — `organizations` →
-  `profiles` ist `ON DELETE CASCADE`: eine gelöschte Org würde JEDEN
-  ihrer Mitglieder-Accounts hart mitlöschen, nicht nur in den Pool
-  zurückschicken. Bisher folgenlos (Löschen einer Org ist kein gebauter
-  Weg), wird aber relevant, sobald irgendwo eine Org-Lösch-Funktion
-  entsteht.
-- **Level-Kurven-Divergenz zwischen Organisationen** — Level bleibt nur
-  wirklich stabil beim Org-Wechsel, solange alle Orgs dieselbe
-  `levelBase`/`levelExponent`-Kurve haben (aktuell der Fall, weil jede
-  neue Org die Kurve 1:1 kopiert bekommt). Sobald eine Org ihre eigene
-  Kurve individualisiert, könnte sich das Level einer wechselnden
-  Person sichtbar verschieben — noch nicht entschieden, ob/wie das
-  abgefangen werden soll.
-- **Mehrere Gilden pro Org — bisher nur minimal getestet:** die
-  eigentliche Praxis (mehrere Gildenführer, Regionalprinzip, wie eine
-  Org ihre Gilden tatsächlich im Alltag organisiert) ist konzeptionell
-  geklärt, aber nie mit echten Nutzerzahlen durchdacht.
-- **Weltunternehmen-/Charakter-Portabilitäts-Vision** (Claudes
-  Erinnerung `project_naechster_struktureller_schritt`,
-  `project_business_fahrplan`) — die große Klammer, in die das
-  Pool-Feature als erster Schritt eingebettet ist. Noch nicht
-  entschieden, wie viel davon als Nächstes wirklich verfolgt wird.
+### Phase 1 — ABGESCHLOSSEN, 2026-08-30
+Alle acht offenen Fäden aus dem Pool-Feature einzeln durchgesprochen
+und bewertet (voller Verlauf: Erinnerung
+`project_naechster_struktureller_schritt`, Abschnitt 9). Vier daraus
+resultierende, bewusst schlank gehaltene Bauaufgaben sind gebaut,
+per Zweitmeinung gehärtet, dry-run-verifiziert und live (Migrationen
+`20260830090000`–`20260830100000`, Commit `3ae6592`):
+- **Org-Pool-Verteilungsoberfläche** — Dropdown-Zuweisung für Kontakte
+  UND Dungeons in `renderAccountPool()`, nutzbar durch Org-Admin ODER
+  den alleinigen Gildenführer einer Ein-Gilde-Org (nur für echte
+  Pool-Einträge, nicht für aktiv gehaltene private Kontakte/Dungeons
+  von Kolleg:innen). Protokoll (`pool_zuweisung_log`) + Badge bei
+  neuer Zuweisung.
+- **Freunde-Feature app-weit** statt org-gebunden (`friends.org_id`
+  entfernt), neue `search_profile_for_friend()`-RPC für die
+  Cross-Org-Suche.
+- **Plattformadmin-Fundament** — `platform_admins`/`is_platform_admin()`,
+  Regelwerk-Editor kann für Plattformadmins jetzt fremde Organisationen
+  bearbeiten. Notfallzugriff-Backend vollständig, bewusst noch ohne
+  eigene Oberfläche (kein aktueller Bedarf).
+- **Org-Soft-Delete-Fundament** — `organizations.dissolved_at`
+  (Platzhalter) + `profiles_org_id_fkey` CASCADE→RESTRICT (verhindert
+  versehentliches Mitlöschen aller Accounts einer Org). Volles
+  Auflösungs-Feature bleibt bewusst ein späteres, eigenes Vorhaben.
 
-### Phase 2: 5-Agenten-Tiefenprüfung des CRM-Kernstücks
-Erst NACHDEM Phase 1 durchgesprochen (und die daraus resultierenden
-Bauaufgaben erledigt) ist. Nutzer-Vorgabe: "das Kernstück des CRM muss
-absolut genial funktionieren" — gleiches Muster wie der systematische
+Nebenbei ein echter, seit dem Pool-Feature-Launch (29.08.) aktiv
+laufender Bug gefunden und mitbehoben: `enforce_profile_insert_defaults()`
+zwang jede neue Registrierung weiterhin in die alte Standard-Org statt
+in den Pool. Details, inkl. der 6 Funde einer Zweitmeinungsrunde: siehe
+`project_naechster_struktureller_schritt`, Abschnitt 10.
+
+**Bewusst nicht Teil von Phase 1, weiterhin offen/vertagt** (keine der
+acht ursprünglichen Fragen wurde vergessen, diese vier sind bewusste
+Verschiebungen mit Begründung, siehe Erinnerung Abschnitt 9):
+Zweistufiges Rollenmodell ist als schlanke Variante gebaut (kein
+Support-Stufen-System). Automatisierte Regelwerk-Erzeugung, Level-
+Kurven-Divergenz zwischen Orgs (bewusst mit der Automatisierungs-Frage
+verknüpft) und Weltunternehmen-Vision bleiben eigene, größere,
+zukünftige Vorhaben — kein Bauauftrag.
+
+### Phase 2 (JETZT): 5-Agenten-Tiefenprüfung des CRM-Kernstücks
+Nutzer-Vorgabe: "das Kernstück des CRM muss absolut genial
+funktionieren" — gleiches Muster wie der systematische
 12-Häppchen-Bugfix-Durchgang 2026-08-21/22 (siehe Abschnitt
 "Bugfix-Konventionen" weiter unten): mehrere parallele Review-Agenten
 pro Häppchen (Korrektheit/Effizienz/Cross-File/Zeile-für-Zeile/totes
 Verhalten), gezielt auf das CRM-Kernstück (Kontakte/Kanban/Verkauf/
-Dungeons — nicht Gamification-Beiwerk).
+Dungeons — nicht Gamification-Beiwerk). **Bewusst budgetbedingt klein
+gestartet** (3 statt 5 parallele Agenten, ein Bereich nach dem anderen
+statt aller vier gleichzeitig) — kein Abweichen vom Prinzip, nur
+kleinere Häppchen.
+
+**Fortschritt:**
+- ✅ **Kanban** (2026-08-30) — 3 Agenten (Korrektheit/Zeile-für-Zeile/
+  Cross-File), 3 echte Bugs gefunden und behoben (Doppel-Escaping bei
+  Organisator-Namen; XP/Quest-Boni wurden vor der eigentlichen,
+  sperr-geprüften Zustandsänderung gebucht statt danach, gleicher
+  Fehler in zwei Einstiegspunkten `moveKanbanCard()`/
+  `logActionForContact()`; "Gewonnen"-XP wurde auch ohne bestätigten
+  Verkauf gebucht — neuer gemeinsamer Helfer
+  `moveContactToGewonnenAndRecordSale()` behebt beides). Beide
+  Regressions-Suiten grün, Commit `cf94df5`.
+- ⬜ Kontakte — noch offen
+- ⬜ Verkauf/Statistik — noch offen
+- ⬜ Dungeons — noch offen
 
 ### Phase 3: Anwenderoberfläche + Frontend-Framework-Frage
 Erst NACHDEM alle "Baustellen" (Phase 1+2) beseitigt sind. Betrifft die
