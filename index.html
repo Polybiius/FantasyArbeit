@@ -6763,6 +6763,24 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   async function logActionForContact(key, contact){
+    // "abschluss" hängt an einer eigenen Sperr-geprüften Kanban-Spalten-
+    // Änderung + Verkaufs-Bestätigung -- läuft komplett über den mit
+    // moveKanbanCard() geteilten Helfer moveContactToGewonnenAndRecordSale(),
+    // NICHT über den generischen XP-Log-Weg unten. Sonst würde die
+    // abschluss-XP doppelt gebucht (einmal hier unbedingt, einmal im
+    // Helfer nur bei echtem Verkauf) -- und derselbe Bug wie im Kanban
+    // selbst wäre hier ebenfalls vorhanden gewesen (XP gebucht, obwohl das
+    // Verkaufs-Popup ohne Produkt geschlossen wird). Bugfix 2026-08-30,
+    // Kanban-Korrektheits-Review ("Derselbe Fehler existiert identisch im
+    // parallelen Abschluss-Button-Pfad").
+    if(key==='abschluss'){
+      document.getElementById('locActionModal').style.display='none';
+      await moveContactToGewonnenAndRecordSale(contact);
+      await flushKanbanActionPost();
+      await refreshContactsAndDetail(contact.id);
+      return;
+    }
+
     const a = config.actions[key];
     if(!a) return;
     const remaining = config.energyMax - energyUsedToday();
@@ -6773,12 +6791,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(error){ reportError('Aktion für Kontakt speichern', error); return; }
     log.push(data);
     // Dialog schon hier schließen, nicht erst am Ende der Funktion --
-    // sonst hängt er während des nachfolgend geöffneten Verkaufs-Popups
-    // (Zweig "abschluss" unten) noch sichtbar im Hintergrund/davor, weil
-    // recordWinOrLoss() erst nach dessen Schließen zurückkehrt (gemeldeter
-    // Bug 2026-08-14, gleiches Muster wie das seriesScopeModal-z-index-
-    // Problem früher -- hier aber an der Wurzel behoben: gar nicht erst
-    // zwei Modals gleichzeitig offen haben).
+    // sonst hängt er während eines nachfolgend geöffneten Popups noch
+    // sichtbar im Hintergrund/davor (gemeldeter Bug 2026-08-14, gleiches
+    // Muster wie das seriesScopeModal-z-index-Problem früher -- hier aber
+    // an der Wurzel behoben: gar nicht erst zwei Modals gleichzeitig offen
+    // haben).
     document.getElementById('locActionModal').style.display='none';
     await checkAndAwardRecurringQuests();
     await checkAndAwardQuestTreeAndEpics();
@@ -6794,18 +6811,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         else if(res.conflict) alertContactConflict();
         else { contact.kanban_stage = 'ersttermin_vereinbart'; contact.updated_at = res.data.updated_at; }
       }
-    }
-
-    // Abschluss über diesen Dialog (z.B. auf dem Handy, wo Ziehen im Kanban
-    // nicht geht) muss dieselbe Wirkung haben wie das Ziehen der Karte auf
-    // "Gewonnen": Kanban-Spalte setzen, Produkt(e)+Menge abfragen, Status
-    // auf "Kunde" setzen. Das fehlte hier bisher komplett.
-    if(key==='abschluss'){
-      const res = await updateContactWithLockCheck(contact.id, { kanban_stage:'gewonnen' }, contact.updated_at);
-      if(res.error) reportError('Kanban-Spalte aktualisieren', res.error);
-      else if(res.conflict) alertContactConflict();
-      else { contact.kanban_stage = 'gewonnen'; contact.updated_at = res.data.updated_at; }
-      await recordWinOrLoss(contact, 'gewonnen');
     }
 
     render();
@@ -9220,7 +9225,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
              <button class="cal-nav-btn" data-respond="decline" style="flex:1;">Ablehnen</button>
            </div>`;
       return `<div class="cd-field" data-invitation="${inv.id}">
-        <span class="cdl">${isCancelled ? `❌ Von ${escHtml(organizerName)} abgesagt` : `${escHtml(organizerName)} lädt dich ein`}</span>
+        <span class="cdl">${isCancelled ? `❌ Von ${organizerName} abgesagt` : `${organizerName} lädt dich ein`}</span>
         <span class="cdv">${escHtml(inv.title)} — ${dateStr}, ${timeStr}${inv.kanal && KANAL_ICONS[inv.kanal] ? ` ${KANAL_ICONS[inv.kanal]}` : ''}</span>
         ${actions}
       </div>`;
@@ -9608,12 +9613,58 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     // "kunde"/"verloren" markiert werden -- sonst zeigt die Kontakt-Seite
     // einen "Kunden" mit 0 Verträgen.
     const saleRecorded = await recordSaleForKanban(contact, status);
-    if(!saleRecorded) return;
+    if(!saleRecorded) return false;
     const newStatus = status==='gewonnen' ? 'kunde' : 'verloren';
     const res = await updateContactWithLockCheck(contact.id, { status: newStatus }, contact.updated_at);
     if(res.error) logSilentError('Kontaktstatus aktualisieren', res.error);
     else if(res.conflict) alertContactConflict();
     else { contact.status = newStatus; contact.updated_at = res.data.updated_at; }
+    return true;
+  }
+
+  // Gemeinsamer Helfer für "Kontakt auf Gewonnen setzen" -- von zwei
+  // Einstiegspunkten genutzt (Kanban-Ziehen in moveKanbanCard() UND der
+  // "Abschluss"-Knopf im Kontakt-Aktionsdialog logActionForContact()),
+  // damit beide exakt dasselbe (korrigierte) Verhalten haben statt
+  // unabhängig voneinander zu driften.
+  //
+  // Bugfix 2026-08-30 (Kanban-Korrektheits-Review): vorher wurde die
+  // "abschluss"-XP IMMER sofort gebucht, sobald eine Karte auf "Gewonnen"
+  // gezogen wurde -- auch wenn das anschließende Verkaufs-Popup ohne
+  // Produkt mit "✕" geschlossen wurde. Ergebnis: Karte blieb in "Gewonnen"
+  // hängen, abschluss-XP war gebucht und floss in Abschlussquote-/
+  // Eigenausbau-Quests ein, obwohl gar kein Vertrag zustande kam. Jetzt:
+  // Spalte wird zwar sofort (Sperr-geprüft) gesetzt, abschluss-XP aber
+  // NUR gebucht, wenn tatsächlich ein Produkt eingetragen wurde -- sonst
+  // wird die Spaltenänderung wieder zurückgenommen.
+  //
+  // Rückgabewert: die action_log-ID bei echtem, gebuchtem Abschluss,
+  // sonst `false` (Energie nicht ausgereicht, Sperr-Konflikt, oder
+  // Verkaufs-Popup ohne Produkt abgebrochen).
+  async function moveContactToGewonnenAndRecordSale(contact){
+    const previousStage = contact.kanban_stage;
+    const a = config.actions['abschluss'];
+    const remaining = config.energyMax - energyUsedToday();
+    if(a && a.energy > 0 && a.energy > remaining){ alert(`Nicht genug Energie heute für "${a.label}".`); return false; }
+
+    const res = await updateContactWithLockCheck(contact.id, { kanban_stage: 'gewonnen' }, contact.updated_at);
+    if(res.error){ reportError('Kanban-Spalte aktualisieren', res.error); return false; }
+    if(res.conflict){ alertContactConflict(); return false; }
+    contact.kanban_stage = 'gewonnen';
+    contact.updated_at = res.data.updated_at;
+
+    const saleRecorded = await recordWinOrLoss(contact, 'gewonnen');
+    if(saleRecorded){
+      return await logKanbanAction(contact, 'abschluss', null, {defer:true});
+    }
+    // Kein Produkt eingetragen -- kein echter Abschluss, Karte bleibt nicht
+    // fälschlich in "Gewonnen" hängen.
+    const revertRes = await updateContactWithLockCheck(contact.id, { kanban_stage: previousStage }, contact.updated_at);
+    if(!revertRes.error && !revertRes.conflict){
+      contact.kanban_stage = previousStage;
+      contact.updated_at = revertRes.data.updated_at;
+    }
+    return false;
   }
 
   // Kleines Popup mit optionalen Zusatz-Aktionen (Bedarfsanalyse bei
@@ -9661,27 +9712,55 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const fromTerminal = (fromStage==='gewonnen' || fromStage==='verloren');
     const toActive = (toStage==='ersttermin_vereinbart' || toStage==='angebot_versendet' || toStage==='zweittermin');
 
-    let ok = true;
+    // "Gewonnen" läuft komplett über moveContactToGewonnenAndRecordSale()
+    // (eigene Spaltenänderung + Verkaufs-Erfassung, siehe dort). Für alle
+    // anderen Übergänge: Reihenfolge bewusst umgekehrt gegenüber früher
+    // (Bugfix 2026-08-30, Kanban-Korrektheits-Review) -- ERST die
+    // Sperr-geprüfte Zustandsänderung bestätigen, ERST DANACH XP buchen.
+    // Vorher wurde die XP auch dann committet, wenn der Sperr-Check danach
+    // scheiterte (zwei Tabs / ein Kollege ändert den Kontakt gleichzeitig)
+    // -- ein inkonsistenter Zustand (XP gebucht, Karte aber gar nicht
+    // verschoben). Die Energie-Prüfung selbst bleibt vorab und rein
+    // clientseitig (kein DB-Zugriff), damit "Energie reicht nicht" weiterhin
+    // heißt "gar nichts passiert", nicht nur "keine XP, Karte bewegt sich
+    // trotzdem".
+    let mainActionKey = null;
     if(toStage==='nicht_erschienen'){
       // Herkunft entscheidet, welcher Termin nicht wahrgenommen wurde --
       // seit "Nicht erschienen" auch vom Zweittermin aus erreichbar ist
       // (Akquise-Trichter, siehe CLAUDE.md), reicht die Zielspalte allein
       // nicht mehr zur Unterscheidung.
-      ok = await logKanbanAction(contact, fromStage==='zweittermin' ? 'zweittermin_nicht_wahrgenommen' : 'termin_nicht_wahrgenommen', null, {defer:true});
+      mainActionKey = fromStage==='zweittermin' ? 'zweittermin_nicht_wahrgenommen' : 'termin_nicht_wahrgenommen';
     } else if(fromTerminal && toActive){
-      ok = await logKanbanAction(contact, 'kundenausbau', null, {defer:true});
+      mainActionKey = 'kundenausbau';
     } else if(toStage==='ersttermin_vereinbart'){
-      ok = await logKanbanAction(contact, 'termin_vereinbart', null, {defer:true});
-    } else if(toStage==='angebot_versendet'){
-      ok = await logKanbanAction(contact, 'pitch', null, {defer:true});
-    } else if(toStage==='zweittermin'){
-      ok = await logKanbanAction(contact, 'pitch', null, {defer:true});
-    } else if(toStage==='gewonnen'){
-      ok = await logKanbanAction(contact, 'abschluss', null, {defer:true});
+      mainActionKey = 'termin_vereinbart';
+    } else if(toStage==='angebot_versendet' || toStage==='zweittermin'){
+      mainActionKey = 'pitch';
     }
-    // neuer_lead, dauerbrenner, verloren: keine automatische Aktion
+    // neuer_lead, dauerbrenner, verloren, gewonnen: keine Aktion in diesem Zweig
 
-    if(!ok) return; // Hauptaktion nicht geloggt -> nichts nachzuziehen
+    if(mainActionKey){
+      const a = config.actions[mainActionKey];
+      const remaining = config.energyMax - energyUsedToday();
+      if(a && a.energy > 0 && a.energy > remaining){ alert(`Nicht genug Energie heute für "${a.label}".`); return; }
+    }
+
+    if(toStage!=='gewonnen'){
+      const res = await updateContactWithLockCheck(contactId, { kanban_stage: toStage }, contact.updated_at);
+      if(res.error){ reportError('Kanban-Spalte aktualisieren', res.error); return; }
+      if(res.conflict){ alertContactConflict(); return; }
+      contact.kanban_stage = toStage;
+      contact.updated_at = res.data.updated_at;
+    }
+
+    let ok = true;
+    if(mainActionKey){
+      ok = await logKanbanAction(contact, mainActionKey, null, {defer:true});
+    }
+    if(toStage==='gewonnen'){
+      ok = await moveContactToGewonnenAndRecordSale(contact);
+    }
 
     // Abgeleitete "wahrgenommen"-Markierungen für den Akquise-Trichter
     // (Statistik-Seite, siehe CLAUDE.md) -- zusätzlich zur oben schon
@@ -9701,37 +9780,38 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     //    Kontakt doch noch, war der Trichter-Durchlauf mehr wert als gedacht).
     //  - hasFunnelMarkerThisYear(): pro Kontakt/Jahr nur einmal, gegen
     //    Vervielfachung durch mehrfaches Hin-und-Her-Ziehen (Code-Review 2026-08-27).
-    const isKunde = contact.status === 'kunde';
-    if(!isKunde && fromStage==='ersttermin_vereinbart' && ['angebot_versendet','zweittermin','gewonnen','verloren'].includes(toStage)
-       && !hasFunnelMarkerThisYear(contact.id,'termin_wahrgenommen')){
-      await logKanbanAction(contact, 'termin_wahrgenommen', null, {defer:true});
-    }
-    if(!isKunde && fromStage==='zweittermin' && ['gewonnen','verloren'].includes(toStage)
-       && !hasFunnelMarkerThisYear(contact.id,'zweittermin_wahrgenommen')){
-      await logKanbanAction(contact, 'zweittermin_wahrgenommen', null, {defer:true});
-    }
-    if(!isKunde && toStage==='zweittermin' && !fromTerminal
-       && !hasFunnelMarkerThisYear(contact.id,'zweittermin_vereinbart')){
-      // !fromTerminal schließt den Kundenausbau-Fall aus (Karte kommt von
-      // Gewonnen/Verloren zurück auf Zweittermin) -- das ist keine neue
-      // Terminvereinbarung, sonst würde der Trichter hier künstlich
-      // aufgebläht (Fund einer Zweitmeinung, 2026-08-26).
-      await logKanbanAction(contact, 'zweittermin_vereinbart', null, {defer:true});
+    // Bewusst unabhängig vom "gewonnen"-Verkaufs-Ausgang (ok): ob ein
+    // Ersttermin/Zweittermin wahrgenommen wurde, ändert sich nicht dadurch,
+    // dass der anschließende Verkaufs-Abschluss später doch nicht zustande
+    // kam -- nur guarded gegen `mainActionKey` selbst fehlgeschlagen (z.B.
+    // Energie), dann gibt es ohnehin keine neue Kartenbewegung.
+    if(ok){
+      const isKunde = contact.status === 'kunde';
+      if(!isKunde && fromStage==='ersttermin_vereinbart' && ['angebot_versendet','zweittermin','gewonnen','verloren'].includes(toStage)
+         && !hasFunnelMarkerThisYear(contact.id,'termin_wahrgenommen')){
+        await logKanbanAction(contact, 'termin_wahrgenommen', null, {defer:true});
+      }
+      if(!isKunde && fromStage==='zweittermin' && ['gewonnen','verloren'].includes(toStage)
+         && !hasFunnelMarkerThisYear(contact.id,'zweittermin_wahrgenommen')){
+        await logKanbanAction(contact, 'zweittermin_wahrgenommen', null, {defer:true});
+      }
+      if(!isKunde && toStage==='zweittermin' && !fromTerminal
+         && !hasFunnelMarkerThisYear(contact.id,'zweittermin_vereinbart')){
+        // !fromTerminal schließt den Kundenausbau-Fall aus (Karte kommt von
+        // Gewonnen/Verloren zurück auf Zweittermin) -- das ist keine neue
+        // Terminvereinbarung, sonst würde der Trichter hier künstlich
+        // aufgebläht (Fund einer Zweitmeinung, 2026-08-26).
+        await logKanbanAction(contact, 'zweittermin_vereinbart', null, {defer:true});
+      }
     }
 
     // Gebündelte Nacharbeit der oben deferten Aktionen (Quest-Check + render),
-    // genau einmal statt bis zu 4-mal pro Zug.
+    // genau einmal statt bis zu 4-mal pro Zug. "Gewonnen" hat seine
+    // abschluss-XP (falls vorhanden) ebenfalls nur deferred vorgemerkt --
+    // wird hier mit abgearbeitet.
     await flushKanbanActionPost();
 
-    const res = await updateContactWithLockCheck(contactId, { kanban_stage: toStage }, contact.updated_at);
-    if(res.error){ reportError('Kanban-Spalte aktualisieren', res.error); return; }
-    if(res.conflict){ alertContactConflict(); return; }
-    contact.kanban_stage = toStage;
-    contact.updated_at = res.data.updated_at;
-
-    if(toStage==='gewonnen'){
-      await recordWinOrLoss(contact, 'gewonnen');
-    } else if(toStage==='verloren'){
+    if(toStage==='verloren'){
       await recordWinOrLoss(contact, 'verloren');
     }
 
