@@ -97,13 +97,40 @@ kleinere Häppchen.
   — keine abschluss-XP, Spalte blieb bei abgebrochenem Verkaufs-Popup
   fälschlich auf "Gewonnen" stehen, jetzt vereinheitlicht. Beide
   Regressions-Suiten grün.
+- ✅ **Verkauf/Statistik** (2026-08-30) — alle 5 Linsen gefahren, fertig
+  (auf Nutzerwunsch gleich alle 5 statt erst 3, kein zweites Häppchen
+  nötig). Zeile-für-Zeile: keine Funde (BWS-Kette/`PRODUCT_ART_CONFIG`
+  exakt wie dokumentiert). Cross-File: keine Sicherheitslücken, ein
+  dokumentierter Rand-Fall (`guild_sales_metric_total()` verknüpft über
+  `sales.created_by`, das bei echter Account-Löschung — nicht
+  Org-Verlassen — auf `NULL` fällt; historische Verkäufe eines
+  gelöschten Mitarbeiters fallen dann aus der Team-Ziel-Summe, reiner
+  Anzeige-Effekt, keine Datenintegritätsverletzung, bewusst nicht
+  behoben). Korrektheit: 2 echte Bugs behoben —
+  `guild_sales_metric_total()` summierte für Team-Ziele die seit der
+  BWS-Umstellung (2026-08-14) tote Spalte `sales.bewertungssumme`, jedes
+  Lebensversicherungs-Team-Ziel blieb dadurch dauerhaft bei 0 (Migration
+  `20260830110000`, unabhängige Zweitmeinung freigegeben, Dry-Run mit
+  6 Assertions grün); `currentBusinessYear()` nutzte das reine
+  Browser-lokale Jahr statt `tz()` — betraf praktisch die gesamte
+  Verkaufsstatistik-Jahresgrenze (Kompendium, Akquise-Trichter,
+  Jahresquest-Reset, Gilden-Team-Ziele, Schatzraum). Effizienz: 2 echte
+  Funde behoben — `loadAndEvaluateGuildTeamQuests()` fragte Team-Ziel-
+  Summen sequentiell statt parallel ab; `initTrophyRoom()` hatte keinen
+  Guard gegen Mehrfachaufruf (Admin-Debug-Pfad, gleiche Bug-Klasse wie
+  bei anderen Init-Funktionen). Totes Verhalten: bestätigt den
+  `bewertungssumme`-Fund (kein aktiver Lesecode im Frontend, reines
+  DB-seitiges Altlast-Feld), dazu ein nie fertiggestellter Anzeige-Stub
+  ("ausgeschüttete Provision: —" am Kontakt zeigte hart einen Strich
+  statt der längst vorhandenen `saleProvision()`-Berechnung) behoben.
+  Beide Regressions-Suiten grün.
 - ⬜ Kontakte — noch komplett offen (alle 5 Linsen)
-- ⬜ Verkauf/Statistik — noch komplett offen (alle 5 Linsen)
 - ⬜ Dungeons — noch komplett offen (alle 5 Linsen)
 
-**Nächster Schritt beim Wiedereinstieg:** mit Kontakte/Verkauf/Dungeons
-weitermachen (je 3 Linsen zum Start, budgetbedingt) — Reihenfolge unter
-den dreien beim nächsten Anstoß mit dem Nutzer klären.
+**Nächster Schritt beim Wiedereinstieg:** Kontakte oder Dungeons (Nutzer
+hat sich für "gleich alle 5 Linsen" statt 3+2-Aufteilung entschieden —
+gleiches Vorgehen für die verbleibenden zwei Bereiche vorschlagen, nicht
+von selbst wieder auf 3 zurückfallen).
 
 ### Phase 3: Anwenderoberfläche + Frontend-Framework-Frage
 Erst NACHDEM alle "Baustellen" (Phase 1+2) beseitigt sind. Betrifft die

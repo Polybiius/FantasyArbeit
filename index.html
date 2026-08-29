@@ -3492,7 +3492,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // resetten damit automatisch zum 1. Januar, dieselbe Stufe lässt sich in
   // einem Folgejahr erneut verdienen. Reine Hilfsfunktionen, gleiche
   // "reine, DB-lose Funktion"-Linie wie der Rest der Questbaum-Engine.
-  function currentBusinessYear(){ return new Date().getFullYear(); }
+  // Bugfix 2026-08-30 (Verkauf/Statistik-Korrektheits-Review): nutzte bisher
+  // das reine Browser-lokale Jahr (new Date().getFullYear()) statt wie
+  // todayKey()/tz() die aufgelöste Nutzer-/Org-Zeitzone -- betraf praktisch
+  // die gesamte Verkaufsstatistik-Jahresgrenze (Kompendium-Zeitraum-Reiter,
+  // Akquise-Trichter, Jahresquest-Reset, Gilden-Team-Ziele, Schatzraum-
+  // "aktuelles Jahr"). Für jemanden mit abweichender Geräte-Systemzeitzone
+  // (genau der Fall, für den profiles.timezone überhaupt existiert) konnte
+  // rund um Silvester ein Eintrag im falschen Jahr gezählt/gefiltert werden.
+  function currentBusinessYear(){ return localPartsInTZ(new Date(), tz()).year; }
   // Wird pro Rendering-/Prüfungs-Durchlauf mehrfach unabhängig voneinander
   // aufgerufen (evaluateLadderQuest/evaluateRatioQuest/evaluateStreakQuest,
   // sowohl aus computeQuestTreeQuickView() als auch aus
@@ -4245,21 +4253,28 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   async function loadAndEvaluateGuildTeamQuests(guildId){
     const year = currentBusinessYear();
     const quests = (config.guildTeamQuests || []);
+    // Alle Team-Ziel-Summen sind voneinander unabhängig (unterschiedliches
+    // field/category/quest_id) -- parallel abfragen statt nacheinander
+    // (Fund: Verkauf/Statistik-Effizienz-Review, 2026-08-30). Bisher ein
+    // sequentielles await pro Team-Ziel, bei mehreren gleichzeitigen
+    // Zielen (Leben/Kranken/Sach/...) unnötig langsamer Seitenaufbau.
+    const totals = await Promise.all(quests.map(q => sb.rpc('guild_sales_metric_total', {
+      p_guild_id: guildId, p_field: q.metric.field, p_category: q.metric.category, p_year: year
+    })));
     const results = [];
-    for(const q of quests){
-      const { data: total, error } = await sb.rpc('guild_sales_metric_total', {
-        p_guild_id: guildId, p_field: q.metric.field, p_category: q.metric.category, p_year: year
-      });
-      if(error){ logSilentError('Team-Ziel-Fortschritt laden', error); continue; }
+    const grants = [];
+    quests.forEach((q, i)=>{
+      const { data: total, error } = totals[i];
+      if(error){ logSilentError('Team-Ziel-Fortschritt laden', error); return; }
       const met = total >= q.threshold;
       if(met){
-        const { error: grantErr } = await sb.rpc('grant_guild_quest_completion', {
+        grants.push(sb.rpc('grant_guild_quest_completion', {
           p_guild_id: guildId, p_quest_id: q.id, p_stage_id: q.id, p_period_key: String(year)
-        });
-        if(grantErr) logSilentError('Team-Ziel-Erfüllung verbuchen', grantErr);
+        }).then(({error: grantErr})=>{ if(grantErr) logSilentError('Team-Ziel-Erfüllung verbuchen', grantErr); }));
       }
       results.push({ id:q.id, label:q.label, current: total, threshold: q.threshold, met });
-    }
+    });
+    await Promise.all(grants);
     return results;
   }
 
@@ -5734,6 +5749,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   let trophyRoomYear = currentBusinessYear();
+  let trophyRoomInitialized = false;
 
   // Verkäufe eines beliebigen Jahres -- analog zu salesForPeriod(), aber
   // ohne die Monats-Verzweigung, da der Schatzraum immer ganze Jahre zeigt.
@@ -5837,6 +5853,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('trophyRoomModal').style.display = 'none';
   }
   function initTrophyRoom(){
+    // Guard gegen Mehrfachaufruf -- enterApp() läuft mehr als einmal pro
+    // Sitzung (Admin-Debug-Knopf "🎭 Neu erschaffen" ruft es am Ende
+    // erneut auf, siehe CLAUDE.md-Abschnitt "Profil-Onboarding"). Ohne
+    // Guard hängt jeder Durchlauf weitere, nie entfernte Listener an
+    // #trophyRoomTile/#trophyRoomModalCloseBtn/window/Jahr-Pfeile --
+    // N Durchläufe lassen einen Klick N-fach feuern (Fund: Verkauf/
+    // Statistik-Effizienz-Review, 2026-08-30).
+    if(trophyRoomInitialized) { updateTrophyRoomTile(); return; }
+    trophyRoomInitialized = true;
     updateTrophyRoomTile();
     document.getElementById('trophyRoomTile').addEventListener('click', ()=>{
       // Beim Öffnen immer aufs laufende Jahr springen -- sonst bliebe eine
@@ -6351,9 +6376,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     const row = (s, showKuendigen) => {
       const p = productById(s.product_id);
+      // Bugfix 2026-08-30 (Verkauf/Statistik-Tote-Verhalten-Review): war
+      // ein nie fertiggestellter Anzeige-Stub (fest "—"), obwohl
+      // saleProvision() längst existiert und auf der Statistik-Seite
+      // dieselbe Berechnung schon aggregiert nutzt. "Verloren" bleibt
+      // bewusst "—" -- kein Abschluss, keine Provision.
+      const provisionText = (s.status==='gewonnen' && p) ? fmtEuro(saleProvision(s,p)) : '—';
       return `<div class="cc-notes kd-contract-row" data-sale="${s.id}">
         <span class="kdc-main"><strong>${p ? escHtml(p.name) : '?'}</strong>${s.vertragsnummer ? ` <span class="kdc-meta">${escHtml(s.vertragsnummer)}</span>` : ''} — Start: ${fmtDate(s.vertragsbeginn)}
-        · laufender Beitrag: ${fmtEuro(s.laufender_beitrag)} · ausgeschüttete Provision: —
+        · laufender Beitrag: ${fmtEuro(s.laufender_beitrag)} · ausgeschüttete Provision: ${provisionText}
         ${s.status==='verloren' ? ' · <span style="color:var(--danger)">verloren</span>' : ''}
         ${s.vertragsende ? ` · gekündigt zum ${fmtDate(s.vertragsende)}` : ''}</span>
         ${showKuendigen && canEdit ? `<button class="cal-nav-btn" data-kuendigen="${s.id}" data-updated="${s.updated_at}">Gekündigt/ausgelaufen</button>` : ''}
