@@ -139,12 +139,40 @@ ist, nicht automatisch auf 3 zurückfallen.
   statt der längst vorhandenen `saleProvision()`-Berechnung) behoben.
   Beide Regressions-Suiten grün.
 - ⬜ Kontakte — noch komplett offen (alle 5 Linsen)
-- ⬜ Dungeons — noch komplett offen (alle 5 Linsen)
+- ✅ **Dungeons** (2026-08-29) — alle 5 Linsen gefahren (5 parallele
+  Agenten), fertig. Kritischer Fund, zwei Linsen (Korrektheit +
+  Cross-File) unabhängig bestätigt: `assign_location_owner_locked()`
+  vergaß seit der Gildenführer-Erweiterung vom 30.08.
+  (`20260830091000_org_pool_verteilung_gildenfuehrer.sql`) das
+  Trusted-Flag für `protect_location_owner_field()` zu setzen — ein
+  nicht-admin alleiniger Gildenführer bekam beim Zuweisen eines
+  Pool-Dungeons Erfolg gemeldet, der Schutz-Trigger setzte `owner_id`
+  aber still zurück UND protokollierte einen falschen
+  `location_owner_tamper`-Alarm gegen die eigentlich berechtigte
+  Person — die Hälfte des als "live" dokumentierten
+  Org-Pool-Verteilungs-Features war für Dungeons faktisch wirkungslos.
+  Migration `20260830150000_dungeon_review_permission_fixes.sql` behebt
+  das (plus eine fehlende Org-Zugehörigkeits-Prüfung der Zielperson,
+  Cross-File-Fund), Dry-Run mit 4 Assertions gegen die echte DB grün,
+  unabhängige Zweitmeinung (Pflicht bei Berechtigungslogik) fand keine
+  weiteren Probleme, live gepusht. Weitere echte Funde direkt im
+  Frontend behoben: fehlendes `escHtml()` bei Rolle/Status in der
+  Kontakttabelle (Zeile-für-Zeile-Fund), veralteter "nur admin"-Hinweis
+  auf der Account-Pool-Karte (totes-Verhalten-Fund, Karte ist seit dem
+  Org-Pool-Feature auch für Nicht-Admins sichtbar), doppeltes
+  Leerzeichen in der Adresse bei leerer PLZ, kompletter
+  Re-Fetch+Rebuild nach einer einzelnen Kontakt-Zuweisung ersetzt durch
+  gezielte DOM-Aktualisierung + parallel statt sequenziell ladende
+  `refreshDungeonData()` (beides Effizienz-Funde, gleiche Bug-Klasse
+  wie zuvor im Kanban). Eine Race-Condition in der neuen
+  DOM-Aktualisierung (veraltete Closure bei überlappendem Neu-Render)
+  wurde von der Zweitmeinungsrunde zum eigenen Fix gefunden und
+  ebenfalls behoben. Beide Regressions-Suiten grün.
 
-**Nächster Schritt beim Wiedereinstieg:** Kontakte oder Dungeons (Nutzer
-hat sich für "gleich alle 5 Linsen" statt 3+2-Aufteilung entschieden —
-gleiches Vorgehen für die verbleibenden zwei Bereiche vorschlagen, nicht
-von selbst wieder auf 3 zurückfallen).
+**Nächster Schritt beim Wiedereinstieg:** Kontakte, alle 5 Linsen (Nutzer
+hat sich durchgehend für "gleich alle 5 Linsen" statt 3+2-Aufteilung
+entschieden — gleiches Vorgehen vorschlagen, nicht von selbst wieder auf
+3 zurückfallen). Danach ist Phase 2 komplett, weiter mit Phase 3.
 
 ### Phase 3: Anwenderoberfläche + Frontend-Framework-Frage
 Erst NACHDEM alle "Baustellen" (Phase 1+2) beseitigt sind. Betrifft die
