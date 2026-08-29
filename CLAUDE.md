@@ -172,7 +172,21 @@ ist, nicht automatisch auf 3 zurückfallen.
 **Nächster Schritt beim Wiedereinstieg:** Kontakte, alle 5 Linsen (Nutzer
 hat sich durchgehend für "gleich alle 5 Linsen" statt 3+2-Aufteilung
 entschieden — gleiches Vorgehen vorschlagen, nicht von selbst wieder auf
-3 zurückfallen). Danach ist Phase 2 komplett, weiter mit Phase 3.
+3 zurückfallen).
+
+**Zusätzlich, noch innerhalb Phase 2, vom Nutzer am 2026-08-29 explizit
+ergänzt:** ein Durchsprechen (reines Gespräch, keine Code-Änderung) des
+länger angekündigten B2C→B2B-Aktions-Reworks der Handlungen-Seite
+(kontaktlose Aktions-Knöpfe wie Kalttelefonie/5 Nummern gewählt sollen
+konkret an Kontakte gebunden werden, betrifft auch den Questbaum —
+Details/Herleitung: Erinnerung `project_b2c_to_b2b_action_rework`).
+**Bewusst nur die Planung/Konzeption jetzt, nicht der Bau** — Umsetzung
+folgt laut Nutzerentscheidung erst als Teil der Phase-3-React-Migration
+(Details: Erinnerung `project_framework_migration_plan`), nicht vorher
+in Vanilla JS, damit nicht zweimal gebaut wird.
+
+Danach (Kontakte-Review + dieses Gespräch) ist Phase 2 komplett, weiter
+mit Phase 3.
 
 ### Phase 3: Anwenderoberfläche + Frontend-Framework-Frage
 Erst NACHDEM alle "Baustellen" (Phase 1+2) beseitigt sind. Betrifft die
