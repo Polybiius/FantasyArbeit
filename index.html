@@ -1424,7 +1424,7 @@
         </div>
 
         <div class="card" id="accountPoolCard" style="display:none;margin-top:18px;">
-          <h2>Accounts verwalten <span class="tag">nur admin</span></h2>
+          <h2>Accounts verwalten</h2>
           <div class="empty-page-hint" style="margin-bottom:8px;">Jeder Account gehört genau einem Mitarbeiter, oder liegt unzugewiesen im Pool.</div>
           <div id="accountPoolList"></div>
         </div>
@@ -6007,7 +6007,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const statusEl = document.getElementById('betriebCreateStatus');
     if(!name || !strasse || !stadt){ statusEl.textContent = 'Bitte mindestens Betrieb, Straße und Stadt eingeben.'; return; }
 
-    const fullAddress = `${strasse}, ${plz} ${stadt}`.trim();
+    const fullAddress = [`${strasse},`, plz, stadt].filter(Boolean).join(' ').trim();
     statusEl.textContent = 'Suche Koordinaten …';
     btn.disabled = true;
     try{
@@ -6136,9 +6136,9 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const rows = contactsSubset.map(c=>`
       <tr class="ctable-row">
         <td><a class="ctable-row-link" href="#kontakt/${c.id}">${escHtml(c.name)}</a></td>
-        <td>${bundle.roles[c.role]||c.role||'—'}</td>
+        <td>${escHtml(bundle.roles[c.role]||c.role||'—')}</td>
         <td>${c.location_id ? escHtml(locName(bundle, c.location_id)) : '—'}</td>
-        <td><span class="cc-status ${c.status}">${c.status}</span></td>
+        <td><span class="cc-status ${escHtml(c.status)}">${escHtml(c.status)}</span></td>
         <td>${c.naechster_kontakt ? new Date(c.naechster_kontakt+'T12:00:00').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—'}</td>
       </tr>`).join('');
     container.innerHTML = `<table class="ctable">
@@ -7569,13 +7569,34 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     setTimeout(()=> dungeonMap.invalidateSize(), 200);
   }
 
-  // Lädt Standorte + (für Admins) den Account-Pool neu -- gemeinsamer
-  // Helfer statt zweier unabhängiger locations-Abfragen (loadAndRenderLocations
-  // liest ohnehin schon alle Spalten inkl. owner_id, renderAccountPool nutzt
-  // dieselben Zeilen weiter statt sie ein zweites Mal zu holen).
+  // Lädt Standorte + (für Admins/Pool-Verteiler) den Account-Pool neu --
+  // beide Datenquellen sind voneinander unabhängig (locations vs.
+  // profiles+herrenlose contacts) und laufen deshalb parallel statt
+  // nacheinander, statt wie vorher komplett auf loadAndRenderLocations()
+  // zu warten, bevor die Account-Pool-Abfragen überhaupt starten.
   async function refreshDungeonData(){
-    const locs = await loadAndRenderLocations();
-    if(profile.role==='admin' || isPoolDistributor) await renderAccountPool(locs);
+    const wantsPool = profile.role==='admin' || isPoolDistributor;
+    const [locs, poolData] = await Promise.all([
+      loadAndRenderLocations(),
+      wantsPool ? loadAccountPoolMembersAndContacts() : Promise.resolve(null)
+    ]);
+    if(wantsPool) renderAccountPool(locs, poolData);
+  }
+
+  // Team-Mitglieder + herrenlose Kontakte für den Account-Pool -- getrennt
+  // von renderAccountPool(), damit refreshDungeonData() diese Abfrage
+  // parallel zu loadAndRenderLocations() starten kann statt sequenziell.
+  async function loadAccountPoolMembersAndContacts(){
+    const [
+      { data: members, error: memErr },
+      { data: poolContacts, error: pcErr }
+    ] = await Promise.all([
+      sb.from('profiles').select('id,display_name').eq('org_id', profile.org_id),
+      sb.from('contacts').select('id,name,updated_at').eq('org_id', profile.org_id).is('owner_id', null).is('guild_id', null)
+    ]);
+    if(memErr) logSilentError('Team-Mitglieder laden', memErr);
+    if(pcErr) logSilentError('Herrenlose Kontakte laden', pcErr);
+    return { members: members||[], poolContacts: poolContacts||[] };
   }
 
   // Seit Aufgabe 1 (Org-Pool-Verteilung) zweigeteilt: Dungeons (wie
@@ -7584,11 +7605,9 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // (bewusst NUR echte Org-Pool-Kontakte -- owner_id UND guild_id beide
   // NULL -- nicht alle Org-Kontakte, da diese Liste über die Zeit groß
   // werden kann, anders als die naturgemäß wenigen Dungeons).
-  async function renderAccountPool(locs){
+  function renderAccountPool(locs, { members, poolContacts }){
     const listEl = document.getElementById('accountPoolList');
-    const { data: members, error: memErr } = await sb.from('profiles').select('id,display_name').eq('org_id', profile.org_id);
-    if(memErr) logSilentError('Team-Mitglieder laden', memErr);
-    const memberOptions = (members||[]).map(m=>`<option value="${m.id}">${escHtml(m.display_name)}</option>`).join('');
+    const memberOptions = members.map(m=>`<option value="${m.id}">${escHtml(m.display_name)}</option>`).join('');
 
     const dungeonsHtml = (!locs || locs.length===0)
       ? '<div class="empty-page-hint">Noch keine Accounts angelegt.</div>'
@@ -7600,13 +7619,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
               ${memberOptions}
             </select>
           </div>`).join('');
-
-    const { data: poolContacts, error: pcErr } = await sb.from('contacts')
-      .select('id,name,updated_at')
-      .eq('org_id', profile.org_id)
-      .is('owner_id', null)
-      .is('guild_id', null);
-    if(pcErr) logSilentError('Herrenlose Kontakte laden', pcErr);
 
     const contactsHtml = (!poolContacts || poolContacts.length===0)
       ? '<div class="empty-page-hint">Keine herrenlosen Kontakte.</div>'
@@ -7646,10 +7658,21 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         const res = await adminReassignContact(contactId, newOwner, contact.updated_at);
         if(res.error){ reportError('Kontakt-Zuweisung ändern', res.error); return; }
         if(res.conflict){ alertConflict('Dieser Kontakt'); sel.value = ''; return; }
-        // Zugewiesener Kontakt verschwindet aus dem Pool -- bei der
-        // erwarteten Listengröße (10-120) ist ein kompletter Neu-Render
-        // einfacher als gezieltes Entfernen der einzelnen Zeile.
-        await renderAccountPool(locs);
+        // Zugewiesener Kontakt verschwindet aus dem Pool -- lokal aus der
+        // Liste entfernen statt komplett neu zu laden/rendern (gleiches
+        // Muster wie beim data-assign-loc-Zweig oben). Bewusst NICHT über
+        // das geschlossene poolContacts-Array/den geschlossenen sel/listEl
+        // gehen -- nach dem obigen await kann inzwischen ein kompletter
+        // refreshDungeonData()-Neu-Render gelaufen sein (z.B. durch einen
+        // Seitenwechsel und zurück), der beides veralten lässt. Stattdessen
+        // gezielt den aktuell im DOM stehenden Zeilen-Stand abfragen.
+        const currentListEl = document.getElementById('accountPoolList');
+        currentListEl.querySelector(`[data-assign-contact="${contactId}"]`)?.closest('.account-row')?.remove();
+        if(!currentListEl.querySelector('[data-assign-contact]')){
+          const contactsHeading = [...currentListEl.children].find(el=>el.textContent==='Herrenlose Kontakte');
+          const alreadyHasHint = contactsHeading?.nextElementSibling?.classList.contains('empty-page-hint');
+          if(contactsHeading && !alreadyHasHint) contactsHeading.insertAdjacentHTML('afterend', '<div class="empty-page-hint">Keine herrenlosen Kontakte.</div>');
+        }
       });
     });
   }
