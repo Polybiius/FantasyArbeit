@@ -73,27 +73,37 @@ gestartet** (3 statt 5 parallele Agenten, ein Bereich nach dem anderen
 statt aller vier gleichzeitig) — kein Abweichen vom Prinzip, nur
 kleinere Häppchen.
 
-**Fortschritt** (Matrix: 4 Bereiche × 5 Prüf-Linsen — pro Bereich bisher
-nur 3 der 5 Linsen gefahren, budgetbedingt; Effizienz + totes Verhalten
-fehlen überall noch, auch bei Kanban):
-- 🟡 **Kanban** (2026-08-30) — 3 von 5 Linsen gefahren (Korrektheit/
-  Zeile-für-Zeile/Cross-File), 3 echte Bugs gefunden und behoben
-  (Doppel-Escaping bei Organisator-Namen; XP/Quest-Boni wurden vor der
-  eigentlichen, sperr-geprüften Zustandsänderung gebucht statt danach,
-  gleicher Fehler in zwei Einstiegspunkten `moveKanbanCard()`/
-  `logActionForContact()`; "Gewonnen"-XP wurde auch ohne bestätigten
-  Verkauf gebucht — neuer gemeinsamer Helfer
-  `moveContactToGewonnenAndRecordSale()` behebt beides). Beide
-  Regressions-Suiten grün, Commit `cf94df5`. **Noch offen für Kanban:**
-  Effizienz + totes Verhalten (2 weitere Agenten).
+**Fortschritt** (Matrix: 4 Bereiche × 5 Prüf-Linsen):
+- ✅ **Kanban** (2026-08-30) — alle 5 Linsen gefahren, fertig.
+  Korrektheit/Zeile-für-Zeile/Cross-File (Commit `cf94df5`): 3 echte
+  Bugs behoben (Doppel-Escaping bei Organisator-Namen; XP/Quest-Boni
+  wurden vor der eigentlichen, sperr-geprüften Zustandsänderung gebucht
+  statt danach, gleicher Fehler in zwei Einstiegspunkten
+  `moveKanbanCard()`/`logActionForContact()`; "Gewonnen"-XP wurde auch
+  ohne bestätigten Verkauf gebucht — neuer gemeinsamer Helfer
+  `moveContactToGewonnenAndRecordSale()` behebt beides). Effizienz +
+  totes Verhalten (2 parallele Agenten, dieselbe Sitzung): 3 weitere
+  echte Funde behoben — voller Netzwerk-Refetch + Voll-Rebuild aller 8
+  Spalten nach JEDEM einzelnen Kartenzug (`renderKanbanBoard()` hat
+  jetzt ein `opts.skipFetch`, `moveKanbanCard()` nutzt danach den
+  bereits im Speicher aktualisierten Cache statt neu zu laden);
+  unbegrenzt wachsende Scroll-/Resize-Listener-Anhäufung durch
+  `initScrollFade()` ohne Mehrfachaufruf-Guard (betraf neben Kanban
+  auch `renderStatTabs()`, an der Wurzel in `initScrollFade()` selbst
+  gefixt); ein dritter, vom 2026-08-30-Refactor übersehener
+  "+Verkauf eintragen"-Knopf auf der Kontakt-Seite
+  (`cdAddSaleBtn`) rief bei "Gewonnen" weiterhin direkt
+  `recordWinOrLoss()` auf statt `moveContactToGewonnenAndRecordSale()`
+  — keine abschluss-XP, Spalte blieb bei abgebrochenem Verkaufs-Popup
+  fälschlich auf "Gewonnen" stehen, jetzt vereinheitlicht. Beide
+  Regressions-Suiten grün.
 - ⬜ Kontakte — noch komplett offen (alle 5 Linsen)
 - ⬜ Verkauf/Statistik — noch komplett offen (alle 5 Linsen)
 - ⬜ Dungeons — noch komplett offen (alle 5 Linsen)
 
-**Nächster Schritt beim Wiedereinstieg:** entweder die 2 fehlenden
-Linsen (Effizienz/totes Verhalten) für Kanban nachholen, oder gleich
-mit Kontakte/Verkauf/Dungeons (je 3 Linsen) weitermachen — beides
-offen, Reihenfolge beim nächsten Anstoß mit dem Nutzer klären.
+**Nächster Schritt beim Wiedereinstieg:** mit Kontakte/Verkauf/Dungeons
+weitermachen (je 3 Linsen zum Start, budgetbedingt) — Reihenfolge unter
+den dreien beim nächsten Anstoß mit dem Nutzer klären.
 
 ### Phase 3: Anwenderoberfläche + Frontend-Framework-Frage
 Erst NACHDEM alle "Baustellen" (Phase 1+2) beseitigt sind. Betrifft die

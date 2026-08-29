@@ -2513,6 +2513,16 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   function initScrollFade(el){
     if(!el) return;
     updateScrollFade(el);
+    // Guard gegen Mehrfachaufruf: wird an mehreren Stellen bei jedem
+    // Neu-Rendern desselben, wiederverwendeten DOM-Knotens erneut aufgerufen
+    // (renderKanbanBoard() bei jedem Kartenzug, renderStatTabs() bei jedem
+    // Zeitraum-Wechsel) -- ohne diesen Guard hängt jeder Aufruf eine weitere,
+    // nie wieder entfernte scroll-/resize-Listener-Instanz an denselben
+    // Knoten bzw. `window` (Fund: Kanban-Effizienz-Review, 2026-08-30).
+    // `updateScrollFade()` oben läuft bewusst bei jedem Aufruf weiterhin
+    // frisch, nur das Verdrahten der Listener passiert genau einmal pro Element.
+    if(el.dataset.scrollFadeInit) return;
+    el.dataset.scrollFadeInit = '1';
     el.addEventListener('scroll', ()=>updateScrollFade(el));
     window.addEventListener('resize', ()=>updateScrollFade(el));
   }
@@ -6361,23 +6371,43 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('contactDetailSales').innerHTML = html;
 
     const saleBtn = document.getElementById('cdAddSaleBtn');
-    if(saleBtn) saleBtn.addEventListener('click', async ()=>{
+    if(saleBtn) saleBtn.addEventListener('click', withClickGuard('cdAddSaleBtn', async ()=>{
       const gewonnen = confirm('Gewonnen? (Abbrechen = Verloren)');
-      const status = gewonnen ? 'gewonnen' : 'verloren';
-      // Steht der Kontakt schon im Kanban, muss dieser Weg dieselbe Wirkung
-      // haben wie das Ziehen der Karte -- fehlte hier bisher komplett (Bug,
-      // 2026-08-14 gemeldet: Verkauf eingetragen, Ersttermin blieb stehen).
-      // Ein Kontakt ganz ohne Kanban-Zugehörigkeit wird dadurch NICHT
-      // nachträglich ins Board gezogen, gleiches Prinzip wie überall sonst.
-      if(c.kanban_stage){
-        const res = await updateContactWithLockCheck(c.id, { kanban_stage: status }, c.updated_at);
-        if(res.error) reportError('Kanban-Spalte aktualisieren', res.error);
-        else if(res.conflict) alertContactConflict();
-        else { c.kanban_stage = status; c.updated_at = res.data.updated_at; }
+      if(gewonnen){
+        // "Gewonnen" läuft über denselben gemeinsamen Helfer wie das
+        // Kanban-Ziehen (moveKanbanCard()) und der Abschluss-Knopf im
+        // Kontakt-Aktionsdialog (logActionForContact()) -- setzt die
+        // Spalte, bucht die abschluss-XP NUR bei echtem Verkauf und nimmt
+        // die Spaltenänderung sonst wieder zurück. Dieser dritte
+        // Einstiegspunkt rief bisher direkt recordWinOrLoss() auf: keine
+        // abschluss-XP, und bei abgebrochenem Verkaufs-Popup blieb die
+        // Spalte fälschlich auf "Gewonnen" stehen -- derselbe, für die
+        // anderen beiden Wege am 2026-08-30 behobene Bug, hier vom
+        // damaligen Refactor übersehen (Kanban-Effizienz-/Tote-Verhalten-
+        // Review, 2026-08-30). Zieht dabei bewusst auch einen Kontakt ohne
+        // bisherige Kanban-Zugehörigkeit ins Board (previousStage=null),
+        // exakt wie logActionForContact()'s abschluss-Zweig es ebenfalls tut.
+        await moveContactToGewonnenAndRecordSale(c);
+        await flushKanbanActionPost();
+      } else {
+        const status = 'verloren';
+        // Steht der Kontakt schon im Kanban, muss dieser Weg dieselbe Wirkung
+        // haben wie das Ziehen der Karte -- fehlte hier bisher komplett (Bug,
+        // 2026-08-14 gemeldet: Verkauf eingetragen, Ersttermin blieb stehen).
+        // Ein Kontakt ganz ohne Kanban-Zugehörigkeit wird dadurch NICHT
+        // nachträglich ins Board gezogen, gleiches Prinzip wie überall sonst.
+        // "Verloren" hat keine XP zu schützen, deshalb hier weiterhin ohne
+        // Revert bei abgebrochenem Popup -- identisch zum Kanban-Ziehen.
+        if(c.kanban_stage){
+          const res = await updateContactWithLockCheck(c.id, { kanban_stage: status }, c.updated_at);
+          if(res.error) reportError('Kanban-Spalte aktualisieren', res.error);
+          else if(res.conflict) alertContactConflict();
+          else { c.kanban_stage = status; c.updated_at = res.data.updated_at; }
+        }
+        await recordWinOrLoss(c, status);
       }
-      await recordWinOrLoss(c, status);
       await refreshContactsAndDetail(c.id);
-    });
+    }));
     document.querySelectorAll('#contactDetailSales [data-kuendigen]').forEach(btn=>{
       btn.addEventListener('click', async ()=>{
         const datum = prompt('Kündigungsdatum (JJJJ-MM-TT):', todayKey(new Date()));
@@ -8908,24 +8938,46 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     dauerbrenner: {icon:'🔥', label:'Dauerbrenner'},
   };
   let kanbanBundleCache = null;
+  let kanbanSharedInvitesCache = null;
 
-  async function renderKanbanBoard(){
-    // Zwei unabhängige Ladevorgänge (eigenes Kontakt-Bundle, geteilte
-    // Kanban-Karten über termin_invitations) -- parallel starten statt
-    // nacheinander abzuwarten, gleiches Muster wie renderWeekView()/
-    // renderDayView().
-    const [bundle, sharedRes] = await Promise.all([
-      loadContactsBundle(),
-      sb.from('termin_invitations')
-        .select('id, contact:contact_id(id,name,kanban_stage,location_id), organizer:organizer_id(display_name,real_name)')
-        .eq('invited_user_id', profile.id).eq('status','angenommen').not('contact_id','is',null)
-    ]);
-    if(bundle.error){
-      logSilentError('Kanban laden', bundle.error);
-      KANBAN_STAGES.forEach(s=>{ document.getElementById('kanbanCards_'+s).innerHTML = '<div class="empty-page-hint">Fehler beim Laden.</div>'; });
-      return;
+  // opts.skipFetch: nach einem einzelnen Kartenzug ist kanbanBundleCache
+  // durch moveKanbanCard() bereits in-place aktualisiert (derselbe Kontakt,
+  // dieselbe Referenz im Array) -- ein kompletter Netzwerk-Refetch (ALLE
+  // Kontakte/Locations/Sales/Tagebuchmarkierungen der eigenen Org UND die
+  // geteilten Termin-Einladungen) wäre für einen einzelnen Spaltenwechsel
+  // verschwendete Arbeit (Fund: Kanban-Effizienz-Review, 2026-08-30) --
+  // Kanban-Board zeigt ohnehin nur kanban_stage/name/location_id an, nichts
+  // aus `sales` selbst. Trade-off: eine frisch von einem Kollegen
+  // angenommene Termin-Einladung (geteilte Karte) erscheint dadurch erst
+  // beim nächsten echten Board-Reload (Seite verlassen+neu öffnen, Login,
+  // oder das Absagen einer geteilten Karte selbst -- alle drei rufen
+  // weiterhin ohne skipFetch auf) -- akzeptabel, diese Karten sind die
+  // Ausnahme, nicht der Normalfall. Ein allererster Aufruf hat naturgemäß
+  // noch keinen Cache, holt also auch mit skipFetch:true einmal frisch.
+  async function renderKanbanBoard(opts){
+    opts = opts || {};
+    let bundle, sharedRes;
+    if(opts.skipFetch && kanbanBundleCache){
+      bundle = kanbanBundleCache;
+      sharedRes = { data: kanbanSharedInvitesCache, error: null };
+    } else {
+      // Zwei unabhängige Ladevorgänge (eigenes Kontakt-Bundle, geteilte
+      // Kanban-Karten über termin_invitations) -- parallel starten statt
+      // nacheinander abzuwarten, gleiches Muster wie renderWeekView()/
+      // renderDayView().
+      [bundle, sharedRes] = await Promise.all([
+        loadContactsBundle(),
+        sb.from('termin_invitations')
+          .select('id, contact:contact_id(id,name,kanban_stage,location_id), organizer:organizer_id(display_name,real_name)')
+          .eq('invited_user_id', profile.id).eq('status','angenommen').not('contact_id','is',null)
+      ]);
+      if(bundle.error){
+        logSilentError('Kanban laden', bundle.error);
+        KANBAN_STAGES.forEach(s=>{ document.getElementById('kanbanCards_'+s).innerHTML = '<div class="empty-page-hint">Fehler beim Laden.</div>'; });
+        return;
+      }
+      kanbanBundleCache = bundle;
     }
-    kanbanBundleCache = bundle;
     const grouped = {};
     KANBAN_STAGES.forEach(s=>grouped[s]=[]);
     // Nur Kontakte mit einer echten Kanban-Stufe zeigen — in der Datenbank zu
@@ -8951,6 +9003,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     // nichts -- kein Sonderfall im Code nötig, RLS regelt das von allein.
     if(sharedRes.error) logSilentError('Geteilte Kanban-Karten laden', sharedRes.error);
     const sharedInvites = sharedRes.data;
+    kanbanSharedInvitesCache = sharedInvites;
     const groupedShared = {};
     KANBAN_STAGES.forEach(s=>groupedShared[s]=[]);
     (sharedInvites||[]).forEach(inv=>{
@@ -9844,7 +9897,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       ]);
     }
 
-    await renderKanbanBoard();
+    // skipFetch:true -- siehe Kommentar an renderKanbanBoard() selbst
+    // (Kanban-Effizienz-Review, 2026-08-30): kanbanBundleCache wurde oben
+    // bereits in-place mit dem neuen kanban_stage/status aktualisiert, ein
+    // kompletter Netzwerk-Refetch für einen einzelnen Kartenzug ist unnötig.
+    await renderKanbanBoard({skipFetch:true});
   }
 
   document.getElementById('kanbanNewLeadBtn').addEventListener('click', ()=>{
