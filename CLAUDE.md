@@ -101,12 +101,21 @@ kleinere Häppchen.
   (auf Nutzerwunsch gleich alle 5 statt erst 3, kein zweites Häppchen
   nötig). Zeile-für-Zeile: keine Funde (BWS-Kette/`PRODUCT_ART_CONFIG`
   exakt wie dokumentiert). Cross-File: keine Sicherheitslücken, ein
-  dokumentierter Rand-Fall (`guild_sales_metric_total()` verknüpft über
-  `sales.created_by`, das bei echter Account-Löschung — nicht
-  Org-Verlassen — auf `NULL` fällt; historische Verkäufe eines
-  gelöschten Mitarbeiters fallen dann aus der Team-Ziel-Summe, reiner
-  Anzeige-Effekt, keine Datenintegritätsverletzung, bewusst nicht
-  behoben). Korrektheit: 2 echte Bugs behoben —
+  dokumentierter, vom Nutzer noch weiter eingegrenzter Rand-Fall
+  (`guild_sales_metric_total()` verknüpft über `sales.created_by`, das
+  bei echter Account-Löschung — nicht Org-Verlassen — auf `NULL` fällt).
+  **Praktisch nur relevant, wenn die Löschung innerhalb desselben,
+  noch laufenden Geschäftsjahres passiert, BEVOR die Team-Ziel-Schwelle
+  erreicht wurde** — Nutzer-Klarstellung: ist ein Teamziel einmal über
+  `grant_guild_quest_completion()` erreicht, steht es unveränderlich im
+  Protokoll (`guild_quest_log`), und `loadAndEvaluateGuildTeamQuests()`
+  prüft ohnehin immer nur das laufende Jahr, nie rückwirkend
+  vergangene — ein Austritt/eine Löschung NACH Jahresende ("2027
+  beginnt, der Mitarbeiter verlässt das Unternehmen") ist für das
+  bereits abgeschlossene Jahr 2026 komplett folgenlos, "das ist dann
+  nur noch dokumentiert". Reiner Anzeige-Effekt in diesem engen
+  Zeitfenster, keine Datenintegritätsverletzung, bewusst nicht
+  behoben. Korrektheit: 2 echte Bugs behoben —
   `guild_sales_metric_total()` summierte für Team-Ziele die seit der
   BWS-Umstellung (2026-08-14) tote Spalte `sales.bewertungssumme`, jedes
   Lebensversicherungs-Team-Ziel blieb dadurch dauerhaft bei 0 (Migration
