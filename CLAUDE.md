@@ -68,10 +68,14 @@ funktionieren" — gleiches Muster wie der systematische
 "Bugfix-Konventionen" weiter unten): mehrere parallele Review-Agenten
 pro Häppchen (Korrektheit/Effizienz/Cross-File/Zeile-für-Zeile/totes
 Verhalten), gezielt auf das CRM-Kernstück (Kontakte/Kanban/Verkauf/
-Dungeons — nicht Gamification-Beiwerk). **Bewusst budgetbedingt klein
-gestartet** (3 statt 5 parallele Agenten, ein Bereich nach dem anderen
-statt aller vier gleichzeitig) — kein Abweichen vom Prinzip, nur
-kleinere Häppchen.
+Dungeons — nicht Gamification-Beiwerk). **Start bewusst budgetbedingt
+klein** (3 statt 5 parallele Agenten pro Bereich, Effizienz/totes
+Verhalten in einem zweiten Häppchen nachgeholt) — bei Kanban so
+gemacht. **Der Nutzer hat das bei Verkauf/Statistik bewusst korrigiert**
+("haben wir das nicht immer mit 5 gemacht?") und für diesen Bereich
+gleich alle 5 auf einmal gewollt — bei den verbleibenden Bereichen
+(Kontakte/Dungeons) deshalb aktiv nachfragen, welcher Umfang gewünscht
+ist, nicht automatisch auf 3 zurückfallen.
 
 **Fortschritt** (Matrix: 4 Bereiche × 5 Prüf-Linsen):
 - ✅ **Kanban** (2026-08-30) — alle 5 Linsen gefahren, fertig.
@@ -120,7 +124,8 @@ kleinere Häppchen.
   BWS-Umstellung (2026-08-14) tote Spalte `sales.bewertungssumme`, jedes
   Lebensversicherungs-Team-Ziel blieb dadurch dauerhaft bei 0 (Migration
   `20260830110000`, unabhängige Zweitmeinung freigegeben, Dry-Run mit
-  6 Assertions grün); `currentBusinessYear()` nutzte das reine
+  6 Assertions grün, per `supabase db push` live, Funktionskörper direkt
+  gegen die verlinkte DB verifiziert); `currentBusinessYear()` nutzte das reine
   Browser-lokale Jahr statt `tz()` — betraf praktisch die gesamte
   Verkaufsstatistik-Jahresgrenze (Kompendium, Akquise-Trichter,
   Jahresquest-Reset, Gilden-Team-Ziele, Schatzraum). Effizienz: 2 echte
