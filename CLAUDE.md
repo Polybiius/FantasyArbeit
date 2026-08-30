@@ -180,17 +180,24 @@ ist, nicht automatisch auf 3 zurückfallen.
   Kanban laden nicht mehr die Verkaufshistorie *aller* sichtbaren
   Kontakte mit (nur noch die offene Detailseite lädt gezielt für den
   einen Kontakt), Kontaktliste+Detailseite teilen sich eine Ladung
-  statt sie zu verdoppeln. **Bewusst zurückgestellt:** Gilden-Pool-
-  Kontakte, die nie jemandem zugewiesen werden, sind jetzt von der
-  automatischen Inaktivitäts-Löschung befristungslos ausgenommen (vorher
-  wären sie ohne jede Vorwarnung gelöscht worden, da die 30-Tage-
-  Sonderquest-Warnung eigentümergebunden ist und für Pool-Kontakte nie
-  greifen kann) — verhindert das schlimmere stille Löschen, heißt aber
-  auch unbefristete Aufbewahrung nie beanspruchter Pool-Kontakte
-  (potenziell ein eigenes DSGVO-Speicherbegrenzungs-Thema). Eine
-  vollständige Lösung (Vorwarnung an die Gildenführung statt an einen
-  nicht existierenden Eigentümer) ist ein eigener, noch nicht
-  angegangener Baustein. Beide Regressions-Suiten grün.
+  statt sie zu verdoppeln. Ein ursprünglicher Zwischenstand hatte
+  Gilden-Pool-Kontakte komplett von der automatischen Inaktivitäts-
+  Löschung ausgenommen (Sorge: die 30-Tage-Sonderquest-Vorwarnung ist
+  eigentümergebunden und kann für einen Pool-Kontakt nie greifen) —
+  **noch am selben Tag per Nutzer-Klarstellung präzisiert** (Migration
+  `20260830170000_pool_kontakte_auto_delete_praezisierung.sql`, erneut
+  Dry-Run + unabhängige Zweitmeinung, live): "Herrenlose Kontakte in
+  einer Gilde im Pool dürfen nach einem halben Jahr gelöscht werden,
+  wenn es keine Verträge gibt. Gibt es Verträge, sind das einfach
+  Kunden ohne Betreuung, aber sind ja immer noch Kunden der Firma." Ein
+  Pool-Kontakt OHNE jemals gewonnenen Vertrag ist also ein schlicht
+  liegengebliebener Lead und wird wie jeder andere Kontakt ohne Vertrag
+  ganz normal automatisch gelöscht — der eigentlich schützenswerte Fall
+  (Vertrag vorhanden) war schon vorher unabhängig vom Eigentümer-Zustand
+  geschützt (`not exists (sales where status='gewonnen')`), die
+  Eigentümer-Ausnahme war also zu weitgehend und wurde vollständig
+  zurückgenommen — kein offener Punkt mehr in diesem Strang. Beide
+  Regressions-Suiten grün.
 - ✅ **Dungeons** (2026-08-29) — alle 5 Linsen gefahren (5 parallele
   Agenten), fertig. Kritischer Fund, zwei Linsen (Korrektheit +
   Cross-File) unabhängig bestätigt: `assign_location_owner_locked()`
