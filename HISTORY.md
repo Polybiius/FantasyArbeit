@@ -2854,3 +2854,284 @@ Organisationen/Gilden + Org-Austritt". Damit ist die in "Technische
 Skalierungs-Schwellen" dokumentierte Multi-Org-Loskopplung fertig — die
 Registrierungsstelle trägt niemanden mehr fest auf `DEFAULT_ORG_ID` ein.
 
+
+## 2026-08-29/30: Verbindlicher Fahrplan Phase 1+2 — Pool-Feature-Folgefragen + 5-Agenten-Tiefenprüfung des CRM-Kernstücks
+
+Direkt im Anschluss an den Touchdown des Pool-Features (siehe oben,
+Abschnitt "2026-08-28/29") formulierte der Nutzer einen straffen
+Fahrplan, wörtlich: "Wo gehobelt wird, fallen Späne. Wir brauchen nun
+einen straffen Fahrplan... alles was mit dem Aufreißen dieser Thematik
+entstanden ist, müssen wir in den nächsten Sitzungen komplett
+durchdenken. Danach brauchen wir wieder die 5 Agents, weil das
+Kernstück des CRM absolut genial funktionieren muss. Wenn wir alle
+Baustellen beseitigt haben, gehen wir an die Anwenderoberfläche und das
+Framework ran." Drei Phasen: Phase 1 (die acht durchs Pool-Feature offen
+gelassenen Folgefragen einzeln bewerten), Phase 2 (5-Agenten-
+Tiefenprüfung Kanban/Verkauf/Dungeons/Kontakte), Phase 3 (Anwender-
+oberfläche + Framework-Migration). Dieser Abschnitt dokumentiert Phase 1
+und 2 vollständig — beide 2026-08-30 abgeschlossen. Volle Herleitung der
+acht Fäden/warum welche vier davon Bauaufgaben wurden: Claudes
+Erinnerungssystem, `project_naechster_struktureller_schritt`,
+Abschnitt 9.
+
+### Phase 1 — vier Bauaufgaben, gebaut/gehärtet/live (Commit `3ae6592`, Migrationen `20260830090000`–`20260830100000`)
+
+- **Org-Pool-Verteilungsoberfläche** — Dropdown-Zuweisung für Kontakte
+  UND Dungeons in `renderAccountPool()`, nutzbar durch Org-Admin ODER
+  den alleinigen Gildenführer einer Ein-Gilde-Org (nur für echte
+  Pool-Einträge, nicht für aktiv gehaltene private Kontakte/Dungeons
+  von Kolleg:innen). Protokoll (`pool_zuweisung_log`) + Badge bei
+  neuer Zuweisung.
+- **Freunde-Feature app-weit** statt org-gebunden (`friends.org_id`
+  entfernt), neue `search_profile_for_friend()`-RPC für die
+  Cross-Org-Suche.
+- **Plattformadmin-Fundament** — `platform_admins`/`is_platform_admin()`,
+  Regelwerk-Editor kann für Plattformadmins jetzt fremde Organisationen
+  bearbeiten. Notfallzugriff-Backend vollständig, bewusst noch ohne
+  eigene Oberfläche.
+- **Org-Soft-Delete-Fundament** — `organizations.dissolved_at`
+  (Platzhalter) + `profiles_org_id_fkey` CASCADE→RESTRICT (verhindert
+  versehentliches Mitlöschen aller Accounts einer Org). Volles
+  Auflösungs-Feature bleibt ein späteres, eigenes Vorhaben.
+
+Nebenbei ein echter, seit dem Pool-Feature-Launch (29.08.) aktiv
+laufender Bug gefunden und mitbehoben: `enforce_profile_insert_defaults()`
+zwang jede neue Registrierung weiterhin in die alte Standard-Org statt
+in den Pool. Details, inkl. der 6 Funde einer Zweitmeinungsrunde:
+`project_naechster_struktureller_schritt`, Abschnitt 10.
+
+**Bewusst nicht Teil von Phase 1, weiterhin offen/vertagt** (keine der
+acht ursprünglichen Fragen wurde vergessen, diese vier sind bewusste
+Verschiebungen mit Begründung): Zweistufiges Rollenmodell ist als
+schlanke Variante gebaut (kein Support-Stufen-System). Automatisierte
+Regelwerk-Erzeugung, Level-Kurven-Divergenz zwischen Orgs (bewusst mit
+der Automatisierungs-Frage verknüpft) und Weltunternehmen-Vision bleiben
+eigene, größere, zukünftige Vorhaben.
+
+### Phase 2 — 5-Agenten-Tiefenprüfung des CRM-Kernstücks
+
+Nutzer-Vorgabe: "das Kernstück des CRM muss absolut genial
+funktionieren" — gleiches Muster wie der systematische
+12-Häppchen-Bugfix-Durchgang 2026-08-21/22 (siehe oben): mehrere
+parallele Review-Agenten pro Bereich (Korrektheit/Effizienz/Cross-File/
+Zeile-für-Zeile/totes Verhalten), gezielt auf das CRM-Kernstück
+(Kontakte/Kanban/Verkauf/Dungeons — nicht Gamification-Beiwerk). Start
+bewusst budgetbedingt klein (3 statt 5 parallele Agenten, Effizienz/
+totes Verhalten in einem zweiten Häppchen nachgeholt) — bei Kanban so
+gemacht. Der Nutzer korrigierte das bei Verkauf/Statistik ("haben wir
+das nicht immer mit 5 gemacht?") und wollte für diesen Bereich gleich
+alle 5 auf einmal — bei Dungeons und Kontakte lief entsprechend gleich
+mit allen 5 Linsen.
+
+**Kanban** (Commit `cf94df5` + ein weiterer Commit später am selben
+Tag): Korrektheit/Zeile-für-Zeile/Cross-File zuerst, 3 echte Bugs
+behoben — Doppel-Escaping bei Organisator-Namen; XP/Quest-Boni wurden
+vor der eigentlichen, sperr-geprüften Zustandsänderung gebucht statt
+danach, gleicher Fehler in zwei Einstiegspunkten
+(`moveKanbanCard()`/`logActionForContact()`); "Gewonnen"-XP wurde auch
+ohne bestätigten Verkauf gebucht — neuer gemeinsamer Helfer
+`moveContactToGewonnenAndRecordSale()` behebt beides. Effizienz + totes
+Verhalten (2 parallele Agenten, dieselbe Sitzung): 3 weitere echte
+Funde — voller Netzwerk-Refetch + Voll-Rebuild aller 8 Spalten nach
+JEDEM einzelnen Kartenzug (`renderKanbanBoard()` bekam ein
+`opts.skipFetch`, `moveKanbanCard()` nutzt danach den bereits im
+Speicher aktualisierten Cache); unbegrenzt wachsende Scroll-/Resize-
+Listener-Anhäufung durch `initScrollFade()` ohne Mehrfachaufruf-Guard
+(betraf auch `renderStatTabs()`, an der Wurzel in `initScrollFade()`
+selbst gefixt); ein dritter, vom Refactor übersehener "+Verkauf
+eintragen"-Knopf auf der Kontakt-Seite (`cdAddSaleBtn`) rief bei
+"Gewonnen" weiterhin direkt `recordWinOrLoss()` auf statt
+`moveContactToGewonnenAndRecordSale()` — jetzt vereinheitlicht.
+
+**Verkauf/Statistik** (Commits `1fef12f`/`9d30614`, alle 5 Linsen in
+einem Rutsch): Zeile-für-Zeile keine Funde (BWS-Kette/
+`PRODUCT_ART_CONFIG` exakt wie dokumentiert). Cross-File keine
+Sicherheitslücken, ein dokumentierter Rand-Fall (`guild_sales_metric_
+total()` verknüpft über `sales.created_by`, das bei echter
+Account-Löschung — nicht Org-Verlassen — auf NULL fällt) — praktisch
+nur relevant, wenn die Löschung innerhalb desselben, noch laufenden
+Geschäftsjahres passiert, BEVOR die Team-Ziel-Schwelle erreicht wurde
+(Nutzer-Klarstellung: ein einmal erreichtes Teamziel steht
+unveränderlich im `guild_quest_log`-Protokoll, ein Austritt nach
+Jahresende ist für das abgeschlossene Jahr folgenlos). Korrektheit: 2
+echte Bugs — `guild_sales_metric_total()` summierte für Team-Ziele die
+seit der BWS-Umstellung (2026-08-14) tote Spalte `sales.bewertungssumme`,
+jedes Lebensversicherungs-Team-Ziel blieb dadurch dauerhaft bei 0
+(Migration `20260830110000`, unabhängige Zweitmeinung freigegeben,
+Dry-Run mit 6 Assertions grün, live, Funktionskörper direkt gegen die
+verlinkte DB verifiziert); `currentBusinessYear()` nutzte das reine
+Browser-lokale Jahr statt `tz()` — betraf praktisch die gesamte
+Verkaufsstatistik-Jahresgrenze (Kompendium, Akquise-Trichter,
+Jahresquest-Reset, Gilden-Team-Ziele, Schatzraum). Effizienz: 2 echte
+Funde — `loadAndEvaluateGuildTeamQuests()` fragte Team-Ziel-Summen
+sequentiell statt parallel ab; `initTrophyRoom()` hatte keinen Guard
+gegen Mehrfachaufruf. Totes Verhalten: bestätigte den
+`bewertungssumme`-Fund, dazu ein nie fertiggestellter Anzeige-Stub
+("ausgeschüttete Provision: —" zeigte hart einen Strich statt der
+längst vorhandenen `saleProvision()`-Berechnung).
+
+**Dungeons** (2026-08-29, Commit `f5a338b`, alle 5 Linsen auf einmal, 5
+parallele Agenten): kritischer Fund, von Korrektheit UND Cross-File
+unabhängig bestätigt — `assign_location_owner_locked()` (Migration
+`20260830091000_org_pool_verteilung_gildenfuehrer.sql` vom Vortag,
+erweitert die Funktion um einen Zweig für nicht-admin alleinige
+Gildenführer) vergaß, das Trusted-Flag `app.trusted_location_owner_
+change` zu setzen, das der bestehende Schutz-Trigger
+`protect_location_owner_field()` seit `20260829094000_leave_own_org.sql`
+verlangt. Folge: ein Gildenführer bekam beim Zuweisen eines
+Pool-Dungeons Erfolg gemeldet, der Trigger setzte `owner_id` still
+zurück UND protokollierte einen falschen `location_owner_tamper`-
+Sicherheitsalarm gegen die eigentlich berechtigte Person — die Hälfte
+des als "live" dokumentierten Org-Pool-Verteilungs-Features war für
+Dungeons faktisch wirkungslos, ohne dass ein Fehler zurückkam.
+`20260829094000` hatte sogar wörtlich dokumentiert,
+`assign_location_owner_locked()` sei "admin-only" und deshalb von
+diesem Trigger nicht betroffen — eine Annahme, die durch die
+Gildenführer-Erweiterung genau einen Tag später falsch wurde, ohne
+nachgezogen zu werden. Migration
+`20260830150000_dungeon_review_permission_fixes.sql` behebt das (+ eine
+kleinere, von der Cross-File-Linse gefundene Lücke: fehlende Prüfung,
+ob die neue `owner_id` überhaupt zur Organisation gehört). Dry-Run mit
+4 Assertions gegen die echte, verlinkte DB (echte Testprofile temporär
+in eine Wegwerf-Org verschoben) grün, unabhängige Zweitmeinung (zwei
+getrennte Agenten für SQL und JS) fand keine weiteren Probleme, live
+gepusht. Weitere echte Funde direkt im Frontend behoben: fehlendes
+`escHtml()` bei Rolle/Status in der Kontakttabelle, veralteter "nur
+admin"-Hinweis auf der Account-Pool-Karte (Karte ist seit dem
+Org-Pool-Feature auch für Nicht-Admins sichtbar), doppeltes Leerzeichen
+in der Adresse bei leerer PLZ, kompletter Re-Fetch+Rebuild nach einer
+einzelnen Kontakt-Zuweisung ersetzt durch gezielte DOM-Aktualisierung +
+parallel statt sequenziell ladende `refreshDungeonData()`. Eine
+Race-Condition in der neuen DOM-Aktualisierung (veraltete Closure bei
+überlappendem Neu-Render) wurde von der Zweitmeinungsrunde zum eigenen
+Fix selbst gefunden und ebenfalls behoben — Beleg, dass die
+Zweitmeinungs-Pflicht auch auf den eigenen Fix angewendet werden
+sollte, nicht nur auf den ursprünglichen Fund.
+
+**Kontakte** (2026-08-30, alle 5 Linsen, 5 parallele Agenten): größte,
+am stärksten verzahnte Lückenklasse der ganzen Phase 2. Kontakte aus
+dem Mitarbeiter-Offboarding ("Gilden-Pool" — herrenlos, aber einer
+Gilde zugeordnet, `owner_id IS NULL AND guild_id IS NOT NULL`) waren
+serverseitig an neun Stellen unsichtbar/unbearbeitbar (`sales`,
+`contact_activities`, `termine`, `action_log`, `contact_files` inkl.
+Storage, `request_contact_deletion()`, `admin_reassign_contact()`).
+Cross-File- UND Korrektheits-Linse fanden unabhängig, dass `canEdit`
+auf der Kontakt-Seite diesen dritten Fall (neben Eigentümer/Admin) nie
+kannte — "Bearbeiten"/"Löschanfrage stellen"/"+ Verkauf eintragen"/
+Datei-Upload blieben für die zuständige Gildenführung unsichtbar.
+Migration `20260830160000_kontakte_review_permission_fixes.sql` (nach
+eigener Zweitmeinungsrunde von ursprünglich 6 auf 9 behobene Stellen
+erweitert — die Zweitmeinung fand `contact_files` komplett vergessen,
+dazu `termine`/`action_log`, sowie eine Inkonsistenz zwischen Lese- und
+Schreibrecht) vereinheitlicht das Modell: lesen darf jedes
+Gildenmitglied (wie beim Kontakt-Datensatz selbst,
+`contacts_select_visible`), schreiben/hochladen/löschen nur die
+Gildenführung (kein Eigentümer vorhanden, der delegieren könnte). Neue
+Helferfunktion `guild_pool_read_permission()` neben dem bestehenden
+`guild_leadership_permission()`. Zwei Dry-Run-Runden gegen die echte,
+verlinkte DB (zweite mit echten Test-Rollenwechseln für "einfaches
+Mitglied"/"Gildenführung"/"Außenstehender", inkl. `storage.objects`)
+grün, live gepusht.
+
+Weitere echte Funde direkt im Frontend behoben: XP wurde an zwei
+Kontakt-Seiten-Einstiegspunkten vor statt nach der sperr-geprüften
+Kanban-Änderung gebucht (gleiche Bug-Klasse wie beim Kanban-Review, hier
+übersehen); ein `getElementById('waitingRoomScreen')`-Zugriff auf ein
+nicht mehr existierendes Element ließ "Organisation gründen"/
+"Org-Einladung annehmen" mit stillem JS-Fehler abbrechen — ein echter,
+seit dem Pool-Feature-Launch aktiver Show-Stopper, der Betroffene auf
+der Warteseite hängen ließ, obwohl die Aktion serverseitig erfolgreich
+war (nur ein Neuladen half); `#kontakt/<id>`- und `#tagebuch/...`-Deep-
+Links umgingen die Pool-Navigationssperre; eine Rennbedingung beim
+schnellen Kontaktwechsel konnte Chronik/Dateien/Kennzahlen des falschen
+Kontakts anzeigen; Formular zuklappen ohne zu speichern setzte den
+Bearbeitungszustand nicht zurück (ein neuer Kontakt hätte den vorherigen
+sonst überschrieben); eine tote CSS-Klasse ließ Vertrags-/Dateizeilen
+unstyled; die Adresszeile kollabierte durch mehrfache Leerzeichen.
+Effizienz: Kontaktliste/Kanban laden nicht mehr die Verkaufshistorie
+*aller* sichtbaren Kontakte mit (nur noch die offene Detailseite lädt
+gezielt für den einen Kontakt), Kontaktliste+Detailseite teilen sich
+eine Ladung statt sie zu verdoppeln.
+
+**Direkter Nachtrag, noch am selben Tag — Nutzer-Korrektur der
+Auto-Löschungs-Ausnahme.** Ein ursprünglicher Zwischenstand hatte
+Gilden-Pool-Kontakte komplett von der automatischen Inaktivitäts-
+Löschung ausgenommen (Sorge: die 30-Tage-Sonderquest-Vorwarnung ist
+eigentümergebunden und kann für einen Pool-Kontakt nie greifen, ein
+stilles Löschen ohne jede Vorwarnungsmöglichkeit widerspräche dem
+"niemals gelöscht"-Versprechen). Nutzer stellte klar: "Herrenlose
+Kontakte in einer Gilde im Pool dürfen nach einem halben Jahr gelöscht
+werden, wenn es keine Verträge gibt. Gibt es Verträge, sind das einfach
+Kunden ohne Betreuung, aber sind ja immer noch Kunden der Firma." Ein
+Pool-Kontakt OHNE jemals gewonnenen Vertrag ist also ein schlicht
+liegengebliebener Lead und wird wie jeder andere Kontakt ohne Vertrag
+ganz normal automatisch gelöscht — der eigentlich schützenswerte Fall
+(Vertrag vorhanden) war schon vorher unabhängig vom Eigentümer-Zustand
+geschützt (`not exists (sales where status='gewonnen')`), die
+Eigentümer-Ausnahme war also zu weitgehend. Migration
+`20260830170000_pool_kontakte_auto_delete_praezisierung.sql` nimmt sie
+vollständig zurück (Funktionskörper wieder byte-identisch zur
+Ur-Fassung aus `20260825201448`), erneut Dry-Run + unabhängige
+Zweitmeinung (keine Funde), live gepusht.
+
+Beide Regressions-Suiten liefen vor jedem der Pushes in Phase 1 und 2
+grün.
+
+### B2C→B2B-Aktions-Rework der Handlungen-Seite — Konzeptgespräch, 2026-08-30
+
+Zusätzlich zur 5-Agenten-Prüfung ergänzte der Nutzer am 2026-08-29
+explizit ein reines Konzeptgespräch (kein Code) zum längst
+angekündigten B2C→B2B-Aktions-Rework der Handlungen-Seite — geführt am
+2026-08-30, voller Gesprächsverlauf in Claudes Erinnerungssystem,
+`project_b2c_to_b2b_action_rework`. Ausgangspunkt: die Handlungen-Seite
+stammt aus einer ursprünglich B2C geplanten Frühphase (freistehende,
+kontaktlose Aktions-Knöpfe zum Anklicken, XP dafür) — im B2B soll
+nichts, was tatsächlich beim Kunden passiert, mehr anonym im System
+landen.
+
+Nutzer-Kernbeobachtung: das Kanban ist praktisch schon das echte
+Herzstück der Handlungen — Kunden-Aktionen werden dort dokumentiert,
+nachverfolgt, mit XP belohnt, UND dieselben Aktionen lassen sich schon
+heute direkt am Kontakt loggen ("Aktion loggen"/"Anruf-Email loggen").
+Durchgesprochen Knopf für Knopf: Ansprache bleibt unverändert
+Dungeon-gebunden (echte Vor-Ort-Kaltakquise ohne existierenden
+Kontakt). Kalttelefonie/"5 Nummern gewählt" ist die einzige echte
+strukturelle Änderung — Nutzer-Klarstellung, B2B-Kaltakquise läuft bei
+ihm praktisch immer über vorher recherchierte (LinkedIn/
+Firmenwebsite), schon im System stehende Kontakte ("kalt" heißt nur
+"kennt uns noch nicht persönlich", nicht "steht nicht in der
+Datenbank") — die Zählung soll deshalb künftig aus echten, am Kontakt
+geloggten Anrufen abgeleitet werden statt manuell per Extra-Knopf.
+Bedarfsanalyse/Pitch/E-Mail liefen schon korrekt kontaktgebunden.
+Fachinfo recherchiert bleibt bewusst unangetastet fürs künftige Lern-/
+Zertifikatsystem ("Grimoire").
+
+Wichtige Architektur-Vorgabe des Nutzers (Bild: "ein Karton auf den
+Dachboden"): der Code, der freistehende, kontaktlose Aktionen überhaupt
+ermöglicht, darf beim Umbau nicht gelöscht, gestört oder so verbogen
+werden, dass er nur noch für einen Spezialfall funktioniert — Grund: in
+einer weiter entfernten Zukunft ist eine eigene B2C-"Life"-App angedacht
+(Sport/Yoga/Joggen, sowie echte, bewusst CRM-lose Kalttelefonie ohne
+Dateneintrag jeder einzelnen Nummer — "sonst ist das nur Datenmüll").
+Passt bereits zur bestehenden Architektur (Aktionen leben als Daten im
+Regelwerk je Organisation, nicht hart im Code) — für die aktuelle
+B2B-Organisation verschwinden Kalttelefonie/"5 Nummern gewählt" einfach
+aus dem aktiven Regelwerk, der generische Code bleibt bestehen, eine
+künftige B2C-Organisation bekäme einfach ihr eigenes Regelwerk.
+
+Bewusst offen gelassen, keine Details: eine vom Nutzer angedeutete Idee,
+die Handlungen-Seite künftig um "modernere, zukunftssichere
+Vertriebs-Automatismen" zu erweitern, die jedem Mitarbeiter am
+Tagesanfang eine Arbeitsrichtung geben — ausdrücklich noch keine
+Gedanken dazu, nicht nachgehakt, bei nächstem Anstoß neu erfragen.
+
+Bau folgt laut ausdrücklicher Nutzerentscheidung erst als Teil der
+Phase-3-React-Migration, nicht vorher in Vanilla JS, damit nicht
+zweimal gebaut wird — siehe Claudes Erinnerungssystem,
+`project_framework_migration_plan`.
+
+**Damit sind Phase 1 und Phase 2 des Verbindlichen Fahrplans komplett
+abgeschlossen.** Weiter mit Phase 3 (Anwenderoberfläche +
+Frontend-Framework-Frage) — kompletter Fahrplan dafür bereits in einer
+eigenen Planungssitzung erarbeitet, siehe Claudes Erinnerungssystem,
+`project_framework_migration_plan`.
