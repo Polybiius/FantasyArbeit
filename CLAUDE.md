@@ -138,7 +138,59 @@ ist, nicht automatisch auf 3 zurückfallen.
   ("ausgeschüttete Provision: —" am Kontakt zeigte hart einen Strich
   statt der längst vorhandenen `saleProvision()`-Berechnung) behoben.
   Beide Regressions-Suiten grün.
-- ⬜ Kontakte — noch komplett offen (alle 5 Linsen)
+- ✅ **Kontakte** (2026-08-30) — alle 5 Linsen gefahren (5 parallele
+  Agenten), fertig. Größte, am stärksten verzahnte Lückenklasse bisher:
+  Kontakte aus dem Mitarbeiter-Offboarding ("Gilden-Pool" — herrenlos,
+  aber einer Gilde zugeordnet, `owner_id IS NULL AND guild_id IS NOT
+  NULL`) waren serverseitig an neun Stellen unsichtbar/unbearbeitbar,
+  obwohl das Feature das ursprünglich vorsah (`guild_leadership_
+  permission()`/Nachfolge-RPCs kannten diesen Fall nur teilweise).
+  Cross-File- UND Korrektheits-Linse fanden unabhängig, dass `canEdit`
+  auf der Kontakt-Seite diesen dritten Fall (neben Eigentümer/Admin)
+  nie kannte — "Bearbeiten"/"Löschanfrage stellen"/"+ Verkauf
+  eintragen"/Datei-Upload blieben für die zuständige Gildenführung
+  unsichtbar. Migration `20260830160000_kontakte_review_permission_
+  fixes.sql` (nach eigener Zweitmeinungsrunde von ursprünglich 6 auf 9
+  behobene Stellen erweitert — die Zweitmeinung fand `contact_files`
+  komplett vergessen, dazu `termine`/`action_log`, sowie eine
+  Inkonsistenz zwischen Lese- und Schreibrecht) macht das Modell jetzt
+  einheitlich: **lesen darf jedes Gildenmitglied** (wie beim
+  Kontakt-Datensatz selbst, `contacts_select_visible`), **schreiben/
+  hochladen/löschen nur die Gildenführung** (kein Eigentümer vorhanden,
+  der delegieren könnte). Neue Helferfunktion
+  `guild_pool_read_permission()` neben dem bestehenden
+  `guild_leadership_permission()`. Zwei Dry-Run-Runden (zweite mit
+  echten Test-Rollenwechseln für "einfaches Mitglied"/"Gildenführung"/
+  "Außenstehender", inkl. `storage.objects`) gegen die echte,
+  verlinkte DB grün, live gepusht. Weitere echte Funde direkt im
+  Frontend behoben: XP wurde an zwei Kontakt-Seiten-Einstiegspunkten
+  vor statt nach der sperr-geprüften Kanban-Änderung gebucht (gleiche
+  Bug-Klasse wie beim Kanban-Review, hier übersehen); ein
+  `getElementById('waitingRoomScreen')`-Zugriff auf ein nicht mehr
+  existierendes Element ließ "Organisation gründen"/"Org-Einladung
+  annehmen" mit stillem JS-Fehler abbrechen (echter, seit dem
+  Pool-Feature-Launch aktiver Show-Stopper); `#kontakt/<id>`- und
+  `#tagebuch/...`-Deep-Links umgingen die Pool-Navigationssperre;
+  Rennbedingung beim schnellen Kontaktwechsel (Chronik/Dateien/
+  Kennzahlen konnten den falschen Kontakt zeigen); Formular zuklappen
+  ohne zu speichern setzte den Bearbeitungszustand nicht zurück (ein
+  neuer Kontakt hätte den vorherigen sonst überschrieben); tote
+  CSS-Klasse ließ Vertrags-/Dateizeilen unstyled; Adresszeile
+  kollabierte durch mehrfache Leerzeichen. Effizienz: Kontaktliste/
+  Kanban laden nicht mehr die Verkaufshistorie *aller* sichtbaren
+  Kontakte mit (nur noch die offene Detailseite lädt gezielt für den
+  einen Kontakt), Kontaktliste+Detailseite teilen sich eine Ladung
+  statt sie zu verdoppeln. **Bewusst zurückgestellt:** Gilden-Pool-
+  Kontakte, die nie jemandem zugewiesen werden, sind jetzt von der
+  automatischen Inaktivitäts-Löschung befristungslos ausgenommen (vorher
+  wären sie ohne jede Vorwarnung gelöscht worden, da die 30-Tage-
+  Sonderquest-Warnung eigentümergebunden ist und für Pool-Kontakte nie
+  greifen kann) — verhindert das schlimmere stille Löschen, heißt aber
+  auch unbefristete Aufbewahrung nie beanspruchter Pool-Kontakte
+  (potenziell ein eigenes DSGVO-Speicherbegrenzungs-Thema). Eine
+  vollständige Lösung (Vorwarnung an die Gildenführung statt an einen
+  nicht existierenden Eigentümer) ist ein eigener, noch nicht
+  angegangener Baustein. Beide Regressions-Suiten grün.
 - ✅ **Dungeons** (2026-08-29) — alle 5 Linsen gefahren (5 parallele
   Agenten), fertig. Kritischer Fund, zwei Linsen (Korrektheit +
   Cross-File) unabhängig bestätigt: `assign_location_owner_locked()`
@@ -169,13 +221,12 @@ ist, nicht automatisch auf 3 zurückfallen.
   wurde von der Zweitmeinungsrunde zum eigenen Fix gefunden und
   ebenfalls behoben. Beide Regressions-Suiten grün.
 
-**Nächster Schritt beim Wiedereinstieg:** Kontakte, alle 5 Linsen (Nutzer
-hat sich durchgehend für "gleich alle 5 Linsen" statt 3+2-Aufteilung
-entschieden — gleiches Vorgehen vorschlagen, nicht von selbst wieder auf
-3 zurückfallen).
+**Nächster Schritt beim Wiedereinstieg:** alle vier Bereiche (Kanban,
+Verkauf/Statistik, Dungeons, Kontakte) sind jetzt mit allen 5 Linsen
+durch — offen ist nur noch das B2C→B2B-Gespräch direkt unten, danach ist
+Phase 2 komplett.
 
-**Zusätzlich, noch innerhalb Phase 2, vom Nutzer am 2026-08-29 explizit
-ergänzt:** ein Durchsprechen (reines Gespräch, keine Code-Änderung) des
+**Noch innerhalb Phase 2, vom Nutzer am 2026-08-29 explizit ergänzt:** ein Durchsprechen (reines Gespräch, keine Code-Änderung) des
 länger angekündigten B2C→B2B-Aktions-Reworks der Handlungen-Seite
 (kontaktlose Aktions-Knöpfe wie Kalttelefonie/5 Nummern gewählt sollen
 konkret an Kontakte gebunden werden, betrifft auch den Questbaum —

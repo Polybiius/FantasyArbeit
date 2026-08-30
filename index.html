@@ -274,13 +274,8 @@
   .loc-sugg-new{color:var(--arcane-glow);font-weight:600;border-top:1px solid var(--border);}
   .journal-mention-wrap{position:relative;}
   #contactNotesInput{width:100%;resize:vertical;}
-  .contact-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px;}
-  .contact-card{background:var(--panel-2);border:1px solid var(--border);border-radius:var(--radius-md);padding:14px;display:flex;flex-direction:column;gap:6px;box-shadow:var(--shadow-rest);}
-  .contact-card .cc-name{font-weight:600;font-size:14px;color:var(--text);}
-  .contact-card .cc-role{font-size:11.5px;color:var(--muted);}
-  .contact-card .cc-loc{font-size:11.5px;color:var(--arcane-glow);}
-  .contact-card .cc-last{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--muted-2);}
-  .contact-card .cc-notes{font-size:11.5px;color:var(--muted);white-space:pre-wrap;}
+  .cc-role{font-size:11.5px;color:var(--muted);}
+  .cc-notes{font-size:11.5px;color:var(--muted);white-space:pre-wrap;}
   .cc-status{align-self:flex-start;font-size:10px;text-transform:uppercase;letter-spacing:.04em;padding:3px 9px;border-radius:var(--radius-pill);font-family:'JetBrains Mono',monospace;}
   .cc-status.kalt{background:rgba(144,137,168,0.2);color:var(--muted);}
   .cc-status.warm{background:rgba(242,161,84,0.2);color:var(--amber);}
@@ -2264,10 +2259,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   async function assignLocationOwnerLocked(locationId, ownerId, expectedUpdatedAt){
     return rpcLockedUpdate('assign_location_owner_locked', { p_id: locationId, p_owner_id: ownerId, p_expected_updated_at: expectedUpdatedAt });
   }
-  // Org-Pool-Kontakte umverteilen (renderAccountPool()) -- p_newGuildId
-  // bewusst immer null hier: die Pool-Oberfläche weist einer PERSON zu,
-  // nicht einer Gilde (Gilden-Pool-Aufnahme läuft weiterhin über den
-  // bestehenden, separaten Weg am Kontaktformular/der Gilden-Seite).
+  // Org-Pool- UND Gilden-Pool-Kontakte umverteilen (renderAccountPool()) --
+  // p_newGuildId bewusst immer null hier: die Pool-Oberfläche weist einer
+  // PERSON zu, verlässt dabei automatisch jeden Pool-Zustand (owner_id
+  // gesetzt => guild_id wird von admin_reassign_contact() selbst auf null
+  // gesetzt). Korrigiert 2026-08-30 (Kontakte-Cross-File-Review): entgegen
+  // einer früheren Notiz hier gab es für Gilden-Pool-Kontakte KEINEN
+  // separaten Zuweisungsweg -- admin_reassign_contact() deckt seit dieser
+  // Migration explizit beide Pool-Zustände ab, siehe dortiger Kommentar.
   async function adminReassignContact(contactId, ownerId, expectedUpdatedAt){
     return rpcLockedUpdate('admin_reassign_contact', { p_contact_id: contactId, p_new_owner_id: ownerId, p_new_guild_id: null, p_expected_updated_at: expectedUpdatedAt });
   }
@@ -3059,7 +3058,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
           const { data: fresh, error: reloadErr } = await sb.from('profiles').select('*').eq('id', profile.id).single();
           if(reloadErr){ reportError('Profil neu laden', reloadErr); return; }
           profile = fresh;
-          document.getElementById('waitingRoomScreen').style.display = 'none';
           document.getElementById('loading').style.display = 'flex';
           await enterApp();
         } finally{ btn.disabled = false; }
@@ -3088,7 +3086,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const { data: fresh, error: reloadErr } = await sb.from('profiles').select('*').eq('id', profile.id).single();
     if(reloadErr){ reportError('Profil neu laden', reloadErr, errEl); return; }
     profile = fresh;
-    document.getElementById('waitingRoomScreen').style.display = 'none';
     document.getElementById('loading').style.display = 'flex';
     await enterApp();
   }));
@@ -5394,13 +5391,24 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // Fix selbst). Ohne Parameter (z.B. beim Login in enterApp(), wo noch
   // nichts geladen ist) holt die Funktion die Zeile selbst.
   let myGuildContactWriteMemberIds = new Set();
+  // Für Gilden-Pool-Kontakte (owner_id NULL, guild_id gesetzt -- entstehen
+  // beim Mitarbeiter-Offboarding): guild_contact_permission() greift dort
+  // nie (prüft die Gildenmitgliedschaft des Eigentümers, den es per
+  // Definition nicht gibt), stattdessen zählt serverseitig
+  // guild_leadership_permission() (Gildenführer ODER team_rights-Mitglied)
+  // -- contacts_writable() erlaubt genau das schon lange, canEdit auf der
+  // Kontakt-Seite kannte es nur nicht (Kontakte-Cross-File-Review). Da man
+  // immer nur in genau einer Gilde ist, reicht eine einzelne guild_id statt
+  // eines Sets.
+  let myGuildLeadershipGuildId = null;
   async function loadMyGuildContactWriteAccess(knownOwnMembership){
     let mine = knownOwnMembership;
     if(mine === undefined){
-      const { data, error } = await sb.from('guild_members').select('guild_id,contacts_access').eq('member_id', profile.id).maybeSingle();
-      if(error){ logSilentError('loadMyGuildContactWriteAccess', error); myGuildContactWriteMemberIds = new Set(); return; }
+      const { data, error } = await sb.from('guild_members').select('guild_id,contacts_access,team_rights').eq('member_id', profile.id).maybeSingle();
+      if(error){ logSilentError('loadMyGuildContactWriteAccess', error); myGuildContactWriteMemberIds = new Set(); myGuildLeadershipGuildId = null; return; }
       mine = data;
     }
+    myGuildLeadershipGuildId = (mine && mine.team_rights) ? mine.guild_id : null;
     if(!mine || mine.contacts_access !== 'write'){ myGuildContactWriteMemberIds = new Set(); return; }
     const { data: members, error: mErr } = await sb.from('guild_members').select('member_id').eq('guild_id', mine.guild_id);
     if(mErr){ logSilentError('loadMyGuildContactWriteAccess (Mitglieder)', mErr); myGuildContactWriteMemberIds = new Set(); return; }
@@ -5941,6 +5949,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const body = document.getElementById('contactFormBody');
     btn.addEventListener('click', ()=>{
       const isOpen = body.style.display !== 'none';
+      // Formular wird geschlossen, während eine Bearbeitung offen ist --
+      // editingContactId zurücksetzen, sonst würde ein späteres erneutes
+      // Öffnen + Ausfüllen für einen NEUEN Kontakt still den zuvor
+      // bearbeiteten Kontakt überschreiben (editingContactId blieb sonst
+      // gesetzt, einziges Warnsignal wäre die Button-Beschriftung gewesen
+      // -- Kontakte-Korrektheits-Review).
+      if(isOpen && editingContactId) clearContactForm();
       body.style.display = isOpen ? 'none' : 'block';
       btn.classList.toggle('open', !isOpen);
     });
@@ -6037,35 +6052,41 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     }
   });
 
+  // Bewusst OHNE Verkäufe/Tagebuch-Markierungen: die wurden vorher für
+  // JEDEN sichtbaren Kontakt mitgeladen (ein `.in(contact_id, alleIds)`
+  // über die komplette, ggf. gilden-geteilte Kundendatenbank), obwohl sie
+  // nur auf der EINEN offenen Kontakt-Detailseite gebraucht werden --
+  // Kontaktliste UND Kanban werfen beides ungenutzt weg. Siehe
+  // loadContactDetailExtras() für den gezielten Pro-Kontakt-Nachlade-Weg
+  // (Kontakte-Effizienz-Review).
   async function loadContactsBundle(){
     const [
       { data: contacts, error },
-      { data: locs, error: locErr },
-      { data: journalMentions, error: mentionErr }
+      { data: locs, error: locErr }
     ] = await Promise.all([
       sb.from('contacts').select('*').order('created_at', {ascending:false}),
-      sb.from('locations').select('id,name,type').eq('org_id', profile.org_id),
-      sb.from('journal_entry_mentions').select('entry_date,contact_id').eq('user_id', profile.id)
+      sb.from('locations').select('id,name,type').eq('org_id', profile.org_id)
     ]);
     if(error) return { error };
     if(locErr) logSilentError('Betriebe für Kontaktliste laden', locErr);
     const locMap = {}; (locs||[]).forEach(l=>locMap[l.id]={name:l.name, type:l.type});
+    return { contacts, locMap, roles: config.contactRoles||{} };
+  }
 
+  // Nur für die offene Kontakt-Detailseite: Verkaufshistorie + eigene
+  // Tagebuch-Markierungen GENAU dieses einen Kontakts, statt wie vorher
+  // für die gesamte sichtbare Kundendatenbank.
+  async function loadContactDetailExtras(contactId){
+    const [
+      { data: sales, error: salesErr },
+      { data: journalMentions, error: mentionErr }
+    ] = await Promise.all([
+      sb.from('sales').select('*').eq('contact_id', contactId).order('datum', {ascending:false}),
+      sb.from('journal_entry_mentions').select('entry_date').eq('user_id', profile.id).eq('contact_id', contactId)
+    ]);
+    if(salesErr) logSilentError('Verkaufshistorie laden', salesErr);
     if(mentionErr) logSilentError('Tagebuch-Markierungen laden', mentionErr);
-    const mentionMap = {};
-    (journalMentions||[]).forEach(m=>{
-      if(!mentionMap[m.contact_id]) mentionMap[m.contact_id]=[];
-      mentionMap[m.contact_id].push(m.entry_date);
-    });
-
-    const ids = contacts.map(c=>c.id);
-    let salesMap = {};
-    if(ids.length>0){
-      const { data: sales, error: salesErr } = await sb.from('sales').select('*').in('contact_id', ids).order('datum', {ascending:false});
-      if(salesErr) logSilentError('Verkaufshistorie laden', salesErr);
-      (sales||[]).forEach(s=>{ if(!salesMap[s.contact_id]) salesMap[s.contact_id]=[]; salesMap[s.contact_id].push(s); });
-    }
-    return { contacts, locMap, mentionMap, salesMap, roles: config.contactRoles||{} };
+    return { sales: sales||[], mentions: (journalMentions||[]).map(m=>m.entry_date) };
   }
 
   function locName(bundle, id){ return bundle.locMap[id] ? bundle.locMap[id].name : '?'; }
@@ -6074,8 +6095,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     return (config.locationTypes && t && config.locationTypes[t]) ? config.locationTypes[t].icon : '🗺';
   }
 
-  async function renderContactsPage(){
-    const bundle = await loadContactsBundle();
+  async function renderContactsPage(preloadedBundle){
+    const bundle = preloadedBundle || await loadContactsBundle();
     if(bundle.error){
       document.getElementById('dungeonWithContactsList').innerHTML = `<div class="empty-page-hint">Fehler: ${escHtml(bundle.error.message)}</div>`;
       logSilentError('Kontaktliste laden', bundle.error);
@@ -6083,7 +6104,26 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     }
     renderDungeonList(bundle);
     renderContactsTableInto('allContactsTable', bundle.contacts, bundle);
+    // Drilldown-Ansicht eines einzelnen Dungeons war bisher eingefroren --
+    // ein Kontakt-Update/-Löschen von dort aus zeigte weiter den alten
+    // Stand (Kontakte-Zeile-für-Zeile-Review). Aktiven Drilldown mit
+    // demselben, jetzt frischen bundle nachziehen.
+    if(currentDungeonDrilldownId){
+      const stillThere = bundle.contacts.filter(c=>c.location_id===currentDungeonDrilldownId);
+      if(stillThere.length===0){
+        currentDungeonDrilldownId = null;
+        document.getElementById('dungeonContactsTableWrap').style.display='none';
+        document.getElementById('dungeonWithContactsList').style.display='block';
+      } else {
+        renderContactsTableInto('dungeonContactsTable', stillThere, bundle);
+      }
+    }
   }
+
+  // Welcher Dungeon-Drilldown gerade offen ist (null = Übersichtsraster) --
+  // hält renderContactsPage() in der Lage, die Drilldown-Tabelle nach einem
+  // Kontakt-Update mitzuziehen statt eingefroren stehen zu lassen.
+  let currentDungeonDrilldownId = null;
 
   function renderDungeonList(bundle){
     const listEl = document.getElementById('dungeonWithContactsList');
@@ -6104,6 +6144,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     listEl.querySelectorAll('[data-dungeon]').forEach(tile=>{
       tile.addEventListener('click', ()=>{
         const id = tile.dataset.dungeon;
+        currentDungeonDrilldownId = id;
         document.getElementById('dungeonWithContactsList').style.display='none';
         document.getElementById('dungeonContactsTableWrap').style.display='block';
         document.getElementById('dungeonContactsTitle').textContent = locIcon(bundle,id) + ' ' + locName(bundle,id);
@@ -6113,6 +6154,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   document.getElementById('backToDungeonListBtn').addEventListener('click', ()=>{
+    currentDungeonDrilldownId = null;
     document.getElementById('dungeonContactsTableWrap').style.display='none';
     document.getElementById('dungeonWithContactsList').style.display='block';
   });
@@ -6147,12 +6189,16 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     </table>`;
   }
 
-  function jumpToJournalDay(dateStr){
+  async function jumpToJournalDay(dateStr){
     const p = { year:+dateStr.slice(0,4), month:+dateStr.slice(5,7)-1, day:+dateStr.slice(8,10) };
-    calViewYear = p.year; calViewMonth = p.month;
-    calFocusDate = new Date(p.year, p.month, p.day);
     showPage('tagebuch', false);
-    renderCalendar().then(()=>{ showDayPreview(dateStr); updateCalendarHash(); });
+    // setCalViewMode('monat', ...) statt nur calViewYear/calViewMonth/
+    // calFocusDate von Hand zu setzen -- stand der Kalender zuletzt in der
+    // Wochen-/Tagesansicht (calViewMode blieb dabei unangetastet), landete
+    // der angesprungene Tag sonst nur im unsichtbaren Monats-DOM (Fund
+    // Kontakte-Review, Linse "totes Verhalten").
+    await setCalViewMode('monat', new Date(p.year, p.month, p.day));
+    showDayPreview(dateStr);
   }
 
   // Echte Kontakt-Unterseite (seit 2026-08-10) statt Popup -- eigene URL
@@ -6164,7 +6210,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   let currentContactPageId = null;
   let currentContactDetailTab = 'overview';
 
-  async function openContactPage(id){
+  async function openContactPage(id, preloadedBundle){
     if(currentContactPageId !== id) currentContactDetailTab = 'overview';
     currentContactPageId = id;
     // Kontakt-Seite hat keinen eigenen Nav-Button -- gehört zu "Kontakte"
@@ -6180,27 +6226,37 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('kdNotFound').style.display='none';
     if(location.hash !== '#kontakt/'+id) location.hash = 'kontakt/'+id;
 
-    const bundle = await loadContactsBundle();
+    // bundle (Kontaktliste+Betriebe) und extras (Verkäufe+Tagebuch-
+    // Markierungen NUR dieses einen Kontakts) sind unabhängige Abfragen --
+    // parallel starten statt nacheinander (vorher lief loadContactsBundle()
+    // allein schon vor jeder weiteren Ladearbeit, Kontakte-Effizienz-Review).
+    const [bundle, extras] = await Promise.all([
+      preloadedBundle || loadContactsBundle(),
+      loadContactDetailExtras(id)
+    ]);
     if(currentContactPageId !== id) return; // inzwischen zu einem anderen Kontakt navigiert
     if(bundle.error){ logSilentError('Kontakt laden', bundle.error); document.getElementById('kdNotFound').style.display='block'; return; }
     const c = bundle.contacts.find(x=>x.id===id);
     if(!c){ document.getElementById('kdNotFound').style.display='block'; return; }
     document.getElementById('kdContent').style.display='block';
-    await renderContactPageContent(c, bundle);
+    await renderContactPageContent(c, bundle, extras);
   }
 
-  async function refreshContactPageIfCurrent(id){
+  async function refreshContactPageIfCurrent(id, preloadedBundle){
     if(currentContactPageId===id && document.getElementById('page-kontakt-detail').style.display!=='none'){
-      await openContactPage(id);
+      await openContactPage(id, preloadedBundle);
     }
   }
 
-  // Kontaktliste + ggf. offene Kontakt-Detailseite sind zwei unabhängige
-  // Neu-Renders (unterschiedliche DB-Abfragen) -- an mehreren Stellen
-  // bisher sequenziell nacheinander aufgerufen, obwohl sie sich nicht
-  // gegenseitig brauchen.
+  // Kontaktliste + ggf. offene Kontakt-Detailseite brauchten bisher jede für
+  // sich ein eigenes loadContactsBundle() (Kontakte+Betriebe) -- ein einziges
+  // gemeinsames Bundle reicht für beide Neu-Renders (Kontakte-Effizienz-
+  // Review; die zusätzlichen Verkaufs-/Tagebuch-Daten der Detailseite kommen
+  // ohnehin separat über loadContactDetailExtras() innerhalb von
+  // openContactPage()).
   async function refreshContactsAndDetail(id){
-    await Promise.all([renderContactsPage(), refreshContactPageIfCurrent(id)]);
+    const bundle = await loadContactsBundle();
+    await Promise.all([renderContactsPage(bundle), refreshContactPageIfCurrent(id, bundle)]);
   }
 
   function renderContactStatStrip(cSales, chronikCount, filesCount, lastTs){
@@ -6213,7 +6269,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     </div>`;
   }
 
-  async function renderContactPageContent(c, bundle){
+  async function renderContactPageContent(c, bundle, extras){
     // isOwnerOrAdmin entscheidet zusätzlich über "Löschen" (sofort) vs.
     // "Löschanfrage stellen" (muss von einem Admin freigegeben werden,
     // siehe request_contact_deletion() weiter unten) -- Nutzerwunsch
@@ -6221,7 +6277,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     // geteilten Kontakt nicht selbst endgültig löschen können ("sonst
     // könnte ein verprellter Mitarbeiter einfach die Datenbank löschen").
     const isOwnerOrAdmin = c.owner_id===profile.id || profile.role==='admin';
-    const canEdit = isOwnerOrAdmin || myGuildContactWriteMemberIds.has(c.owner_id);
+    // Gilden-Pool-Kontakt (owner_id NULL, guild_id gesetzt): contacts_writable()
+    // erlaubt das dem Gildenführer/team_rights-Mitglied schon serverseitig
+    // (siehe myGuildLeadershipGuildId weiter oben) -- canEdit kannte diesen
+    // dritten Fall bisher nicht, "Bearbeiten"/"Löschanfrage stellen"/
+    // "+ Verkauf eintragen"/Datei-Upload blieben für so jemanden unsichtbar,
+    // obwohl die Datenbank sie längst zugelassen hätte (Kontakte-Cross-File-
+    // und Korrektheits-Review, unabhängig bestätigt).
+    const isGuildPoolLeader = c.owner_id===null && !!c.guild_id && c.guild_id===myGuildLeadershipGuildId;
+    const canEdit = isOwnerOrAdmin || myGuildContactWriteMemberIds.has(c.owner_id) || isGuildPoolLeader;
     const fmtDate = (d) => d ? new Date(d+'T12:00:00').toLocaleDateString('de-DE',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
     document.getElementById('contactDetailTitle').textContent = c.name;
 
@@ -6239,7 +6303,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(c.email) contactParts.push('✉ '+c.email);
     const wohnort = (c.wohnort_strasse||c.wohnort_ort) ? `${c.wohnort_strasse||''}${c.wohnort_strasse&&c.wohnort_ort?', ':''}${c.wohnort_ort||''}` : null;
     if(wohnort) contactParts.push('🏠 '+wohnort);
-    document.getElementById('kdContactLine').textContent = contactParts.join('   ');
+    document.getElementById('kdContactLine').textContent = contactParts.join(' · ');
 
     document.getElementById('kdActionsRow').innerHTML = `
       <button id="cdLogActionBtn">Aktion loggen</button>
@@ -6250,8 +6314,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
     const myEntries = log.filter(e=>e.contact_id===c.id);
     const lastTs = myEntries.length ? myEntries[myEntries.length-1].created_at : null;
-    const mentions = bundle.mentionMap[c.id] || [];
-    const cSales = bundle.salesMap[c.id] || [];
+    const mentions = extras.mentions;
+    const cSales = extras.sales;
 
     const field = (label, value) => value ? `<div class="cd-field"><span class="cdl">${label}</span><span class="cdv">${escHtml(String(value))}</span></div>` : '';
     let html = '';
@@ -6269,6 +6333,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       renderContactChronikTab(c, cSales, fmtDate),
       renderContactFilesTab(c, canEdit)
     ]);
+    // Staleness-Guard: schnelles Weiterklicken zu einem anderen Kontakt
+    // während dieser Promise.all noch läuft darf dessen Chronik/Dateien/
+    // Kennzahlen nicht mehr über den inzwischen aktuellen Kontakt schreiben
+    // (gleiche Bug-Klasse wie die Race-Condition, die die Zweitmeinungsrunde
+    // im Dungeons-Review bei der DOM-Aktualisierung fand).
+    if(currentContactPageId !== c.id) return;
     renderContactStatStrip(cSales, chronikItemsCache.length, filesCount, lastTs);
 
     const journalHtml = mentions.length>0
@@ -6294,13 +6364,19 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       // (moveKanbanCard()), nur ohne den dortigen kanbanBundleCache-Umweg,
       // da c hier schon vorliegt.
       if(c.kanban_stage==='gewonnen' || c.kanban_stage==='verloren'){
-        const ok = await logKanbanAction(c, 'kundenausbau');
-        if(!ok) return;
+        // Erst die sperr-geprüfte Zustandsänderung, dann die XP -- sonst
+        // bliebe bei einem Sperrkonflikt/Fehler die kundenausbau-XP gebucht,
+        // obwohl die Karte gar nicht verschoben wurde (gleicher Bug wie am
+        // 2026-08-30 in moveKanbanCard()/logActionForContact() behoben,
+        // dieser dritte Einstiegspunkt wurde beim damaligen Refactor
+        // übersehen -- Kontakte-Korrektheits-Review).
         const res = await updateContactWithLockCheck(c.id, { kanban_stage:'ersttermin_vereinbart' }, c.updated_at);
         if(res.error){ reportError('Kanban-Spalte aktualisieren', res.error); return; }
         if(res.conflict){ alertContactConflict(); return; }
         c.kanban_stage = 'ersttermin_vereinbart';
         c.updated_at = res.data.updated_at;
+        const ok = await logKanbanAction(c, 'kundenausbau');
+        if(!ok) return;
         await promptKanbanTermin(c, 'Ersttermin');
         await renderContactsPage();
       } else {
@@ -6309,7 +6385,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       await refreshContactPageIfCurrent(c.id);
     });
     const editBtn = document.getElementById('cdEditBtn');
-    if(editBtn) editBtn.addEventListener('click', ()=>{ showPage('kontakte'); startEditContact(c); });
+    if(editBtn) editBtn.addEventListener('click', ()=>{ showPage('kontakte'); startEditContact(c, bundle); });
     const delBtn = document.getElementById('cdDeleteBtn');
     if(delBtn) delBtn.addEventListener('click', withClickGuard('cdDeleteBtn', async ()=>{
       // Gildenmitglied mit bloßem Schreibrecht (nicht Eigentümer/Admin)
@@ -6489,6 +6565,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         ${canEdit ? `<button class="cal-nav-btn" data-delete-file="${f.id}" style="margin-left:6px;">Löschen</button>` : ''}
       </div>`).join('');
     }
+    // Staleness-Guard: während des Ladens kann der Nutzer bereits zu einem
+    // anderen Kontakt weitergeklickt haben -- dann NICHT mehr in die (jetzt
+    // fremde) Detailseite schreiben (Kontakte-Korrektheits-Review).
+    if(currentContactPageId !== c.id) return files.length;
     wrap.innerHTML = html;
 
     // Klick auf den Dateinamen zeigt PDF/Bild direkt im Modal (iframe bzw.
@@ -6672,14 +6752,19 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     });
 
     items.sort((a,b)=> b.ts - a.ts);
+    // Staleness-Guard: während die vier obigen Abfragen liefen, kann der
+    // Nutzer bereits zu einem anderen Kontakt weitergeklickt haben -- dann
+    // NICHT mehr den globalen chronikItemsCache/die (jetzt fremde)
+    // Detailseite mit diesen Daten überschreiben (Kontakte-Korrektheits-Review).
+    if(currentContactPageId !== c.id) return;
     chronikItemsCache = items;
     chronikCurrentPage = 0;
     renderChronikPage();
   }
 
   // Chronik-Seiten: bei vielen Einträgen (z.B. Test-Accounts oder künftig
-  // viele geloggte Telefon-NEs) würde eine einzige lange Liste das kleine
-  // Kontakt-Popup sprengen — deshalb feste Seitengröße + Weiter/Zurück wie
+  // viele geloggte Telefon-NEs) würde eine einzige lange Liste die Chronik
+  // sprengen — deshalb feste Seitengröße + Weiter/Zurück wie
   // beim Kalender-Monatswechsel (gleiches .cal-nav-Muster). Blättert nur
   // im bereits geladenen chronikItemsCache, keine erneute DB-Abfrage nötig.
   const CHRONIK_PAGE_SIZE = 20;
@@ -6709,7 +6794,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   document.getElementById('chronikPrevPageBtn').addEventListener('click', ()=>{ chronikCurrentPage--; renderChronikPage(); });
   document.getElementById('chronikNextPageBtn').addEventListener('click', ()=>{ chronikCurrentPage++; renderChronikPage(); });
 
-  async function startEditContact(c){
+  async function startEditContact(c, bundle){
     document.getElementById('contactFormBody').style.display = 'block';
     document.getElementById('contactFormToggleBtn').classList.add('open');
     editingContactId = c.id;
@@ -6720,9 +6805,18 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     contactLocationSelectedId = c.location_id||null;
     document.getElementById('contactLocationSearch').value = '';
     if(c.location_id){
-      const { data: loc, error } = await sb.from('locations').select('name').eq('id', c.location_id).maybeSingle();
-      if(error) logSilentError('Betrieb für Bearbeitung laden', error);
-      if(loc) document.getElementById('contactLocationSearch').value = loc.name;
+      // Einziger Aufrufer (Kontakt-Seite) hat den Betriebsnamen bereits im
+      // gerade geladenen bundle.locMap -- ein eigener Roundtrip pro
+      // "Bearbeiten"-Klick war überflüssig (Kontakte-Effizienz-Review).
+      // Ohne übergebenes bundle (z.B. künftiger anderer Aufrufer) bleibt der
+      // alte Direkt-Fetch als Rückfall bestehen.
+      if(bundle && bundle.locMap && bundle.locMap[c.location_id]){
+        document.getElementById('contactLocationSearch').value = bundle.locMap[c.location_id].name;
+      } else {
+        const { data: loc, error } = await sb.from('locations').select('name').eq('id', c.location_id).maybeSingle();
+        if(error) logSilentError('Betrieb für Bearbeitung laden', error);
+        if(loc) document.getElementById('contactLocationSearch').value = loc.name;
+      }
     }
     document.getElementById('contactStatusSelect').value = c.status;
     document.getElementById('contactKanbanStageSelect').value = c.kanban_stage||'';
@@ -6738,6 +6832,33 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('contactNotesInput').value = c.notes||'';
     document.getElementById('contactAddBtn').textContent = 'Änderungen speichern';
     document.getElementById('page-kontakte').scrollIntoView({behavior:'smooth', block:'start'});
+  }
+
+  // Gemeinsam von "erfolgreich gespeichert" UND "Bearbeitung abgebrochen"
+  // (Formular zugeklappt, siehe initContactFormToggle()) genutzt -- vorher
+  // stand dieser Block nur am Ende des contactAddBtn-Handlers, ein
+  // Abbruch-Weg setzte editingContactId nie zurück.
+  function clearContactForm(){
+    document.getElementById('contactVornameInput').value = '';
+    document.getElementById('contactNachnameInput').value = '';
+    document.getElementById('contactLocationSearch').value = '';
+    contactLocationSelectedId = null;
+    document.getElementById('contactRoleSelect').selectedIndex = 0;
+    document.getElementById('contactStatusSelect').value = 'kalt';
+    document.getElementById('contactKanbanStageSelect').value = '';
+    document.getElementById('contactGeburtsdatumInput').value = '';
+    document.getElementById('contactTelefonInput').value = '';
+    document.getElementById('contactEmailInput').value = '';
+    document.getElementById('contactWohnortStrasseInput').value = '';
+    document.getElementById('contactWohnortOrtInput').value = '';
+    document.getElementById('contactBedarfIstInput').value = '';
+    document.getElementById('contactBedarfWunschInput').value = '';
+    document.getElementById('contactNextContactInput').value = '';
+    document.getElementById('contactConsentInput').checked = false;
+    document.getElementById('contactNotesInput').value = '';
+    editingContactId = null;
+    editingContactUpdatedAt = null;
+    document.getElementById('contactAddBtn').textContent = '+ Kontakt anlegen';
   }
 
   document.getElementById('contactAddBtn').addEventListener('click', async (e)=>{
@@ -6771,31 +6892,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         if(res.conflict){ alertContactConflict(); return; }
         const savedContact = res.data;
         await syncWiedervorlageTask(savedContact.id, savedContact.name, savedContact.naechster_kontakt);
-        editingContactId = null;
-        editingContactUpdatedAt = null;
-        document.getElementById('contactAddBtn').textContent = '+ Kontakt anlegen';
       } else {
         const { data: savedContact, error } = await sb.from('contacts').insert({ org_id:profile.org_id, owner_id:profile.id, ...payload }).select().single();
         if(error){ reportError('Kontakt anlegen', error, statusEl); return; }
         await syncWiedervorlageTask(savedContact.id, savedContact.name, savedContact.naechster_kontakt);
       }
-      document.getElementById('contactVornameInput').value = '';
-      document.getElementById('contactNachnameInput').value = '';
-      document.getElementById('contactLocationSearch').value = '';
-      contactLocationSelectedId = null;
-      document.getElementById('contactRoleSelect').selectedIndex = 0;
-      document.getElementById('contactStatusSelect').value = 'kalt';
-      document.getElementById('contactKanbanStageSelect').value = '';
-      document.getElementById('contactGeburtsdatumInput').value = '';
-      document.getElementById('contactTelefonInput').value = '';
-      document.getElementById('contactEmailInput').value = '';
-      document.getElementById('contactWohnortStrasseInput').value = '';
-      document.getElementById('contactWohnortOrtInput').value = '';
-      document.getElementById('contactBedarfIstInput').value = '';
-      document.getElementById('contactBedarfWunschInput').value = '';
-      document.getElementById('contactNextContactInput').value = '';
-      document.getElementById('contactConsentInput').checked = false;
-      document.getElementById('contactNotesInput').value = '';
+      clearContactForm();
       statusEl.textContent = '';
       await renderContactsPage();
     }finally{
@@ -6865,12 +6967,17 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     // zurück in die Pipeline — zusätzlich "Termin vereinbart" loggen und bei
     // Ersttermin einsortieren, statt ihn stumm in der Datenbank liegen zu lassen.
     if(key==='kundenausbau' && !contact.kanban_stage){
-      const ok = await logKanbanAction(contact, 'termin_vereinbart');
-      if(ok){
-        const res = await updateContactWithLockCheck(contact.id, { kanban_stage:'ersttermin_vereinbart' }, contact.updated_at);
-        if(res.error) reportError('Kanban-Spalte aktualisieren', res.error);
-        else if(res.conflict) alertContactConflict();
-        else { contact.kanban_stage = 'ersttermin_vereinbart'; contact.updated_at = res.data.updated_at; }
+      // Erst die sperr-geprüfte Zustandsänderung, dann die termin_vereinbart-XP
+      // -- gleicher Fix wie im cdTerminBtn-Handler oben (2026-08-30-Refactor
+      // hatte diesen zweiten Einstiegspunkt übersehen, Kontakte-Korrektheits-
+      // Review).
+      const res = await updateContactWithLockCheck(contact.id, { kanban_stage:'ersttermin_vereinbart' }, contact.updated_at);
+      if(res.error) reportError('Kanban-Spalte aktualisieren', res.error);
+      else if(res.conflict) alertContactConflict();
+      else {
+        contact.kanban_stage = 'ersttermin_vereinbart';
+        contact.updated_at = res.data.updated_at;
+        await logKanbanAction(contact, 'termin_vereinbart');
       }
     }
 
@@ -7592,7 +7699,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       { data: poolContacts, error: pcErr }
     ] = await Promise.all([
       sb.from('profiles').select('id,display_name').eq('org_id', profile.org_id),
-      sb.from('contacts').select('id,name,updated_at').eq('org_id', profile.org_id).is('owner_id', null).is('guild_id', null)
+      // Beide Pool-Zustände: echter Org-Pool (owner_id+guild_id beide NULL)
+      // UND Gilden-Pool (owner_id NULL, guild_id gesetzt -- entsteht beim
+      // Mitarbeiter-Offboarding). Vorher zeigte diese Liste NUR den
+      // Org-Pool -- Gilden-Pool-Kontakte waren dadurch für admin_reassign_
+      // contact() zwar längst zuweisbar, aber in der Oberfläche unauffindbar
+      // (Kontakte-Cross-File-Review).
+      sb.from('contacts').select('id,name,guild_id,updated_at').eq('org_id', profile.org_id).is('owner_id', null)
     ]);
     if(memErr) logSilentError('Team-Mitglieder laden', memErr);
     if(pcErr) logSilentError('Herrenlose Kontakte laden', pcErr);
@@ -7601,10 +7714,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   // Seit Aufgabe 1 (Org-Pool-Verteilung) zweigeteilt: Dungeons (wie
   // bisher, zeigt ALLE Dungeons der Org, Dropdown deckt auch die
-  // Rückgabe in den Pool ab) + ein neuer Abschnitt "Herrenlose Kontakte"
-  // (bewusst NUR echte Org-Pool-Kontakte -- owner_id UND guild_id beide
-  // NULL -- nicht alle Org-Kontakte, da diese Liste über die Zeit groß
-  // werden kann, anders als die naturgemäß wenigen Dungeons).
+  // Rückgabe in den Pool ab) + ein Abschnitt "Herrenlose Kontakte" (jeder
+  // Kontakt ohne owner_id -- Org-Pool UND Gilden-Pool zusammen, s.o. --
+  // nicht alle Org-Kontakte, da diese Liste über die Zeit groß werden kann,
+  // anders als die naturgemäß wenigen Dungeons).
   function renderAccountPool(locs, { members, poolContacts }){
     const listEl = document.getElementById('accountPoolList');
     const memberOptions = members.map(m=>`<option value="${m.id}">${escHtml(m.display_name)}</option>`).join('');
@@ -7624,7 +7737,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       ? '<div class="empty-page-hint">Keine herrenlosen Kontakte.</div>'
       : [...poolContacts].sort((a,b)=>a.name.localeCompare(b.name)).map(c=>`
           <div class="account-row">
-            <span>${escHtml(c.name)}</span>
+            <span>${escHtml(c.name)}${c.guild_id ? ' <span class="tag">Gilden-Pool</span>' : ''}</span>
             <select data-assign-contact="${c.id}">
               <option value="">— Im Pool —</option>
               ${memberOptions}
@@ -8200,10 +8313,12 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('calMonthView').style.display = mode==='monat' ? 'block' : 'none';
     document.getElementById('calWeekView').style.display = mode==='woche' ? 'block' : 'none';
     document.getElementById('calDayView').style.display = mode==='tag' ? 'block' : 'none';
-    if(mode==='woche') renderWeekView(true);
-    else if(mode==='tag') renderDayView(true);
-    else renderCalendar();
+    let renderPromise;
+    if(mode==='woche') renderPromise = renderWeekView(true);
+    else if(mode==='tag') renderPromise = renderDayView(true);
+    else renderPromise = renderCalendar();
     updateCalendarHash();
+    return renderPromise;
   }
   document.getElementById('calViewMonthBtn').addEventListener('click', ()=> setCalViewMode('monat'));
   document.getElementById('calViewWeekBtn').addEventListener('click', ()=> setCalViewMode('woche'));
@@ -10935,6 +11050,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // updateCalendarHash() bei jeder Kalender-Navigation geschrieben.
   function routeToHash(hash, updateHash){
     const clean = hash.replace('#','');
+    // Pool-Zustand (org_id NULL) muss dieselbe Sperre wie in showPage()
+    // treffen -- ohne diese Prüfung hätte ein #kontakt/<uuid>-Deep-Link
+    // (oder ein #tagebuch/...-Hash) sie direkt umgangen, weil beide
+    // Zweige unten die Seite selbst umschalten statt über showPage() zu
+    // laufen (Kontakte-Korrektheits-Review, bestätigt auch von der
+    // Linse "totes Verhalten").
+    if(profile.org_id === null){ showPage('organisation'); return; }
     if(clean.startsWith('kontakt/')) openContactPage(clean.slice('kontakt/'.length));
     else if(clean.startsWith('tagebuch/')){
       const [, mode, dateStr] = clean.split('/');
