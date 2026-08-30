@@ -51,9 +51,60 @@ B2C→B2B-Konzeptgespräch (siehe oben) fließt in den Umbau der
 Handlungen-Seite mit ein.
 
 **Bei jeder neuen Session, solange dieser Fahrplan aktiv ist:** zuerst
-prüfen, in welcher Phase wir stehen, dann erst weiterarbeiten. Diesen
-Block hier ENTFERNEN (nicht nur abhaken), sobald Phase 3 abgeschlossen
-ist — er soll nicht dauerhaft am Dateianfang stehen bleiben.
+prüfen, in welcher Phase wir stehen, dann erst weiterarbeiten. Den
+Block ab "🚧 FAHRPLAN" bis hierhin ENTFERNEN (nicht nur abhaken), sobald
+Phase 3 abgeschlossen ist — er soll nicht dauerhaft am Dateianfang
+stehen bleiben. Die Rückstand-Liste direkt darunter ist davon
+ausgenommen — die bleibt bestehen (und wandert dann an den
+Datei-Anfang), sie ist keine Baustelle dieses einen Fahrplans, sondern
+der dauerhafte Anschluss danach.
+
+## Rückstand: was nach Phase 3 ansteht
+
+Eine Liste, keine Prosa — bewusst gebündelt an einer Stelle statt über
+die Datei verstreut, damit es eine durchgehende Linie gibt: erst Phase
+1-3 oben, danach hier von oben nach unten abarbeiten. Reihenfolge ist
+ein Vorschlag (nach Bau-Reife sortiert: schnell/klar zuerst, dann
+Sachen mit Infra-Bedarf, dann Sachen, die erst ein eigenes Gespräch
+brauchen, dann große/vage Sachen zuletzt) — keine feste Zusage, bei
+Bedarf umsortieren. Nichts hiervon von selbst anfangen, nur auf
+Anstoß.
+
+1. **Admin-Benachrichtigung bei Kündigung** — meldet sich automatisch
+   beim Admin, wenn ein Mitarbeiter einen Vertrag als gekündigt/
+   ausgelaufen markiert. Braucht einen Benachrichtigungsmechanismus,
+   den es im Projekt noch gar nicht gibt.
+2. **Jahresend-Dramatisierung** — Tagebucheinträge + gewonnene
+   Verkäufe eines Jahres werden per LLM (Supabase Edge Function,
+   API-Key serverseitig) zu einer Heldenreise-Erzählung verdichtet,
+   einmal am Jahresende. Beide Zeitreihen unabhängig ziehen, KI stellt
+   zeitliche Zusammenhänge selbst her — kein Pflicht-Link zwischen
+   Tagebucheintrag und Verkauf.
+3. **KI-Bildumwandlung von Tagebuch-Fotos** — z.B. "Zauberer im Rat
+   der Weißen". `journal_photos.transformed_path` ist als Platzhalter
+   schon da. Gleiches Kostenprinzip wie oben: on-demand, nicht pro Foto.
+4. **Verkaufsstatistik an die Gilde binden** — zurückgestellt wegen
+   eines echten Adoptions-Problems: Provisionssätze/Planungsziele
+   trägt jeder freiwillig selbst ein, ohne Anstoß bleiben neue
+   Gildenmitglieder mit leeren/verzerrten Werten in einer Team-Ansicht.
+   Vor einem neuen Anlauf erst die Adoptions-Frage klären (z.B.
+   Onboarding-Hinweis wie beim Changelog-Popup).
+5. **Gamification-Ausschalter (reines CRM verkaufen)** — Organisations-
+   weite Einstellung, die XP/Level/Klassen/Quests/Gilde/Charakter
+   komplett abschaltet. Braucht ein eigenes Gespräch zuerst: was bleibt
+   aus CRM-Sicht übrig (Kontakte/Kanban/Kalender/Statistik ja —
+   Charakterseite/Gilde/Inventar dann komplett weg?).
+6. **Lern-/Zertifikatsystem "Grimoire"** — bisher nur der Name
+   reserviert (deshalb heißt die Zauberer-Statistikseite "Arkanes
+   Kompendium", nicht "Grimoire"), keine inhaltlichen Details. Eigenes
+   Gespräch nötig.
+7. **Multi-Org-Charakter-Portabilität** — ein Nutzer nimmt Level/
+   Skills/Tagebuch über einen Arbeitgeberwechsel mit, Dungeons/Items/
+   Quests bleiben bei der alten Organisation. Echte strukturelle
+   Weiche (ein Profil ist aktuell fest an genau eine Organisation
+   gekettet) — nur dokumentiert, nicht angefasst.
+8. **Automatisiertes Anruf-Verzeichnis** ("wen sollte ich als Nächstes
+   anrufen") — nur als Idee erwähnt, nichts geplant.
 
 ---
 
@@ -409,9 +460,10 @@ Funktionen benutzen statt eigene Fehlerbehandlung zu erfinden.**
   Patch 21, Integer, Default 1). Seit Patch 23: `product_id` (Verweis auf
   `products`, Pflicht — kein Freitext mehr) statt der früheren `produkt`-
   Textspalte, dazu `bewertungssumme` und `laufender_beitrag` (beide Zahlen,
-  werden beim Verkaufen erfasst, aber in Phase 1 **noch nicht** zu Provision/
-  Bewertungspunkten verrechnet — kommt als eigener, späterer Patch, siehe
-  "Bewusst aufgeschobene Ideen"), `vertragsbeginn` (Datum, Pflichtfeld beim
+  werden beim Verkaufen erfasst — die Verrechnung zu Provision/
+  Bewertungspunkten ist längst gebaut und live, siehe Abschnitt
+  "BWS-Verrechnung: Provision & Bewertungspunkte" weiter unten),
+  `vertragsbeginn` (Datum, Pflichtfeld beim
   Gewinnen, kann in der Zukunft liegen — z.B. Kündigungsfristen bei PKV-
   Wechseln) und `vertragsende` (Datum, nullable — leer = Vertrag läuft noch,
   gesetzt = gekündigt/ausgelaufen; **nicht** dasselbe wie `status='verloren'`,
@@ -444,7 +496,8 @@ Funktionen benutzen statt eigene Fehlerbehandlung zu erfinden.**
   Fremd-Markierungen bleiben unangetastet).
 - `journal_photos` — ein Foto pro Tag, privater Storage-Bucket. Hat schon jetzt
   `transformed_path`/`transform_status`, aktuell ungenutzt — Platzhalter für
-  eine spätere KI-Bildumwandlung (siehe "Bewusst aufgeschobene Ideen" unten).
+  eine spätere KI-Bildumwandlung (siehe "Rückstand: was nach Phase 3
+  ansteht" ganz oben).
 - `user_inventory`, `guilds`, `guild_members`, `friends` — siehe `PATCH_LOG.md`
   für Details, Funktionsweise ist selbsterklärend über die Namen.
   **Item-Effekt-System** (seit Patch 3, bis zu dieser Session ungenutzt):
@@ -837,6 +890,37 @@ Produkt verwendeten `img/characters/creator/`- und
 früheren Wegwerf-Vorschau-/Entscheidungswerkzeuge aus der Bau-Phase
 wurden nach Übernahme ihrer Ergebnisse gelöscht (Liste/Details:
 HISTORY.md).
+
+## Ausrüstung: Charakterbilder (fertig, seit 2026-08-03)
+
+Ausrüstung nutzt dieselbe Sprite-Sheet-Technik wie der Aussehen-Screen
+(`items.sheet`, `{g}`-Platzhalter für Geschlecht):
+`layersForCharacterProfile()` baut live die Ebenen-Liste aus den
+angezogenen Items (`profiles.equipped_weapon/armor/accessory`),
+gerendert über `createSpriteRenderer()`. Anziehen/Ausziehen
+(`toggleEquip(itemKey, slotField)`) ist reine Kosmetik ohne
+XP/`action_log`, verbraucht das Item in `user_inventory` nicht.
+Item-Katalog unterscheidet `category:'waffen'|'ruestung'|'accessories'`
+(Ausrüstung) von Verbrauchsgütern mit `effect`-Feld (siehe `useItem()`).
+Die drei Klassenitems (Zauberer: Stab + Cape, Krieger: Holzschwert +
+Guard Helmet, Schütze: Rucksack + Bogen) sind echte Katalog-Items,
+werden neuen Charakteren automatisch ins Inventar gelegt UND angezogen
+(`grantClassStarterEquipment()`). `CLASS_OUTFIT`/`layersForClassPortrait`
+bleiben separat bestehen für die Onboarding-Vorschauen (Klassenwahl/
+Aussehen-Screen), wo es noch kein Inventar gibt.
+
+**Asset-Quelle:** GandalfHardcore-Pakete (gitignored) — Lizenz erlaubt
+kommerzielle Nutzung/Verändern, verbietet Weiterverkauf der Rohdaten;
+Multi-Tenant-SaaS-Lizenzfrage bewusst zurückgestellt bis zum ersten
+echten Verkauf an eine zweite Organisation.
+
+**Zurückgestellte Alternative**, falls mehrere Organisationen später
+einen jeweils eigenen Look brauchen: ein riggtes 3D-Charaktermodell
+statt 2D-Ebenen — löst Bild-Ausrichtung strukturell, höherer
+Einstiegsaufwand, deshalb zurückgestellt, solange die 2D-Ebenen-Lösung
+für die aktuellen 3 Klassen ausreicht.
+
+Entstehung/verworfene Ansätze/Bogen-Sprite-Iterationen: HISTORY.md.
 
 ## Kanban (Questpfad / Gildenbrett / Feldzug), seit Patch 18
 
@@ -1406,9 +1490,11 @@ Quest das braucht, absichtlich nicht gecodet (Rule of Three) — bei
 Bedarf live aus `action_log` ableiten (kein neues Speicherfeld nötig,
 gleiches Prinzip wie `computeJournalStreak()`).
 
-**Bewusst noch nicht gebaut (Phase 2, siehe "Bewusst aufgeschobene Ideen"-
-Prinzip):** wiederkehrende Termine, Erinnerungen, Tagesansicht. Nicht von
-selbst anfangen, nur auf expliziten Anstoß.
+**Von den drei hier ursprünglich als offen gelisteten Punkten sind
+zwei längst gebaut** (Serientermine seit Patch 36, Tagesansicht seit
+Patch 51, siehe jeweils eigener Abschnitt) — **weiterhin bewusst
+offen: echte Erinnerungen** (Push/E-Mail o.ä.), keine Eile, nicht von
+selbst anfangen.
 
 **Arbeitsfreie Tage:** ein Wochentag ganz ohne Arbeitszeiten-Eintrag gilt
 als komplett arbeitsfrei, in der Wochenansicht ganztägig abgedunkelt
@@ -1742,130 +1828,10 @@ je Produkt (Stück + Summe). Datenbasis: nur die **eigenen** gewonnenen
 Verkäufe des Nutzers (`created_by = profile.id`, `status='gewonnen'`),
 gruppiert nach `vertragsbeginn` (Fallback `datum`).
 
-## Bewusst aufgeschobene Ideen (NICHT vergessen, aber NICHT von selbst bauen)
-- ~~**Notfall-Quest vor automatischer Kontakt-Löschung**~~ — **fertig
-  gebaut, live, 2026-08-26**, siehe eigener Abschnitt "Sonderquest-
-  Hinweise: automatisiertes Erkennungssystem" unten. Kein offener Punkt
-  mehr.
-- ~~**Outlook-artige abhakbare Aufgaben**~~ — **fertig gebaut, live,
-  2026-08-20, Patch 51**, siehe eigener Abschnitt "Aufgaben-System: echte,
-  abhakbare Aufgaben (Outlook-Stil)" oben. Neue Tabelle `tasks`, neuer
-  Tag-Reiter im Kalender, Geburtstags-/Wiedervorlage-Aufgaben laufen
-  automatisch mit. Kein offener Punkt mehr.
-- **Gamification-Ausschalter (reines CRM verkaufen)** — vom Nutzer am
-  2026-08-09: eine Einstellung, mit der sich das gesamte Gamification-Thema
-  (XP/Level/Klassen/Quests/Gilde/Charakter) organisationsweit abschalten
-  lässt, um das System auch als reines CRM ohne Spiel-Schicht verkaufen zu
-  können. Passt konzeptionell zu dem am 2026-08-03 skizzierten
-  `enabledModules`-Schlüssel in `rule_configs` (siehe "Frontend-Framework-
-  Frage" oben) — dort ging es um einzelne Bausteine (Kanban/Dungeon/
-  Tagebuch An/Aus), das hier wäre der radikalste Fall davon (alles
-  Spielerische auf einmal aus). Noch nicht durchdacht: was aus CRM-Sicht
-  überhaupt übrig bleibt (Kontakte/Kanban/Kalender/Statistik ja, aber
-  Charakterseite/Gilde/Inventar dann komplett weg?) — braucht ein
-  eigenes Gespräch, bevor irgendwas gebaut wird.
-- **Verkaufsstatistik (Arkanes Kompendium) an die Gilde binden** — vom
-  Nutzer am 2026-08-09 als Idee genannt, am 2026-08-10 kurz angerissen
-  und **bewusst wieder zurückgestellt, weil dabei ein echtes, ungelöstes
-  Problem sichtbar wurde:** Provisionssätze/Planungsziele (Patch 31)
-  trägt jeder für sich selbst ein, es gibt aber **keinerlei Anstoß**,
-  das je zu tun — anders als XP (kommt automatisch durchs Arbeiten),
-  müsste ein neu eingeladenes Gildenmitglied diese Einstellungen aktiv
-  und freiwillig ausfüllen, sonst bleiben seine Zahlen leer/verzerrt,
-  sobald sie in eine Team-Ansicht einfließen. Nutzer-O-Ton: "das reißt
-  etwas auf, was wir gerade nicht wollen." Vor einem erneuten Anlauf
-  müsste zuerst diese Adoptions-Frage geklärt werden (z.B. ein
-  einmaliger Onboarding-Hinweis Richtung Einstellungen-Seite, ähnlich
-  dem Changelog-Popup-Muster) — nicht von selbst wieder aufgreifen, nur
-  auf erneuten Nutzeranstoß.
-- **Lern-/Zertifikatsystem für den Zauberer** — vom Nutzer am 2026-08-03 nur
-  als Name angekündigt, noch ohne jegliche inhaltliche Details. **Wichtig:
-  der Name "Grimoire" ist dafür reserviert** — deshalb heißt die
-  Verkaufsstatistik-Seite beim Zauberer "Arkanes Kompendium" und NICHT
-  "Grimoire", obwohl Letzteres thematisch nähergelegen hätte. Falls der
-  Nutzer künftig von einem Lern-/Zertifikatsystem spricht, ist das dieses
-  hier gemeinte Vorhaben. Nicht von selbst anfangen, nur wenn der Nutzer es
-  explizit anstößt.
-- **Gilden-basierte Sichtbarkeit** — Phase 1 seit 2026-08-08 live gebaut,
-  siehe eigener Abschnitt "Gilden-basierte Sichtbarkeit, Phase 1" weiter
-  unten. Phase 2 (Notfall-Nachfolgekette) und Phase 3 (protokollierter
-  Admin-Notfallzugriff) bleiben offen, kein Zeitdruck.
-- ~~Malus-Berechnung bei gekündigten/ausgelaufenen Verträgen~~ —
-  **entschieden gegen, 2026-08-10:** kein zusätzlicher Malus bei Storno,
-  der Storno selbst ist schmerzhaft genug. War am 2026-07-31 nur als
-  Zukunftsidee erwähnt, jetzt final verworfen, keine Wiedervorlage mehr.
-- **Admin-Benachrichtigung bei Kündigung durch Mitarbeiter**: wenn ein
-  Team-Mitglied einen Vertrag als gekündigt/ausgelaufen markiert, soll der
-  Admin künftig automatisch informiert werden (vom Nutzer am 2026-07-31
-  angekündigt). Aktuell passiert das noch nicht — braucht vermutlich einen
-  neuen Benachrichtigungsmechanismus, den es im Projekt bisher gar nicht
-  gibt.
-- **Jahresend-Dramatisierung**: alle Tagebucheinträge (+ ggf. Fotos) eines
-  Nutzers werden am Jahresende per LLM zu einer zusammenhängenden
-  Heldenreise-Erzählung verdichtet. Braucht eine Supabase Edge Function
-  (Anthropic-API-Key darf nicht im Client landen). Bewusst NICHT laufend pro
-  Eintrag, sondern **einmal am Jahresende** — hält Kosten niedrig.
-  **Verkaufserfolge fließen mit ein, geklärt am 2026-08-03:** die Erzählung
-  soll nicht nur aus dem Tagebuch, sondern auch aus echten Verkaufsabschlüssen
-  (`sales`) gespeist werden. **Kein expliziter Verknüpfungs-Zwang** — der
-  Nutzer stellte klar, dass `journal_entry_mentions` (@mention im Tagebuch)
-  bewusst nur ein optionaler Bonus fürs persönliche Ausschütten ist ("sein
-  eigenes Innenleben"), kein Pflichtfeld, um einen Verkauf mit einem
-  Tagebucheintrag zu verknüpfen. Verkäufe werden vom System ohnehin
-  automatisch getrackt (Datum via `vertragsbeginn`) — **die Edge Function
-  zieht beide Zeitreihen (Tagebucheinträge + gewonnene Verkäufe desselben
-  Jahres) unabhängig voneinander** und überlässt der KI, zeitliche
-  Zusammenhänge selbst herzustellen (z.B. ein schwieriger Tagebucheintrag,
-  zwei Wochen später ein Abschluss beim selben Kontakt, erkennbar über
-  `sales.contact_id` = per `journal_entry_mentions` erwähnter Kontakt).
-  Ein expliziter Link lohnt sich erst, falls sich beim ersten echten
-  Durchlauf zeigt, dass die KI Verkäufe falschen Tagen zuordnet — vorher
-  nicht von selbst bauen.
-- **KI-Bildumwandlung von Tagebuch-Fotos** — z.B. "Zauberer im Rat der Weißen".
-  `journal_photos.transformed_path` ist als Platzhalter schon da. Selbes
-  Kostenprinzip: on-demand statt pro Foto.
-- **Ausrüstungs-Charakterbilder / echter Charakterscreen** — **fertig
-  gebaut, seit 2026-08-03** (Entstehung/verworfene Ansätze/Bogen-
-  Iterationen: HISTORY.md). Ausrüstung nutzt dieselbe Sprite-Sheet-
-  Technik wie der Aussehen-Screen (`items.sheet`, `{g}`-Platzhalter für
-  Geschlecht): `layersForCharacterProfile()` baut live die Ebenen-Liste
-  aus den angezogenen Items (`profiles.equipped_weapon/armor/
-  accessory`), gerendert über `createSpriteRenderer()`. Anziehen/
-  Ausziehen (`toggleEquip(itemKey, slotField)`) ist reine Kosmetik ohne
-  XP/`action_log`, verbraucht das Item in `user_inventory` nicht. Item-
-  Katalog unterscheidet `category:'waffen'|'ruestung'|'accessories'`
-  (Ausrüstung) von Verbrauchsgütern mit `effect`-Feld (siehe `useItem()`).
-  Die drei Klassenitems (Zauberer: Stab + Cape, Krieger: Holzschwert +
-  Guard Helmet, Schütze: Rucksack + Bogen) sind echte Katalog-Items,
-  werden neuen Charakteren automatisch ins Inventar gelegt UND
-  angezogen (`grantClassStarterEquipment()`). `CLASS_OUTFIT`/
-  `layersForClassPortrait` bleiben separat bestehen für die
-  Onboarding-Vorschauen (Klassenwahl/Aussehen-Screen), wo es noch kein
-  Inventar gibt — zeigen inzwischen für alle drei Klassen ein
-  animiertes, aus Ebenen zusammengesetztes Beispiel (`<canvas>`, kein
-  statisches Bild). **Asset-Quelle:** GandalfHardcore-Pakete
-  (`~/Schreibtisch/GandalfHardcore *.zip`, gitignored) — Lizenz erlaubt
-  kommerzielle Nutzung/Verändern, verbietet Weiterverkauf der Rohdaten;
-  Multi-Tenant-SaaS-Lizenzfrage bewusst zurückgestellt bis zum ersten
-  echten Verkauf an eine zweite Organisation. **`reward_item_key`+
-  `qty`-Feld für Quests:** siehe "Ein aktiver, paralleler Nebenstrang" →
-  "Item-/Mengen-System-Umbau", dort konsolidiert.
-
-  **Zurückgestellte Alternative, falls mehrere Organisationen später
-  einen jeweils eigenen Look brauchen:** ein riggtes 3D-Charaktermodell
-  (z.B. Reallusion Character Creator) statt 2D-Ebenen — löst
-  Bild-Ausrichtung strukturell, höherer Einstiegsaufwand, deshalb
-  bewusst zurückgestellt, solange die 2D-Ebenen-Lösung für die
-  aktuellen 3 Klassen ausreicht.
-
-- **Multi-Org-Charakter-Portabilität**: die Idee, dass ein Nutzer den
-  Charakter (Level/Skills/Tagebuch) über einen Arbeitgeberwechsel hinweg
-  mitnehmen könnte, während Dungeons/Items/Quests bei der alten Organisation
-  bleiben. **Echte strukturelle Weiche** (aktuell ist ein Profil fest an
-  GENAU EINE Organisation gekettet) — bewusst nicht angefasst, nur
-  dokumentiert.
-- **Automatisiertes Anruf-Verzeichnis** ("wen sollte ich als Nächstes
-  anrufen") — nur als Idee erwähnt, nichts geplant.
+Die frühere Liste "Bewusst aufgeschobene Ideen" ist jetzt Teil des
+Fahrplans ganz oben in dieser Datei (Abschnitt "Rückstand: was nach
+Phase 3 ansteht") — nicht mehr hier, um eine einzige durchgehende Linie
+zu haben, was wann gebaut wird.
 
 ## Ein aktiver, paralleler Nebenstrang
 
