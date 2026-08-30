@@ -73,9 +73,10 @@ klein** (3 statt 5 parallele Agenten pro Bereich, Effizienz/totes
 Verhalten in einem zweiten Häppchen nachgeholt) — bei Kanban so
 gemacht. **Der Nutzer hat das bei Verkauf/Statistik bewusst korrigiert**
 ("haben wir das nicht immer mit 5 gemacht?") und für diesen Bereich
-gleich alle 5 auf einmal gewollt — bei den verbleibenden Bereichen
-(Kontakte/Dungeons) deshalb aktiv nachfragen, welcher Umfang gewünscht
-ist, nicht automatisch auf 3 zurückfallen.
+gleich alle 5 auf einmal gewollt — bei Dungeons und Kontakte wurde
+danach entsprechend gleich mit allen 5 Linsen gestartet, nicht wieder
+auf 3 zurückgefallen. Alle vier Bereiche sind seit 2026-08-30 fertig,
+siehe Fortschritt unten.
 
 **Fortschritt** (Matrix: 4 Bereiche × 5 Prüf-Linsen):
 - ✅ **Kanban** (2026-08-30) — alle 5 Linsen gefahren, fertig.
@@ -228,23 +229,39 @@ ist, nicht automatisch auf 3 zurückfallen.
   wurde von der Zweitmeinungsrunde zum eigenen Fix gefunden und
   ebenfalls behoben. Beide Regressions-Suiten grün.
 
-**Nächster Schritt beim Wiedereinstieg:** alle vier Bereiche (Kanban,
-Verkauf/Statistik, Dungeons, Kontakte) sind jetzt mit allen 5 Linsen
-durch — offen ist nur noch das B2C→B2B-Gespräch direkt unten, danach ist
-Phase 2 komplett.
+**Phase 2 ist komplett abgeschlossen** (2026-08-30): alle vier Bereiche
+(Kanban, Verkauf/Statistik, Dungeons, Kontakte) mit allen 5 Linsen
+durch, dazu das B2C→B2B-Konzeptgespräch geführt (reines Durchsprechen,
+kein Code geschrieben, siehe direkt unten). Nächster Schritt beim
+Wiedereinstieg: **Phase 3** (Anwenderoberfläche + Frontend-Framework-
+Frage, siehe unten).
 
-**Noch innerhalb Phase 2, vom Nutzer am 2026-08-29 explizit ergänzt:** ein Durchsprechen (reines Gespräch, keine Code-Änderung) des
-länger angekündigten B2C→B2B-Aktions-Reworks der Handlungen-Seite
-(kontaktlose Aktions-Knöpfe wie Kalttelefonie/5 Nummern gewählt sollen
-konkret an Kontakte gebunden werden, betrifft auch den Questbaum —
-Details/Herleitung: Erinnerung `project_b2c_to_b2b_action_rework`).
-**Bewusst nur die Planung/Konzeption jetzt, nicht der Bau** — Umsetzung
-folgt laut Nutzerentscheidung erst als Teil der Phase-3-React-Migration
+**B2C→B2B-Aktions-Rework der Handlungen-Seite — Konzeptgespräch
+abgeschlossen, 2026-08-30** (voller Verlauf: Erinnerung
+`project_b2c_to_b2b_action_rework`). Ausgangspunkt: die Handlungen-Seite
+stammt aus einer ursprünglich B2C geplanten Frühphase (freistehende,
+kontaktlose Aktions-Knöpfe), im B2B soll nichts, was tatsächlich beim
+Kunden passiert, mehr anonym im System landen. Ergebnis: nur EINE echte
+strukturelle Änderung nötig — "Kalttelefonie"/"5 Nummern gewählt" soll
+künftig aus echten, am Kontakt geloggten Anrufen abgeleitet werden
+(B2B-Kaltakquise läuft bei diesem Nutzer praktisch immer über vorher
+recherchierte, schon im System stehende Kontakte), statt weiterhin
+manuell per Extra-Knopf bestätigt zu werden. Ansprache bleibt bewusst
+unverändert Dungeon- statt kontaktgebunden (echte Vor-Ort-Kaltakquise
+ohne existierenden Kontakt), Bedarfsanalyse/Pitch/E-Mail liefen schon
+korrekt kontaktgebunden (über Kanban UND die Kontakt-Seite), Fachinfo
+recherchiert bleibt bewusst unangetastet fürs künftige Lern-/
+Zertifikatsystem ("Grimoire"). Alles andere ist Konfigurationsänderung
+im Regelwerk, kein Code-Umbau. **Wichtige Vorgabe des Nutzers:** die
+generische, kontaktlose Aktions-Logging-Fähigkeit muss im Code
+vollständig erhalten bleiben ("Karton auf den Dachboden") — für eine
+mögliche künftige, eigenständige B2C-"Life"-App (Sport/Yoga/Joggen o.ä.,
+sowie echte, bewusst CRM-lose Kalttelefonie), die dasselbe Muster
+braucht wie eine andere Organisation mit eigenem Regelwerk. **Bewusst
+nur die Planung/Konzeption jetzt, nicht der Bau** — Umsetzung folgt
+laut Nutzerentscheidung erst als Teil der Phase-3-React-Migration
 (Details: Erinnerung `project_framework_migration_plan`), nicht vorher
 in Vanilla JS, damit nicht zweimal gebaut wird.
-
-Danach (Kontakte-Review + dieses Gespräch) ist Phase 2 komplett, weiter
-mit Phase 3.
 
 ### Phase 3: Anwenderoberfläche + Frontend-Framework-Frage
 Erst NACHDEM alle "Baustellen" (Phase 1+2) beseitigt sind. Betrifft die
