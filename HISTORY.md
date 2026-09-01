@@ -3214,3 +3214,67 @@ Suiten haben eine bekannte Flakiness — kein `try/catch` um
 `response.json()` nach `route.fetch()`, ein Netzwerk-Blip lässt sie
 gelegentlich beim Laden abstürzen, unabhängig vom Code, per
 Stash-Gegenprobe bestätigt).
+
+## 2026-09-01: Review-Runde Freunde/Pool/Gildeneinladungen (nach dem Kollegen-Onboarding)
+
+Nutzer wollte nach den drei Onboarding-Bugs vom selben Tag einen
+gezielten Code-Review über genau diese drei Bereiche ("war gestern ein
+wenig peinlich"). Vier Commits.
+
+**A — `/code-review` über die letzten 3 Commits, drei Funde, Commit
+`758f2c3`:**
+1. **Abenteuerlog-Race:** `routeToHash()`/`jumpToJournalDay()` riefen
+   erst `showPage('tagebuch')` (rendert den Kalender mit noch STALEM
+   `calViewMode`/`calWeekStart`) und direkt danach `setCalViewMode()`
+   mit dem korrekten Ziel-Tag. Zwei async `renderWeekView`/`renderDayView`
+   parallel — kam die alte `termine`-Abfrage nach der neuen zurück,
+   überschrieb sie die Ansicht mit der falschen Woche. `showPage()`
+   bekam `skipCalRender`, den diese beiden Aufrufer setzen.
+2. Derselbe Pfad lud den Kalender bei jedem Deep-Link/Reload doppelt —
+   durch (1) miterledigt.
+3. `friend_link_profiles()` wurde pro `initFriends()` zweimal parallel
+   aufgerufen (`renderFriendRequests` + `renderFriendGrid`), identische
+   Daten. Einmal via `loadFriendLinkProfiles()` geholt und
+   durchgereicht.
+
+**B — Zweitmeinung fand: `skipCalRender` fixt nur die zwei bekannten
+Aufrufer, Commit `1adceac`:** `renderCalendar`/`renderWeekView`/
+`renderDayView` selbst hatten keinen Staleness-Schutz — jeder andere
+überlappende Render (schnelles Vor/Zurück, Reiter-Wechsel mitten im
+Laden) konnte weiter stale Daten setzen. Modul-Zähler `calRenderGen`:
+jeder Renderer merkt sich beim Start `++calRenderGen` und bricht nach
+jedem `await` ab, wenn inzwischen ein neuerer lief.
+
+**C — Migration `20260901180000` (Patch 61), Commit `1cc3e6d` — zwei
+Org-Grenze-Funde, live gepusht:** siehe CLAUDE.md, Abschnitt "Org-Grenze
+für nackte is_admin()-Prüfungen", Nachtrag 2026-09-01. Kurz:
+- `guild_members` konnte per direktem REST-Insert (`joinGuild()`) ODER
+  per `invite_to_guild()`/`respond_to_guild_invitation()` eine Zeile in
+  der Gilde einer **fremden Org** bekommen — die `guild_*_permission()`-
+  Helfer sind reine `guild_members`-Joins ohne Org-Recheck → Cross-Org-
+  Sichtbarkeit von Kontakten/Dungeons/Chronik. Fix: `BEFORE INSERT OR
+  UPDATE OF guild_id, org_id`-Trigger `enforce_guild_members_org_
+  consistency()` (strukturelle Invariante `guild_members.org_id =
+  guilds.org_id`, greift auch bei den `SECURITY DEFINER`-Funktionen)
+  + Org-Prüfung direkt in beiden Einladungsfunktionen.
+- `search_profile_for_friend()` (seit Patch 58 app-weit) nutzte `ilike
+  p_name` ohne `%`-Neutralisierung → `p_name='%'` dumpte jedes Profil
+  jeder Org. Fix: exact-match + Leerstring-Guard + `limit 25`.
+
+**Prozess:** Der Selbst-Beitritts-Weg (Tür b oben) wurde erst von der
+blinden Zweitmeinung (Opus) gefunden — die erste Fassung der Migration
+härtete nur die Einladungsfunktionen und hätte die Lücke offen
+gelassen. Dry-Run wuchs dabei von 13 auf 19 Fälle (u.a. gefälschter
+Self-Join von Trigger blockiert, gefälschter Self-Join mit fremder
+`org_id` von der RLS-Policy blockiert, legitimer Same-Org-Self-Join
+funktioniert). Zweitmeinung nach der Überarbeitung: Approve. Beide
+Regressions-Suiten grün vor jedem Push (Suite-Flakiness einmal
+getriggert durch ein falsches Server-Arbeitsverzeichnis im Testaufruf,
+nicht durch Code — mit `--directory` behoben, danach 33/33 + 11/11).
+
+**Weiterhin offen, bewusst (kein Regress):** die `guild_*_permission()`/
+`socially_visible()`-Helfer joinen `guild_members` weiter ohne
+internen Org-Recheck — durch die neue Trigger-Invariante an der Quelle
+neutralisiert, aber architektonisch implizit. Und ein Enumerations-
+Orakel für exakte Anzeigenamen über die Firmengrenze bleibt der Preis
+der app-weiten Freundes-Suche.

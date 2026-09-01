@@ -1465,6 +1465,23 @@ Termin aufziehen. Zeitachse bleibt beim seitlichen Scrollen sticky
 schmalen Bildschirmen unsichtbar abgeschnitten statt scrollbar,
 Entstehung dieses Stolpersteins: HISTORY.md).
 
+**Generations-Token gegen veraltete Renders (`calRenderGen`):**
+`renderCalendar`/`renderWeekView`/`renderDayView` laden async und
+schreiben danach in gemeinsame Modul-Variablen (`weekTermine`,
+`calEntryDates`, `calTermineDates`) + DOM. Starten zwei Renders kurz
+nacheinander (schnelles Vor/Zurück, Reiter-Wechsel mitten im Laden,
+Deep-Link `#tagebuch/<mode>/<datum>` gefolgt von `setCalViewMode()`),
+darf der zuerst gestartete nicht den zuletzt gestarteten überschreiben.
+Jeder der drei Renderer nimmt beim Start `const myGen = ++calRenderGen`
+und bricht nach jedem `await` mit `if(myGen !== calRenderGen) return`
+ab. **Neuer async Render-Code im Kalender muss dieses Muster
+weiterführen.** Zusätzlich lassen die Aufrufer, die direkt danach
+`setCalViewMode()` mit dem korrekten Ziel-Tag rufen (`routeToHash`
+Deep-Link-Zweig, `jumpToJournalDay`), den Render in `showPage('tagebuch')`
+per drittem Argument `skipCalRender` ganz aus — spart die doppelte
+Abfrage, ist aber nicht mehr die einzige Absicherung (Entstehung:
+HISTORY.md, 2026-09-01).
+
 **Kanban-Integration:** die Kanban-Übergänge "Ersttermin vereinbart" und
 "Zweittermin" fragen beide (überspringbar, `promptKanbanTermin()`) nach
 Datum+Uhrzeit und legen bei Eingabe einen echten Kalendertermin an — an
@@ -2418,6 +2435,44 @@ vorherigem RLS-Durchlass erreichbar) und
 `approve/reject_contact_deletion_request` (Org-Grenze steckt dort schon
 in der `WHERE`-Klausel der eigentlichen Operation, auch wenn der
 Admin-Check selbst es nicht ist).
+
+**Nachtrag 2026-09-01 (Patch 61, Migration `20260901180000`), zwei
+Stellen, die der 08-28-Audit nicht abdeckte** — gefunden bei einem
+gezielten Review von Freunde/Pool/Gildeneinladungen, dieselbe
+Fund-Klasse (fehlende Org-Grenze), heute folgenlos (nur eine Org),
+scharf ab der zweiten Org:
+- **Weg in `guild_members` ohne Org-Grenze.** Weder `invite_to_guild()`/
+  `respond_to_guild_invitation()` noch die `guild_members_insert_self_join`-
+  RLS-Policy stellten sicher, dass `guild_members.guild_id` und die
+  Org der handelnden Person zusammenpassen (die Policy prüft nur
+  `org_id = current_org_id()` auf der **client-gelieferten** Spalte,
+  nichts band `guild_id` daran). Per direktem REST-Insert (`joinGuild()`
+  ist ein roher Insert) konnte man sich in die Gilde einer **fremden
+  Org** eintragen → `guild_contact_permission()`/`guild_dungeon_
+  permission()`/`socially_visible()` (reine `guild_members`-Joins ohne
+  Org-Recheck) öffneten Kontakte/Dungeons/Chronik über die
+  Firmengrenze. **Fix:** neuer `BEFORE INSERT OR UPDATE OF guild_id,
+  org_id`-Trigger `enforce_guild_members_org_consistency()` erzwingt
+  strukturell `guild_members.org_id = guilds.org_id` für **jeden** Weg
+  (auch die `SECURITY DEFINER`-Funktionen — BEFORE-Trigger feuern für
+  alle Rollen); zusätzlich prüfen `invite_to_guild()`/
+  `respond_to_guild_invitation()` jetzt die Org-Zugehörigkeit direkt
+  (wie `admin_create_guild()`). Die Tür (b), Selbst-Beitritt, wurde von
+  der blinden Zweitmeinung zur Migration gefunden — die Einladungs-
+  Härtung allein hätte sie offen gelassen.
+- **`search_profile_for_friend()` erlaubte app-weite Profil-
+  Enumeration.** Patch 58 machte die Freundes-Suche app-weit (statt
+  org-gebunden), behielt aber `where display_name ilike p_name` →
+  `sb.rpc('search_profile_for_friend', {p_name:'%'})` lieferte `id` +
+  `display_name` + `character_class` **jedes** Profils **jeder** Org.
+  **Fix:** exact-match wie `search_org_pool_candidates()`
+  (`lower(display_name) = lower(trim(p_name))`), + Leerstring-Guard +
+  `limit 25`. **Weiterhin offen (bewusst, kein Regress):** ein
+  Enumerations-Orakel für exakte Namen über die Firmengrenze bleibt —
+  das ist der Preis der app-weiten Freundes-Suche.
+
+Dry-Run (19 Fälle) + unabhängige Zweitmeinung (Opus, blind, fand
+Tür b) + beide Regressions-Suiten grün vor dem Push.
 
 ## Löschanfrage statt Direktlöschung für Gildenmitglieder
 
