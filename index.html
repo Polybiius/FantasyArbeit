@@ -4899,7 +4899,9 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   async function renderCalendar(){
+    const myGen = ++calRenderGen;
     await loadContactTaskData();
+    if(myGen !== calRenderGen) return;
     document.getElementById('calMonthLabel').textContent =
       new Date(calViewYear, calViewMonth, 1).toLocaleDateString('de-DE',{month:'long', year:'numeric'});
 
@@ -4919,6 +4921,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         .gte('start_at', zonedTimeToUtc(calViewYear, calViewMonth+1, 1, 0, 0, tz()).toISOString())
         .lt('start_at', zonedTimeToUtc(calViewYear, calViewMonth+1, daysInMonth(calViewYear,calViewMonth)+1, 0, 0, tz()).toISOString())
     ]);
+    if(myGen !== calRenderGen) return;
     if(error) logSilentError('Tagebuch-Tage laden', error);
     calEntryDates = new Set((data||[]).filter(journalRowHasContent).map(r=>r.entry_date));
     if(photoErr) logSilentError('Foto-Tage laden', photoErr);
@@ -8101,6 +8104,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   let calFocusDate = new Date();
   let calTermineDates = new Set(); // Tage im aktuell angezeigten Monat mit Termin (Punkt in der Monatsansicht)
   let weekTermine = []; // Termine der aktuell angezeigten Woche, inkl. Kontakt-/Betriebsname
+  // Generations-Token gegen veraltete Kalender-Renders: renderCalendar/
+  // renderWeekView/renderDayView laden async und schreiben danach in
+  // gemeinsame Modul-Variablen (weekTermine, calTermineDates) + DOM.
+  // Starten zwei Renders kurz nacheinander (schnelles Vor/Zurück, Reiter-
+  // Wechsel mitten im Laden, Deep-Link + setCalViewMode), darf der ZUERST
+  // gestartete nicht den ZULETZT gestarteten überschreiben. Jeder Render
+  // merkt sich beim Start seinen Token und bricht nach jedem await ab,
+  // wenn inzwischen ein neuerer Render gestartet wurde.
+  let calRenderGen = 0;
   let termineContactSelectedId = null;
   let termineLocationSelectedId = null;
   let termineEditingId = null; // null = neuer Termin, sonst wird ein bestehender bearbeitet
@@ -8516,6 +8528,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   async function renderWeekView(scrollToDefault){
+    const myGen = ++calRenderGen;
     const allDays = [];
     for(let i=0;i<7;i++) allDays.push(new Date(calWeekStart.getFullYear(), calWeekStart.getMonth(), calWeekStart.getDate()+i));
     const hideWeekends = !!profile.calendar_hide_weekends;
@@ -8535,6 +8548,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         .eq('owner_id', profile.id)
         .gte('start_at', weekStartUtc.toISOString()).lt('start_at', weekEndUtc.toISOString())
     ]);
+    if(myGen !== calRenderGen) return;
     if(termineRes.error) logSilentError('Termine laden', termineRes.error);
     weekTermine = termineRes.data || [];
 
@@ -8622,6 +8636,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // oder Tag), damit Klick-zum-Bearbeiten in openTermineEntryModal ohne
   // Änderung weiterfunktioniert.
   async function renderDayView(scrollToDefault){
+    const myGen = ++calRenderGen;
     const d = calDayDate;
     const dateStr = dateKeyLocal(d);
     document.getElementById('calMonthLabel').textContent =
@@ -8646,6 +8661,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
         .eq('owner_id', profile.id)
         .gte('start_at', dayStartUtc.toISOString()).lt('start_at', dayEndUtc.toISOString())
     ]);
+    if(myGen !== calRenderGen) return;
     if(termineRes.error) logSilentError('Termine laden', termineRes.error);
     weekTermine = termineRes.data || [];
 
@@ -8689,6 +8705,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       wrap.scrollTop = Math.max(0, weekViewScrollTarget()*(HALF_HOUR_PX/30) - 40);
     }
 
+    if(myGen !== calRenderGen) return;
     await renderTaskColumn(dateStr);
   }
 
