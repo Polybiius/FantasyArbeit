@@ -5161,11 +5161,22 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   }
 
   // ---- Freunde (unabhängig von Gilden) ----
-  async function initFriends(){
-    await Promise.all([renderFriendRequests(), renderFriendGrid()]);
+  // friend_link_profiles() liefert für JEDEN Aufruf denselben vollen Satz
+  // (accepted + eingehend-pending). renderFriendRequests() und
+  // renderFriendGrid() brauchen beide genau das -- einmal holen, an beide
+  // durchreichen, statt zwei identische RPC-Roundtrips pro initFriends().
+  async function loadFriendLinkProfiles(){
+    const { data, error } = await sb.rpc('friend_link_profiles');
+    if(error) logSilentError('Freundes-Profile laden', error);
+    return data || [];
   }
 
-  async function renderFriendRequests(){
+  async function initFriends(){
+    const linked = await loadFriendLinkProfiles();
+    await Promise.all([renderFriendRequests(linked), renderFriendGrid(linked)]);
+  }
+
+  async function renderFriendRequests(linkedPre){
     const { data: incoming, error } = await sb.from('friends').select('owner_id').eq('friend_id', profile.id).eq('status','pending');
     if(error) logSilentError('Freundschaftsanfragen laden', error);
     const listEl = document.getElementById('friendRequestsList');
@@ -5175,8 +5186,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     // ein Anfragender aus einer anderen Org / aus dem Pool fällt sonst der
     // org-gebundenen profiles_select_visible-Policy zum Opfer und die
     // Anfrage taucht gar nicht auf (siehe Migration 20260901120000).
-    const { data: linkedReq, error: reqErr } = await sb.rpc('friend_link_profiles');
-    if(reqErr) logSilentError('Anfragende Profile laden', reqErr);
+    const linkedReq = linkedPre || await loadFriendLinkProfiles();
     const requesters = (linkedReq||[]).filter(p=>ids.includes(p.id));
     listEl.innerHTML = (requesters||[]).map(r=>`
       <div class="friend-req-row">
@@ -5190,8 +5200,9 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       btn.addEventListener('click', async ()=>{
         const { error } = await sb.from('friends').update({status:'accepted'}).eq('owner_id', btn.dataset.accept).eq('friend_id', profile.id);
         if(error){ reportError('Freundschaftsanfrage annehmen', error); return; }
-        await renderFriendRequests();
-        await renderFriendGrid();
+        const linked = await loadFriendLinkProfiles();
+        await renderFriendRequests(linked);
+        await renderFriendGrid(linked);
       });
     });
     listEl.querySelectorAll('[data-decline]').forEach(btn=>{
@@ -5258,7 +5269,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     document.getElementById('friendSigilModal').style.display='none';
   });
 
-  async function renderFriendGrid(){
+  async function renderFriendGrid(linkedPre){
     const { data: rows, error } = await sb.from('friends').select('owner_id,friend_id').or(`owner_id.eq.${profile.id},friend_id.eq.${profile.id}`).eq('status','accepted');
     if(error) logSilentError('Freundesliste laden', error);
     const ids = [...new Set((rows||[]).map(r => r.owner_id===profile.id ? r.friend_id : r.owner_id))];
@@ -5269,8 +5280,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     // (org-gebundene profiles_select_visible-Policy) -- ein Freund aus einer
     // anderen Org / aus dem Pool wäre sonst unsichtbar, obwohl die
     // friends-Zeile existiert (siehe Migration 20260901120000).
-    const { data: linkedProfiles, error: profErr } = await sb.rpc('friend_link_profiles');
-    if(profErr) logSilentError('Freundes-Profile laden', profErr);
+    const linkedProfiles = linkedPre || await loadFriendLinkProfiles();
     const friendProfiles = (linkedProfiles||[]).filter(p=>ids.includes(p.id));
     grid.innerHTML = (friendProfiles||[]).map(m=>{
       const titleText = titleTextForEpicId(m.active_title);
@@ -6201,7 +6211,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   async function jumpToJournalDay(dateStr){
     const p = { year:+dateStr.slice(0,4), month:+dateStr.slice(5,7)-1, day:+dateStr.slice(8,10) };
-    showPage('tagebuch', false);
+    showPage('tagebuch', false, true); // setCalViewMode() unten rendert die Zielansicht korrekt
     // setCalViewMode('monat', ...) statt nur calViewYear/calViewMonth/
     // calFocusDate von Hand zu setzen -- stand der Kalender zuletzt in der
     // Wochen-/Tagesansicht (calViewMode blieb dabei unangetastet), landete
@@ -10990,7 +11000,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // ---- Seitennavigation ----
   const VALID_PAGES = ['organisation','charakter','handlungen','inventar','gilde','dungeons','kontakte','tagebuch','kanban','statistik','einstellungen','fehlerprotokoll','produkte','notfallzugriff','team-reporting'];
 
-  function showPage(pageName, updateHash){
+  function showPage(pageName, updateHash, skipCalRender){
     const requestedPage = pageName;
     if(!VALID_PAGES.includes(pageName)) pageName = 'charakter';
     // Pool-Zustand (org_id NULL): jede Seite außer "Organisation" hängt an
@@ -11041,9 +11051,17 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       // Reload auf dem #tagebuch/<mode>/<datum>-Hash rendert ohnehin schon
       // sichtbar neu (routeToHash->setCalViewMode), nur der Klick auf den
       // Nav-Reiter tat es bisher nicht.
-      if(calViewMode==='tag') renderDayView(false);
-      else if(calViewMode==='woche') renderWeekView(false);
-      else renderCalendar();
+      // skipCalRender: Aufrufer, die direkt danach setCalViewMode() mit dem
+      // korrekten Ziel-Tag aufrufen (Deep-Link #tagebuch/<mode>/<datum>,
+      // jumpToJournalDay), lassen diesen Render aus -- sonst läuft er hier
+      // mit noch STALEM calViewMode/calWeekStart los, seine async
+      // termine-Abfrage kann nach der richtigen zurückkommen und
+      // überschreibt die Ansicht mit der alten Woche/dem alten Tag.
+      if(!skipCalRender){
+        if(calViewMode==='tag') renderDayView(false);
+        else if(calViewMode==='woche') renderWeekView(false);
+        else renderCalendar();
+      }
     }
     if(pageName==='handlungen'){
       // Chronik nutzt column-reverse (siehe .log-CSS) — solange die Seite
@@ -11094,8 +11112,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(clean.startsWith('kontakt/')) openContactPage(clean.slice('kontakt/'.length));
     else if(clean.startsWith('tagebuch/')){
       const [, mode, dateStr] = clean.split('/');
-      showPage('tagebuch', false);
-      if(['monat','woche','tag'].includes(mode) && /^\d{4}-\d{2}-\d{2}$/.test(dateStr||'')){
+      const deepLink = ['monat','woche','tag'].includes(mode) && /^\d{4}-\d{2}-\d{2}$/.test(dateStr||'');
+      // Bei gültigem Deep-Link den Kalender-Render in showPage() auslassen --
+      // setCalViewMode() direkt danach rendert die Zielansicht einmal korrekt.
+      showPage('tagebuch', false, deepLink);
+      if(deepLink){
         const [y,m,d] = dateStr.split('-').map(Number);
         calFocusDate = new Date(y, m-1, d);
         setCalViewMode(mode);
