@@ -5171,8 +5171,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const listEl = document.getElementById('friendRequestsList');
     const ids = (incoming||[]).map(r=>r.owner_id);
     if(ids.length===0){ listEl.innerHTML=''; return; }
-    const { data: requesters, error: reqErr } = await sb.from('profiles').select('id,display_name,character_class').in('id', ids);
+    // App-weit über friend_link_profiles() statt direktem profiles-Select:
+    // ein Anfragender aus einer anderen Org / aus dem Pool fällt sonst der
+    // org-gebundenen profiles_select_visible-Policy zum Opfer und die
+    // Anfrage taucht gar nicht auf (siehe Migration 20260901120000).
+    const { data: linkedReq, error: reqErr } = await sb.rpc('friend_link_profiles');
     if(reqErr) logSilentError('Anfragende Profile laden', reqErr);
+    const requesters = (linkedReq||[]).filter(p=>ids.includes(p.id));
     listEl.innerHTML = (requesters||[]).map(r=>`
       <div class="friend-req-row">
         <span>${CLASS_ICONS[r.character_class]||'❔'} <strong>${escHtml(r.display_name)}</strong> möchte dich hinzufügen</span>
@@ -5260,8 +5265,13 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const grid = document.getElementById('friendGrid');
     stopGridAvatarRenderers(grid);
     if(ids.length===0){ grid.innerHTML = '<div class="empty-page-hint">Noch keine Freunde.</div>'; return; }
-    const { data: friendProfiles, error: profErr } = await sb.from('profiles').select(AVATAR_PROFILE_FIELDS).in('id', ids);
+    // App-weit über friend_link_profiles() statt direktem profiles-Select
+    // (org-gebundene profiles_select_visible-Policy) -- ein Freund aus einer
+    // anderen Org / aus dem Pool wäre sonst unsichtbar, obwohl die
+    // friends-Zeile existiert (siehe Migration 20260901120000).
+    const { data: linkedProfiles, error: profErr } = await sb.rpc('friend_link_profiles');
     if(profErr) logSilentError('Freundes-Profile laden', profErr);
+    const friendProfiles = (linkedProfiles||[]).filter(p=>ids.includes(p.id));
     grid.innerHTML = (friendProfiles||[]).map(m=>{
       const titleText = titleTextForEpicId(m.active_title);
       return `<div class="guild-tile">
@@ -10988,6 +10998,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     // was angefragt wurde (Deep-Link, Hash-Wiederherstellung), zurück auf
     // die einzige Seite, die ohne Org funktioniert.
     if(profile.org_id === null) pageName = 'organisation';
+    // Umkehrung: wer eine Organisation HAT, hat auf der Warteraum-Seite
+    // nichts mehr zu suchen. Der Hash kann noch auf #organisation stehen,
+    // wenn der Nutzer gerade aus dem Pool heraus einer Org beigetreten ist
+    // bzw. eine gegründet hat -- restoreLastPage() würde ihn sonst nach dem
+    // enterApp()-Neudurchlauf wieder auf der "du bist in keiner Organisation"-
+    // Seite abladen, obwohl die Sidebar schon die volle App zeigt (echter
+    // Nutzer-Bugreport, Kollege musste nach Annahme der Einladung neu laden).
+    else if(pageName==='organisation') pageName = 'charakter';
     if(pageName==='fehlerprotokoll' && profile.role!=='admin') pageName = 'charakter';
     if(pageName==='produkte' && profile.role!=='admin') pageName = 'charakter';
     if(pageName==='notfallzugriff' && profile.role!=='admin') pageName = 'charakter';
@@ -11010,7 +11028,23 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(pageName==='einstellungen') renderEinstellungenPage();
     if(pageName==='statistik'){ renderStatTabs(); renderStatistikPage(); }
     if(pageName==='kanban') renderKanbanBoard();
-    if(pageName==='tagebuch') loadTerminInvitesCard();
+    if(pageName==='tagebuch'){
+      loadTerminInvitesCard();
+      // Kalender mode-bewusst NEU rendern, sobald die Seite tatsächlich
+      // sichtbar wird. initJournal() rendert den Kalender im enterApp()-
+      // Ablauf oft noch, während #page-tagebuch display:none ist -- die
+      // Monatsansicht (.cal-day mit aspect-ratio im Grid) berechnet ihre
+      // Zeilenhöhen dann teils falsch und reflowt beim späteren Einblenden
+      // nicht von selbst nach. Folge: die letzte Woche ragt unter den
+      // sichtbaren Bereich, die Seite lässt sich nicht ganz scrollen --
+      // mal so, mal so, nach Reload weg (echter Nutzer-Bugreport). Ein
+      // Reload auf dem #tagebuch/<mode>/<datum>-Hash rendert ohnehin schon
+      // sichtbar neu (routeToHash->setCalViewMode), nur der Klick auf den
+      // Nav-Reiter tat es bisher nicht.
+      if(calViewMode==='tag') renderDayView(false);
+      else if(calViewMode==='woche') renderWeekView(false);
+      else renderCalendar();
+    }
     if(pageName==='handlungen'){
       // Chronik nutzt column-reverse (siehe .log-CSS) — solange die Seite
       // per display:none verborgen war, hatte scrollHeight dort 0 und der

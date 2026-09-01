@@ -2597,10 +2597,23 @@ zwangsweise auf einer neuen Seite "🏛 Organisation" (Gründen-Formular +
 Einladungsliste) — alle anderen Nav-Buttons sind ausgeblendet
 (`setPoolNavVisibility()`), `showPage()` erzwingt `'organisation'` als
 einzig erreichbare Seite, solange `profile.org_id === null` ist,
-unabhängig vom angefragten Hash/Deep-Link. **Freunde-Feature bewusst
-weiterhin zurückgestellt** ("das schieben wir auf") — `friends.org_id`
-ist heute `NOT NULL`, bräuchte eine eigene, hier nicht enthaltene
-Migration.
+unabhängig vom angefragten Hash/Deep-Link — mit einer Ausnahme: wer
+eine Org HAT, wird von `showPage()` von `#organisation` weg auf
+`charakter` geleitet (der Hash kann nach dem Org-Beitritt noch auf
+`#organisation` stehen und würde die Warteraum-Seite sonst weiter
+anzeigen, obwohl die volle App schon freigeschaltet ist — Bugfix
+2026-09-01). **Freunde-Feature ist seit 2026-08-30 app-weit** (Patch 58
+`20260830090000`: `friends.org_id` gedroppt, `search_profile_for_friend()`
+für die Suche). Die Anzeige der Freundesliste/-anfragen zog erst
+2026-09-01 nach (Patch 60 `20260901120000`:
+`friend_link_profiles()` — schmale `SECURITY DEFINER`-Lesefunktion für
+die Avatar-/Anzeigefelder eines Freundes aus einer anderen Org/aus dem
+Pool, da `profiles_select_visible` org-gebunden bleibt; im selben Zug
+`friends_insert_own` WITH CHECK auf `status = 'pending'` verengt, damit
+kein einseitig erfundenes `accepted` mehr einschleusbar ist). Pool-Nutzer
+ohne Org können weiterhin keine Freunde-Seite aufrufen (Nav ausgeblendet),
+aber eine bestehende Freundschaft über den Org-Wechsel hinweg bleibt
+sichtbar.
 
 **Wichtige, weiterhin gültige Detail-Fixes aus dem Bau:** `found_own_org()`
 kopiert `rule_configs.config` von der Vorbild-Org, erzwingt dabei aber

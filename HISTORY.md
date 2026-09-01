@@ -3135,3 +3135,82 @@ abgeschlossen.** Weiter mit Phase 3 (Anwenderoberfläche +
 Frontend-Framework-Frage) — kompletter Fahrplan dafür bereits in einer
 eigenen Planungssitzung erarbeitet, siehe Claudes Erinnerungssystem,
 `project_framework_migration_plan`.
+
+## 2026-09-01: Drei Bugreports vom ersten echten Kollegen-Onboarding
+
+Ein Kollege hat sich auf der Plattform registriert (landete also im
+Pool, `org_id` NULL). Der Nutzer hat ihn per Org-Pool-Einladung in seine
+Organisation geholt und sich als Freund hinzugefügt. Dabei drei Fehler,
+alle behoben.
+
+**1+2 — „Im Zentrum steht weiterhin, ich sei in keiner Organisation",
+Einladung verschwindet erst nach Reload.** Gleiche Wurzel:
+`renderWaitingRoom()` ruft `showPage('organisation')` und setzt damit den
+URL-Hash auf `#organisation`. Nimmt der Pool-Nutzer die Einladung an,
+läuft `enterApp()` neu durch (Sidebar wird korrekt freigeschaltet,
+`setPoolNavVisibility(false)`), am Ende stellt `restoreLastPage()` aber
+den Hash `#organisation` wieder her — und `organisation` steht in
+`VALID_PAGES`, also blieb die Warteraum-Seite im Zentrum sichtbar,
+obwohl der Nutzer längst in der Org war. Fix in `showPage()`: der
+bestehende `if(profile.org_id === null) pageName = 'organisation'` bekam
+ein `else if(pageName==='organisation') pageName = 'charakter'` — wer eine
+Org hat, wird von der Warteraum-Seite weg auf die Charakterseite geleitet,
+der Hash wird dabei korrigiert (`pageName !== requestedPage`). Deckt
+Annehmen, Gründen, Reload und Deep-Link gleichermaßen ab.
+
+**3 — „Sind angeblich Freunde, aber ich sehe dich nirgends."** Folgefehler
+zu Patch 58 (`20260830090000_friends_org_unabhaengig.sql`): dort wurden
+Freundschafts-Tabelle und -Suche firmenübergreifend gemacht, die
+**Anzeige** nicht. `renderFriendGrid()` / `renderFriendRequests()` holten
+das Profil der Gegenseite weiter per direktem
+`sb.from('profiles').select(...).in('id', ids)` — org-gebunden über
+`profiles_select_visible`. Ein Freund aus einer anderen Org oder aus dem
+Pool erzeugt zwar eine echte `friends`-Zeile, fiel aber aus beiden
+Listen raus. Fix: neue `SECURITY DEFINER`-Lesefunktion
+`friend_link_profiles()` (Patch 60,
+`20260901120000_friend_link_profiles_appweit.sql`) nach dem Muster von
+`search_profile_for_friend()` / `friend_skill_totals()` — liefert nur
+Anzeigename/Klasse/Level + Avatar-/Sigil-Felder, und nur für Personen
+mit echter `friends`-Verbindung (accepted beide Richtungen, oder
+eingehende offene Anfrage; die eigene ausgehende offene Anfrage bewusst
+NICHT). Frontend beide Renderer auf `sb.rpc('friend_link_profiles')`
+umgestellt, Ergebnis clientseitig gegen die eigene `friends`-Abfrage
+gefiltert.
+
+Zusatzfund der unabhängigen Zweitmeinung (Opus, blind, Pflichtregel für
+berechtigungsrelevante Migrationen): `friends_insert_own` prüfte den
+`status` beim INSERT gar nicht — ein Nutzer konnte per rohem REST-Aufruf
+`insert friends {owner_id: ich, friend_id: <opfer>, status: 'accepted'}`
+eine einseitig „bestätigte" Freundschaft erzeugen und damit sowohl
+`friend_link_profiles()` als auch das schon länger bestehende,
+weiterreichende `friend_skill_totals()` / `socially_visible()` auslösen
+(Opfer-UUID app-weit über `search_profile_for_friend()` beschaffbar).
+Vorbestehende Lücke, nicht von dieser Migration verursacht — aber im
+selben Aufwasch geschlossen: `friends_insert_own` WITH CHECK jetzt
+`owner_id = auth.uid() AND status = 'pending'`. Annehmen läuft ohnehin
+ausschließlich über `friends_update_recipient_accepts` (Empfänger-UPDATE),
+nie über den Absender-INSERT — legitimer Ablauf unberührt (Frontend fügt
+immer `status:'pending'` ein). Dry-Run gegen die verlinkte DB
+(`begin/rollback`, 6 echte Testprofile, 11 Checks) grün, u.a.: forged
+`accepted`-INSERT wird jetzt von RLS blockiert, legitimer
+`pending`-INSERT geht weiter.
+
+**4 — Abenteuerlog: Seite lässt sich nicht ganz scrollen, mal so, mal so,
+nach Reload weg.** `initJournal()` rendert den Kalender im
+`enterApp()`-Ablauf oft noch, während `#page-tagebuch` `display:none`
+ist. Die Monatsansicht (`.cal-day` mit `aspect-ratio` im Grid) berechnet
+ihre Zeilenhöhen dann teils falsch und reflowt beim späteren Einblenden
+nicht von selbst nach — die letzte Woche ragt unter den sichtbaren
+Bereich, der Seiten-Scroll klemmt davor. Ein Reload auf dem
+`#tagebuch/<mode>/<datum>`-Hash rendert über `routeToHash` →
+`setCalViewMode()` sichtbar neu (deshalb „nach Reload tutti"), ein Klick
+auf den Nav-Reiter tat es nicht. Fix: `showPage('tagebuch')` rendert den
+Kalender jetzt mode-bewusst neu (`renderDayView`/`renderWeekView`/
+`renderCalendar` je nach `calViewMode`), sobald die Seite sichtbar wird —
+gleiches Muster wie nach jedem Tagebuch-Speichern.
+
+`npm run lint` sauber, beide Regressions-Suiten grün (33/33 + 11/11; die
+Suiten haben eine bekannte Flakiness — kein `try/catch` um
+`response.json()` nach `route.fetch()`, ein Netzwerk-Blip lässt sie
+gelegentlich beim Laden abstürzen, unabhängig vom Code, per
+Stash-Gegenprobe bestätigt).
