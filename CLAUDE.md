@@ -252,29 +252,36 @@ begründen (Business/Motivation-Engine-Trennung, PvE, Gilden-Größe, SDT).
   CSS-Code zu lesen und zu hoffen, dass es passt. Chromium ist technisch
   derselbe Rendering-Kern (Blink) wie im vom Nutzer verwendeten Brave —
   visuell identisch für CSS/Layout-Zwecke.
-- **Regressions-Suite** (`~/.local/share/playwright-portable/
-  regression_suite.mjs` + `regression_suite_member.mjs`, Entstehung/
-  Ausbau: HISTORY.md): zwei wiederverwendbare Skripte gegen die echte
-  App — die Hauptsuite (33 Einzelprüfungen über acht Bereiche: Login/
-  Rollen, XP-/Level-Berechnung, Kanban, zentrale Navigation inkl.
-  Deep-Links, Kalender/Termine, Kontakt-Chronik, Verkauf/Statistik,
-  mobiles/Touch-Verhalten) läuft mit dem Admin-Testkonto, das zweite
-  Skript prüft dieselben rollenabhängigen Stellen noch einmal mit einem
-  echten Nicht-Admin-Konto. Nutzt `page.route()`-Interception statt
-  echter Schreibvorgänge — schreibt nichts an der echten Datenbank.
-  Zwei getrennte, gitignorte Zugangsdaten-Dateien unter
-  `~/.local/share/fantasyarbeit-claude-test/` (`credentials.json` =
-  Admin, `credentials_member.json` = Nicht-Admin).
-  **Aufruf:** vorher `python3 -m http.server <port>` im Repo-Ordner
-  starten (beide Skripte können denselben Server nutzen), dann
-  `node regression_suite.mjs <port>` und
-  `node regression_suite_member.mjs <port>`.
+- **Regressions-Suite** (**seit 2026-09-02 im Repo unter `tests/`**,
+  vorher `~/.local/share/playwright-portable/` — Entstehung/Ausbau:
+  HISTORY.md, `tests/README.md`): zwei Skripte gegen die echte App — die
+  Hauptsuite (`tests/regression_suite.mjs`, 33 Einzelprüfungen über acht
+  Bereiche: Login/Rollen, XP-/Level-Berechnung, Kanban, zentrale
+  Navigation inkl. Deep-Links, Kalender/Termine, Kontakt-Chronik,
+  Verkauf/Statistik, mobiles/Touch-Verhalten) läuft mit dem
+  Admin-Testkonto, `tests/regression_suite_member.mjs` prüft dieselben
+  rollenabhängigen Stellen mit einem echten Nicht-Admin-Konto. Nutzt
+  `page.route()`-Interception statt echter Schreibvorgänge — schreibt
+  nichts an der echten Datenbank. Playwright ist `devDependency`; das
+  Chromium-Binary findet Playwright über seine normale Auflösung.
+  Zugangsdaten liegen **außerhalb des Repos** (nie mitversioniert),
+  Pfad per `$FANTASYARBEIT_TEST_CREDS` / `$FANTASYARBEIT_TEST_CREDS_MEMBER`
+  überschreibbar (Default `~/.local/share/fantasyarbeit-claude-test/
+  credentials{,_member}.json`).
+  **Aufruf:** `npm test` (beide, startet den `python3 -m http.server`
+  selbst via `tests/run-regression.mjs`), `npm run test:admin` /
+  `npm run test:member` für einzeln.
   **Verbindliche Regel (seit 2026-08-23, analog zum Blankoscheck für
   `git push`, siehe "Wie mit dem Nutzer arbeiten" unten):** Claude Code
-  lässt beide Skripte automatisch vor jedem `git push` laufen, ohne
-  vorher zu fragen. Schlägt dabei ein Test fehl, NICHT einfach pushen —
-  den Fund kurz melden und gemeinsam klären, ob es ein echter Bug oder
-  ein veralteter Test ist.
+  lässt `npm test` automatisch vor jedem `git push` laufen, ohne vorher
+  zu fragen. Schlägt eine Prüfung fehl, NICHT einfach pushen — den Fund
+  kurz melden und gemeinsam klären, ob es ein echter Bug, ein veralteter
+  Test oder Flakiness ist. **Bekannte Flakiness:** feste
+  `waitForTimeout()`-Wartezeiten erzeugen unter Last gelegentliche,
+  nicht-deterministische Fehlschläge (wechselnde Tests) — wird im Zuge
+  der React-Migration behoben (→ `waitForSelector`/`waitForFunction`,
+  zusammen mit `data-testid`-Attributen), siehe
+  `project_framework_migration_plan` Fund S2.
 - **Lokales Öffnen von HTML-Dateien beim Nutzer** (seit 2026-08-02): Brave
   läuft bei ihm sandboxed (vermutlich Flatpak) — ein direkter `file://`-Zugriff
   auf den Projektordner schlägt fehl (`ERR_FILE_NOT_FOUND`), und Dateien über
@@ -3631,9 +3638,8 @@ sich ein gemeinsames Backend-Muster.
   — kein manueller Zwischenschritt beim Nutzer mehr nötig, anders als noch
   am Anfang dieser Session (damals scheiterte es an fehlendem
   `ksshaskpass` in der Sandbox).
-  **Ergänzung, 2026-08-23:** vor jedem Push laufen zusätzlich automatisch
-  beide Regressions-Skripte (`regression_suite.mjs` +
-  `regression_suite_member.mjs`, siehe Tech-Stack-Abschnitt
-  "Regressions-Suite" oben) — ebenfalls ohne vorher zu fragen. Schlägt
-  dabei ein Test fehl, nicht einfach pushen, sondern den Fund erst kurz
-  melden.
+  **Ergänzung, 2026-08-23:** vor jedem Push läuft zusätzlich automatisch
+  `npm test` (beide Regressions-Suiten, seit 2026-09-02 unter `tests/`,
+  siehe Tech-Stack-Abschnitt "Regressions-Suite" oben) — ebenfalls ohne
+  vorher zu fragen. Schlägt eine Prüfung fehl, nicht einfach pushen,
+  sondern den Fund erst kurz melden.

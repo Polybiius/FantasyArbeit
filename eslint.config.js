@@ -4,6 +4,30 @@ import html from 'eslint-plugin-html';
 export default [
   js.configs.recommended,
   {
+    // Regressions-Suiten (Node + Playwright), siehe tests/README.md
+    files: ['tests/**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 2023,
+      sourceType: 'module',
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+        fetch: 'readonly',
+        setTimeout: 'readonly',
+        URL: 'readonly',
+        URLSearchParams: 'readonly',
+        // in page.evaluate()-Callbacks referenziert -- laufen im Browser-Kontext
+        window: 'readonly',
+        document: 'readonly',
+        getComputedStyle: 'readonly',
+      },
+    },
+    rules: {
+      'no-unused-vars': 'warn',
+      'no-undef': 'warn',
+    },
+  },
+  {
     files: ['**/*.html'],
     plugins: { html },
     languageOptions: {

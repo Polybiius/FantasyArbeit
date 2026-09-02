@@ -4,7 +4,10 @@
   "description": "RPG Charakter leveln durch das echte Arbeitsleben",
   "type": "module",
   "scripts": {
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "node tests/run-regression.mjs",
+    "test:admin": "node tests/run-regression.mjs admin",
+    "test:member": "node tests/run-regression.mjs member"
   },
   "repository": {
     "type": "git",
@@ -21,6 +24,7 @@
     "@eslint/js": "^10.0.1",
     "eslint": "^10.9.1",
     "eslint-plugin-html": "^8.1.4",
+    "playwright": "1.62.1",
     "supabase": "^2.116.0"
   }
 }
