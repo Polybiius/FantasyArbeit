@@ -1,37 +1,45 @@
-import { Component, type ErrorInfo, type ReactNode } from 'react';
-
-import { logToErrorLog } from '@/shared/lib/errorLog';
+import { Component, type ReactNode } from 'react';
 
 interface Props {
   children: ReactNode;
   /** Optionaler Ersatz-Inhalt. Default: schlichte Meldung mit Neu-laden-Knopf. */
   fallback?: ReactNode;
+  /**
+   * Ändert sich dieser Wert, setzt sich die Boundary zurück und zeigt
+   * ihre Kinder erneut. Typisch: `useLocation().key` — ein Routenwechsel
+   * soll einen vorübergehenden Render-Fehler nicht dauerhaft einfrieren.
+   */
+  resetKey?: string;
 }
 
 interface State {
   hasError: boolean;
+  seenResetKey: string | undefined;
 }
 
 /**
- * Fängt Render-Fehler im React-Teilbaum ab, protokolliert sie ins
- * `error_log` (wie `reportError()` im Vanilla-Code) und zeigt einen
- * Ersatz-Inhalt, statt die ganze Seite weiß werden zu lassen.
+ * Fängt Render-Fehler im React-Teilbaum ab und zeigt einen Ersatz-Inhalt,
+ * statt die Seite weiß werden zu lassen.
+ *
+ * Das **Protokollieren** ins `error_log` macht NICHT diese Komponente,
+ * sondern `createRoot(..., { onCaughtError })` in `main.tsx` — ein Owner
+ * pro Fehler (sonst zwei `error_log`-Zeilen).
  *
  * Klassenkomponente, weil React (auch 19) für Error-Boundaries kein
  * Hook-Äquivalent hat.
  */
 export class ErrorBoundary extends Component<Props, State> {
-  override state: State = { hasError: false };
+  override state: State = { hasError: false, seenResetKey: this.props.resetKey };
 
-  static getDerivedStateFromError(): State {
+  static getDerivedStateFromError(): Partial<State> {
     return { hasError: true };
   }
 
-  override componentDidCatch(error: Error, info: ErrorInfo): void {
-    logToErrorLog(
-      'React ErrorBoundary',
-      `${error.message}\n${info.componentStack ?? ''}`.trim(),
-    );
+  static getDerivedStateFromProps(props: Props, state: State): Partial<State> | null {
+    if (props.resetKey !== state.seenResetKey) {
+      return { hasError: false, seenResetKey: props.resetKey };
+    }
+    return null;
   }
 
   override render(): ReactNode {

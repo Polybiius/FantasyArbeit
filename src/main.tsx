@@ -5,6 +5,7 @@ import { HashRouter } from 'react-router-dom';
 
 import { App } from '@/app/App';
 import { ErrorBoundary } from '@/app/ErrorBoundary';
+import { RouteErrorBoundary } from '@/app/RouteErrorBoundary';
 import { queryClient } from '@/app/queryClient';
 import { logToErrorLog } from '@/shared/lib/errorLog';
 
@@ -12,28 +13,37 @@ import { logToErrorLog } from '@/shared/lib/errorLog';
 //   - HashRouter: Deep-Links wie #kontakt/<id> bleiben bookmark-fähig und
 //     GitHub-Pages-404-sicher (docs/adr/0003).
 //   - QueryClientProvider: docs/adr/0004.
-//   - ErrorBoundary + createRoot-Callbacks: Render-Fehler landen im
-//     error_log statt spurlos die Seite weiß werden zu lassen.
-// Das Klassen-Theme und der eigentliche Bezug zum Vanilla-Code
-// (window.__bridge) kommen in den folgenden Block-2-Stücken hinzu.
+//   - Zwei Boundaries: die äußere fängt katastrophale Mount-Fehler (kein
+//     Reset), die innere (RouteErrorBoundary, in der Router-Umgebung)
+//     setzt sich bei jedem Routenwechsel zurück.
+//   - createRoot onUncaughtError/onCaughtError: DER EINE Ort, der
+//     Render-Fehler ins error_log schreibt (nicht die Boundary selbst,
+//     sonst zwei Zeilen).
+// Klassen-Theme + window.__bridge-Bezug: siehe die shared/-Dateien.
 const rootEl = document.getElementById('react-root');
-if (!rootEl) throw new Error('#react-root nicht gefunden');
-
-createRoot(rootEl, {
-  onUncaughtError: (error) => {
-    logToErrorLog('React onUncaughtError', String(error));
-  },
-  onCaughtError: (error) => {
-    logToErrorLog('React onCaughtError', String(error));
-  },
-}).render(
-  <StrictMode>
-    <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
-        <HashRouter>
-          <App />
-        </HashRouter>
-      </QueryClientProvider>
-    </ErrorBoundary>
-  </StrictMode>,
-);
+if (!rootEl) {
+  // Im produktiven index.html sollte das nie passieren; nicht die ganze
+  // Seite mit einem Modul-Fehler mitreißen.
+  console.error('#react-root nicht gefunden — React wird nicht gemountet.');
+} else {
+  createRoot(rootEl, {
+    onUncaughtError: (error) => {
+      logToErrorLog('React onUncaughtError', String(error));
+    },
+    onCaughtError: (error) => {
+      logToErrorLog('React onCaughtError', String(error));
+    },
+  }).render(
+    <StrictMode>
+      <ErrorBoundary>
+        <QueryClientProvider client={queryClient}>
+          <HashRouter>
+            <RouteErrorBoundary>
+              <App />
+            </RouteErrorBoundary>
+          </HashRouter>
+        </QueryClientProvider>
+      </ErrorBoundary>
+    </StrictMode>,
+  );
+}

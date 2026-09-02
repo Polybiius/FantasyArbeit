@@ -1,8 +1,8 @@
 import type { PostgrestError } from '@supabase/supabase-js';
 
 import { sb } from '@/shared/lib/bridge';
-import { logSilentError } from '@/shared/lib/errorLog';
 import { notifyConflict } from '@/shared/lib/notifyConflict';
+import { toError } from '@/shared/lib/toError';
 import type { Database } from '@/shared/types/supabase';
 
 /**
@@ -59,7 +59,14 @@ export async function rpcLockedUpdate<K extends LockedUpdateFn>(
  * Ausgänge einheitlich.
  *   - Erfolg  -> die frische Zeile
  *   - Konflikt -> `notifyConflict(subject)` + Rückgabe `null` (Aufrufer stoppt)
- *   - Fehler  -> ins `error_log` + `throw` (z.B. TanStack-Mutation fängt es)
+ *   - Fehler  -> `throw` einer echten `Error`-Instanz
+ *
+ * **Logging:** dieser Weg loggt NICHT selbst — er ist dafür gedacht,
+ * innerhalb einer TanStack-Mutation aufgerufen zu werden, deren
+ * `mutationCache.onError` den Fehler ins `error_log` schreibt (ein
+ * Owner, siehe docs/adr/0004). Ein direkter Aufrufer außerhalb einer
+ * Mutation muss den geworfenen Fehler selbst per `logSilentError`
+ * protokollieren.
  *
  * Nach Erfolg muss der Aufrufer den lokal gehaltenen `updated_at`-Wert
  * mitziehen (sonst läuft die nächste Aktion auf demselben Objekt in
@@ -72,8 +79,7 @@ export async function lockedUpdate<K extends LockedUpdateFn>(
 ): Promise<LockedRow<K> | null> {
   const res = await rpcLockedUpdate(fnName, args);
   if ('error' in res) {
-    logSilentError(`LockedUpdate ${fnName}`, res.error);
-    throw res.error;
+    throw toError(res.error);
   }
   if ('conflict' in res) {
     notifyConflict(conflictSubject);
