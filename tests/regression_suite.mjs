@@ -44,6 +44,11 @@ function record(name, pass, detail) {
   console.log((pass ? 'PASS' : 'FAIL') + ' - ' + name + (detail ? ' (' + detail + ')' : ''));
 }
 
+// data-testid-Selektor -- stabiler Vertrag ueber die React-Migration hinweg
+// (siehe tests/README.md, Abschnitt "testid-Register"). Alle Suite-Selektoren
+// laufen darueber statt ueber Klassennamen/IDs, die die Migration umbenennt.
+const tid = (name) => `[data-testid="${name}"]`;
+
 // Playwright kann eine Antwort auch ganz ohne echten Netzwerk-Roundtrip
 // fuellen (kein `response` von route.fetch() noetig) -- fuer Faelle, in
 // denen NICHTS Echtes erreicht werden soll (z.B. der Serientermine-Insert).
@@ -73,6 +78,22 @@ const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
 const consoleErrors = [];
 page.on('pageerror', e => consoleErrors.push('pageerror: ' + e.message));
 page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push('console: ' + msg.text()); });
+
+// Navigiert per Hash und wartet auf eine echte Bedingung (Ziel-Element
+// sichtbar), statt auf eine feste Zeit -- ersetzt das fruehere fragile
+// "hash setzen + waitForTimeout(...)", das unter Last nicht-deterministische
+// Fehlschlaege erzeugte. waitFor = testid-Name oder roher Selektor; bei
+// negativem Ausgang (Redirect erwartet) waitFor weglassen und danach kurz
+// auf den Redirect-Zielzustand warten.
+async function gotoHash(hash, waitFor, { timeout = 8000 } = {}) {
+  await page.evaluate((h) => { window.location.hash = h; }, hash);
+  if (waitFor) {
+    const sel = waitFor.startsWith('[') || waitFor.startsWith('#') || waitFor.startsWith('.') ? waitFor : tid(waitFor);
+    await page.waitForSelector(sel, { state: 'visible', timeout }).catch(() => {});
+  } else {
+    await page.waitForTimeout(400); // Redirect-/Ablehnungs-Fall: kurzer Ausklang
+  }
+}
 
 // ---- Test 2 Vorbereitung: bekannte XP-Summe einschleusen ----
 let levelBase = null, levelExponent = null;
@@ -331,34 +352,42 @@ await page.route('**/rest/v1/termin_series*', async route => {
 
 // ---- Login ----
 await page.goto(`http://localhost:${PORT}/index.html`, { waitUntil: 'load' });
-await page.fill('#authEmail', creds.email);
-await page.fill('#authPassword', creds.password);
-await page.click('#authSubmitBtn');
-await page.waitForSelector('#levelNum', { timeout: 15000 }).catch(() => {});
-await page.waitForTimeout(1500);
+await page.fill(tid('auth-email'), creds.email);
+await page.fill(tid('auth-password'), creds.password);
+await page.click(tid('auth-submit'));
+await page.waitForSelector(tid('level-num'), { state: 'visible', timeout: 15000 }).catch(() => {});
+// App-Shell ist da -- abwarten, bis enterApp() den ersten render() gefahren hat
+// (level-num hat dann echten Inhalt statt des HTML-Platzhalters)
+await page.waitForFunction(() => {
+  const t = document.querySelector('[data-testid="level-num"]');
+  return t && t.offsetParent !== null && t.textContent.trim() !== '';
+}, null, { timeout: 12000 }).catch(() => {});
 statYear = new Date().getFullYear();
 
 // ---- Test 1: Login/Rauchtest ----
-const levelNumVisible = await page.locator('#levelNum').isVisible().catch(() => false);
-record('Login gelingt, App-Shell rendert (#levelNum sichtbar)', levelNumVisible);
+const levelNumVisible = await page.locator(tid('level-num')).isVisible().catch(() => false);
+record('Login gelingt, App-Shell rendert (level-num sichtbar)', levelNumVisible);
 
 // ---- Test: Rollenbasierte Nav-Sichtbarkeit (fixiert -- window.profile
 // existiert nicht, siehe Kommentar oben; nutzt jetzt die echte, ueber die
 // profiles-Route abgefangene Rolle) ----
 if (capturedRole === 'admin') {
-  const produkteVisible = await page.locator('#navProdukteBtn').isVisible().catch(() => false);
+  const produkteVisible = await page.locator('[data-page="produkte"]').isVisible().catch(() => false);
   record('Admin-Nav "Produkte" sichtbar (rollenbasierte UI)', produkteVisible, 'Rolle: admin');
 } else if (capturedRole === 'member') {
-  const produkteHidden = await page.locator('#navProdukteBtn').isHidden().catch(() => false);
+  const produkteHidden = await page.locator('[data-page="produkte"]').isHidden().catch(() => false);
   record('Nicht-Admin sieht "Produkte" nicht (rollenbasierte UI)', produkteHidden, 'Rolle: member');
 } else {
   record('Rollenbasierte Nav-Sichtbarkeit konnte Rolle nicht bestimmen', false, 'capturedRole=' + capturedRole);
 }
 
 // ---- Test 2: XP-/Level-Berechnung ----
-await page.evaluate(() => window.location.hash = '#charakter');
-await page.waitForTimeout(800);
-const shownLevel = await page.locator('#levelNum').textContent().catch(() => null);
+await gotoHash('#charakter', 'page-charakter');
+await page.waitForFunction(() => {
+  const t = document.querySelector('[data-testid="level-num"]');
+  return t && t.textContent.trim() !== '' && t.textContent.trim() !== '1';
+}, null, { timeout: 6000 }).catch(() => {});
+const shownLevel = await page.locator(tid('level-num')).textContent().catch(() => null);
 if (levelBase && knownXp !== null) {
   const expected = expectedLevel(knownXp);
   record(
@@ -371,10 +400,15 @@ if (levelBase && knownXp !== null) {
 }
 
 // ---- Test 3: Kanban-Spalten-Zuordnung ----
-await page.evaluate(() => window.location.hash = '#kanban');
-await page.waitForTimeout(1200);
+await gotoHash('#kanban', 'kanban-board');
+// Warten bis die synthetischen Karten wirklich gerendert sind (statt fester Zeit)
+await page.waitForFunction(
+  (ids) => ids.every(id => document.querySelector(`[data-testid="kanban-card"][data-contact="${id}"]`)),
+  KANBAN_TEST_ROWS.map(r => r.id),
+  { timeout: 8000 },
+).catch(() => {});
 for (const r of KANBAN_TEST_ROWS) {
-  const card = page.locator(`.kanban-card[data-contact="${r.id}"][data-stage="${r.stage}"]`);
+  const card = page.locator(`${tid('kanban-card')}[data-contact="${r.id}"][data-stage="${r.stage}"]`);
   const found = await card.count().catch(() => 0);
   record(`Kanban-Kontakt landet in Spalte "${r.stage}"`, found === 1, `gefunden: ${found}`);
 }
@@ -383,10 +417,10 @@ for (const r of KANBAN_TEST_ROWS) {
 // und korrigiert die Adresszeile. Schuetzt genau den in Haeppchen 12
 // gefundenen/behobenen Bug (dauerhaft falsch stehender Hash nach einem
 // Berechtigungs-/Gueltigkeits-Redirect). ----
-await page.evaluate(() => window.location.hash = '#does-not-exist-xyz');
-await page.waitForTimeout(600);
+await page.evaluate(() => { window.location.hash = '#does-not-exist-xyz'; });
+await page.waitForFunction(() => window.location.hash === '#charakter', null, { timeout: 5000 }).catch(() => {});
 {
-  const charVisible = await page.locator('#page-charakter').evaluate(el => el.style.display !== 'none').catch(() => false);
+  const charVisible = await page.locator(tid('page-charakter')).evaluate(el => el.style.display !== 'none').catch(() => false);
   const hashCorrected = await page.evaluate(() => window.location.hash) === '#charakter';
   record('Ungueltiger Seiten-Hash faellt auf Charakter zurueck', charVisible, 'sichtbar: ' + charVisible);
   record('Adresszeile wird bei ungueltigem Hash korrigiert', hashCorrected, 'hash: ' + (await page.evaluate(() => window.location.hash)));
@@ -394,10 +428,14 @@ await page.waitForTimeout(600);
 
 // ---- Test 5 (NEU): Rechte-gebundener Seiten-Hash ("#produkte") passend
 // zur echten Rolle -- Admin darf rein, Nicht-Admin wird zurueckgeworfen. ----
-await page.evaluate(() => window.location.hash = '#produkte');
-await page.waitForTimeout(600);
+await page.evaluate(() => { window.location.hash = '#produkte'; });
+if (capturedRole === 'admin') {
+  await page.waitForSelector(tid('page-produkte'), { state: 'visible', timeout: 6000 }).catch(() => {});
+} else {
+  await page.waitForFunction(() => window.location.hash === '#charakter', null, { timeout: 5000 }).catch(() => {});
+}
 {
-  const produkteVisible = await page.locator('#page-produkte').evaluate(el => el.style.display !== 'none').catch(() => false);
+  const produkteVisible = await page.locator(tid('page-produkte')).evaluate(el => el.style.display !== 'none').catch(() => false);
   const hashNow = await page.evaluate(() => window.location.hash);
   if (capturedRole === 'admin') {
     record('Admin darf #produkte oeffnen', produkteVisible && hashNow === '#produkte', 'hash: ' + hashNow);
@@ -408,13 +446,22 @@ await page.waitForTimeout(600);
 
 // ---- Test 6+7 (NEU): Kontakt-Deep-Link zeigt den richtigen Kontakt,
 // Chronik fuehrt mehrere Quellen zusammen, Kennzahlen-Leiste stimmt ----
-await page.evaluate((id) => window.location.hash = '#kontakt/' + id, CHRONIK_CONTACT_ID);
-await page.waitForTimeout(1000);
+await gotoHash('#kontakt/' + CHRONIK_CONTACT_ID, 'contact-detail-content');
+await page.waitForFunction(
+  (name) => document.querySelector('[data-testid="contact-detail-title"]')?.textContent === name,
+  CHRONIK_CONTACT_NAME,
+  { timeout: 6000 },
+).catch(() => {});
 {
-  const title = await page.locator('#contactDetailTitle').textContent().catch(() => null);
+  const title = await page.locator(tid('contact-detail-title')).textContent().catch(() => null);
   record('Kontakt-Deep-Link zeigt den richtigen Namen', title === CHRONIK_CONTACT_NAME, 'angezeigt: ' + title);
 
-  const chronikText = await page.locator('#contactDetailChronik').innerText().catch(() => '');
+  // Chronik lädt async mehrere Quellen zusammen -- auf die erwartete Zeile warten
+  await page.waitForFunction(
+    () => (document.querySelector('[data-testid="contact-detail-chronik"]')?.textContent || '').includes('RegressChronikTermin'),
+    null, { timeout: 6000 },
+  ).catch(() => {});
+  const chronikText = await page.locator(tid('contact-detail-chronik')).innerText().catch(() => '');
   const hasCall = chronikText.includes('Anruf') && chronikText.includes('erreicht');
   const hasTermin = chronikText.includes('RegressChronikTermin');
   const hasSale = chronikText.includes('RegressTestProdukt');
@@ -422,7 +469,13 @@ await page.waitForTimeout(1000);
   record('Chronik zeigt Termin', hasTermin);
   record('Chronik zeigt Verkauf', hasSale);
 
-  const chips = await page.locator('#kdStatStrip .kd-stat-chip .num').allTextContents().catch(() => []);
+  // Kennzahlen-Leiste rendert nach der Chronik (chronikCount kommt aus deren
+  // Cache) -- auf die deterministischen Sollwerte warten statt auf eine Zeit.
+  await page.waitForFunction(() => {
+    const els = document.querySelectorAll('[data-testid="contact-stat-strip"] [data-testid="contact-stat-value"]');
+    return els.length >= 2 && els[0].textContent === '1' && els[1].textContent === '3';
+  }, null, { timeout: 8000 }).catch(() => {});
+  const chips = await page.locator(`${tid('contact-stat-strip')} ${tid('contact-stat-value')}`).allTextContents().catch(() => []);
   // Reihenfolge lt. renderContactStatStrip(): Vertraege, Chronik-Eintraege, Dateien, Zuletzt kontaktiert
   record('Kennzahlen-Leiste: Vertraege = 1', chips[0] === '1', 'chips: ' + JSON.stringify(chips));
   record('Kennzahlen-Leiste: Chronik-Eintraege = 3', chips[1] === '3', 'chips: ' + JSON.stringify(chips));
@@ -431,10 +484,22 @@ await page.waitForTimeout(1000);
 // ---- Test 8 (NEU): Deep-Link uebersteht ein echtes Neuladen der Seite
 // (derselbe Kontakt muss ohne erneuten Klick wieder erscheinen) ----
 await page.reload({ waitUntil: 'load' });
-await page.waitForSelector('#levelNum', { timeout: 15000 }).catch(() => {});
-await page.waitForTimeout(1500);
+await page.waitForSelector(tid('level-num'), { state: 'visible', timeout: 15000 }).catch(() => {});
+// Kalt-Reload: init -> afterLogin -> enterApp -> routeToHash(#kontakt/..) ->
+// openContactPage -> loadContactsBundle (laedt ALLE Kontakte) -> render.
+// Kann unter Last laenger dauern -- grosszuegig, und auf title ODER
+// notFound warten (letzteres waere ein echter Fehler, kein Timing).
+await page.waitForFunction(
+  (name) => {
+    const t = document.querySelector('[data-testid="contact-detail-title"]')?.textContent;
+    const nf = document.querySelector('[data-testid="contact-detail-notfound"]');
+    return t === name || (nf && nf.offsetParent !== null);
+  },
+  CHRONIK_CONTACT_NAME,
+  { timeout: 25000 },
+).catch(() => {});
 {
-  const title = await page.locator('#contactDetailTitle').textContent().catch(() => null);
+  const title = await page.locator(tid('contact-detail-title')).textContent().catch(() => null);
   const navActive = await page.locator('[data-page="kontakte"]').evaluate(el => el.classList.contains('active')).catch(() => false);
   record('Kontakt-Deep-Link uebersteht Reload (gleicher Kontakt, kein Klick noetig)', title === CHRONIK_CONTACT_NAME, 'angezeigt: ' + title);
   record('Nav-Highlight nach Reload korrekt auf "Kontakte"', navActive);
@@ -442,11 +507,10 @@ await page.waitForTimeout(1500);
 
 // ---- Test 9 (NEU): Nicht existierender Kontakt-Link zeigt Fehlerseite
 // statt eines Absturzes ----
-await page.evaluate((id) => window.location.hash = '#kontakt/' + id, MISSING_CONTACT_ID);
-await page.waitForTimeout(1000);
+await gotoHash('#kontakt/' + MISSING_CONTACT_ID, 'contact-detail-notfound');
 {
-  const notFoundVisible = await page.locator('#kdNotFound').evaluate(el => el.style.display !== 'none').catch(() => false);
-  const contentHidden = await page.locator('#kdContent').evaluate(el => el.style.display === 'none').catch(() => false);
+  const notFoundVisible = await page.locator(tid('contact-detail-notfound')).evaluate(el => el.style.display !== 'none').catch(() => false);
+  const contentHidden = await page.locator(tid('contact-detail-content')).evaluate(el => el.style.display === 'none').catch(() => false);
   record('Nicht existierender Kontakt zeigt Fehlerseite', notFoundVisible && contentHidden, 'notFound sichtbar: ' + notFoundVisible);
 }
 
@@ -467,18 +531,22 @@ while (['Sat', 'Sun'].includes(weekdayShortInTZ(nowForEvent, resolvedTz))) {
 weekEventStart = nowForEvent.toISOString();
 weekEventEnd = new Date(nowForEvent.getTime() + 30 * 60000).toISOString();
 const todayInResolvedTz = ymdInTZ(nowForEvent, resolvedTz);
-await page.evaluate((dateStr) => window.location.hash = '#tagebuch/woche/' + dateStr, todayInResolvedTz);
-await page.waitForTimeout(1200);
+await gotoHash('#tagebuch/woche/' + todayInResolvedTz, 'cal-week-view');
+await page.waitForFunction(
+  (eid) => document.querySelector(`[data-testid="week-event"][data-event-id="${eid}"]`),
+  WEEK_EVENT_ID,
+  { timeout: 6000 },
+).catch(() => {});
 {
-  const weekVisible = await page.locator('#calWeekView').evaluate(el => el.style.display !== 'none').catch(() => false);
-  const monthHidden = await page.locator('#calMonthView').evaluate(el => el.style.display === 'none').catch(() => false);
+  const weekVisible = await page.locator(tid('cal-week-view')).evaluate(el => el.style.display !== 'none').catch(() => false);
+  const monthHidden = await page.locator(tid('cal-month-view')).evaluate(el => el.style.display === 'none').catch(() => false);
   record('Kalender-Deep-Link oeffnet die Wochenansicht', weekVisible && monthHidden);
 
   const [, mm, dd] = todayInResolvedTz.split('-');
-  const headerText = await page.locator('#weekHeaderRow').innerText().catch(() => '');
+  const headerText = await page.locator(tid('week-header-row')).innerText().catch(() => '');
   record('Wochenansicht zeigt den richtigen Tag in der Kopfzeile', headerText.includes(`${dd}.${mm}.`), `Kopfzeile: ${headerText.replace(/\n/g, ' ')}`);
 
-  const eventTimeText = await page.locator(`.week-event[data-event-id="${WEEK_EVENT_ID}"] .we-time`).textContent().catch(() => null);
+  const eventTimeText = await page.locator(`${tid('week-event')}[data-event-id="${WEEK_EVENT_ID}"] ${tid('week-event-time')}`).textContent().catch(() => null);
   const expectedStart = hmInTZ(nowForEvent, resolvedTz);
   const expectedEnd = hmInTZ(new Date(nowForEvent.getTime() + 30 * 60000), resolvedTz);
   const timeOk = eventTimeText && eventTimeText.includes(expectedStart) && eventTimeText.includes(expectedEnd);
@@ -487,12 +555,15 @@ await page.waitForTimeout(1200);
 
 // ---- Test 12 (NEU): Verkaufsstatistik summiert mehrere Verkaeufe
 // verschiedener Monate im Jahres-Reiter korrekt (BWS-/Provisions-Aggregation) ----
-await page.evaluate(() => window.location.hash = '#statistik');
-await page.waitForTimeout(1000);
+await gotoHash('#statistik', 'stat-card');
+await page.waitForFunction(
+  () => document.querySelector('[data-testid="stat-card"][data-label="Provision"]'),
+  null, { timeout: 6000 },
+).catch(() => {});
 {
-  const sonstigeCard = page.locator('.stat-card', { hasText: 'Bewertungsbeitrag sonstige' });
-  const bwpCard = page.locator('.stat-card', { hasText: 'Bewertungspunkte' });
-  const provisionCard = page.locator('.stat-card', { hasText: 'Provision' }).filter({ hasNotText: 'Differenz' });
+  const sonstigeCard = page.locator(`${tid('stat-card')}[data-label="Bewertungsbeitrag sonstige"]`);
+  const bwpCard = page.locator(`${tid('stat-card')}[data-label="Bewertungspunkte"]`);
+  const provisionCard = page.locator(`${tid('stat-card')}[data-label="Provision"]`);
   const sonstigeText = await sonstigeCard.innerText().catch(() => '');
   const bwpText = await bwpCard.innerText().catch(() => '');
   const provisionText = await provisionCard.innerText().catch(() => '');
@@ -530,48 +601,60 @@ await page.waitForTimeout(1000);
 // wuerden. Reines Oeffnen+Schliessen deckt trotzdem den eigentlichen Kern
 // der Frage ab: kommt man per Antippen ueberhaupt an die Touch-Alternative
 // zum (auf Touch nicht zuverlaessigen) nativen Ziehen heran?
-await page.evaluate(() => window.location.hash = '#kanban');
-await page.waitForTimeout(800);
-const desktopBoardDir = await page.locator('.kanban-board').evaluate(el => getComputedStyle(el).flexDirection).catch(() => null);
-const desktopMoveBtnDisplay = await page.locator('.kc-move-btn').first().evaluate(el => getComputedStyle(el).display).catch(() => null);
+await gotoHash('#kanban', 'kanban-board');
+await page.waitForSelector(tid('kanban-card'), { timeout: 6000 }).catch(() => {});
+const desktopBoardDir = await page.locator(tid('kanban-board')).evaluate(el => getComputedStyle(el).flexDirection).catch(() => null);
+const desktopMoveBtnDisplay = await page.locator(tid('kanban-move-btn')).first().evaluate(el => getComputedStyle(el).display).catch(() => null);
 
 await page.setViewportSize({ width: 390, height: 844 });
-await page.waitForTimeout(500);
+await page.waitForFunction(
+  () => getComputedStyle(document.querySelector('[data-testid="kanban-board"]')).flexDirection === 'column',
+  null, { timeout: 4000 },
+).catch(() => {});
 {
-  const mobileBoardDir = await page.locator('.kanban-board').evaluate(el => getComputedStyle(el).flexDirection).catch(() => null);
-  const mobileMoveBtnDisplay = await page.locator('.kc-move-btn').first().evaluate(el => getComputedStyle(el).display).catch(() => null);
+  const mobileBoardDir = await page.locator(tid('kanban-board')).evaluate(el => getComputedStyle(el).flexDirection).catch(() => null);
+  const mobileMoveBtnDisplay = await page.locator(tid('kanban-move-btn')).first().evaluate(el => getComputedStyle(el).display).catch(() => null);
   record('Kanban-Layout schaltet unter 760px auf gestapelt um', desktopBoardDir === 'row' && mobileBoardDir === 'column', `desktop: ${desktopBoardDir}, mobil: ${mobileBoardDir}`);
   record('Verschieben-Knopf (Touch-Alternative) nur mobil sichtbar', desktopMoveBtnDisplay === 'none' && mobileMoveBtnDisplay !== 'none', `desktop: ${desktopMoveBtnDisplay}, mobil: ${mobileMoveBtnDisplay}`);
 
   const firstRow = KANBAN_TEST_ROWS[0];
-  const moveBtn = page.locator(`.kanban-card[data-contact="${firstRow.id}"] .kc-move-btn`);
+  const moveBtn = page.locator(`${tid('kanban-card')}[data-contact="${firstRow.id}"] ${tid('kanban-move-btn')}`);
   await moveBtn.click({ trial: false }).catch(() => {});
-  await page.waitForTimeout(400);
-  const menuVisible = await page.locator('#kanbanMoveModal').evaluate(el => el.style.display !== 'none').catch(() => false);
-  const optionCount = await page.locator('#kanbanMoveGrid [data-movestage]').count().catch(() => 0);
+  await page.waitForSelector(`${tid('kanban-move-modal')}`, { state: 'visible', timeout: 4000 }).catch(() => {});
+  const menuVisible = await page.locator(tid('kanban-move-modal')).evaluate(el => el.style.display !== 'none').catch(() => false);
+  const optionCount = await page.locator(`${tid('kanban-move-grid')} [data-movestage]`).count().catch(() => 0);
   record('Antippen des Verschieben-Knopfs oeffnet das Zielspalten-Menue', menuVisible);
   record('Menue listet alle uebrigen Kanban-Spalten als Ziel', optionCount === 7, `Optionen: ${optionCount} (erwartet: 7, KANBAN_STAGES.length-1)`);
-  await page.locator('#kanbanMoveClose').click().catch(() => {});
-  await page.waitForTimeout(300);
-  const menuClosedAgain = await page.locator('#kanbanMoveModal').evaluate(el => el.style.display === 'none').catch(() => false);
+  await page.locator(tid('kanban-move-close')).click().catch(() => {});
+  await page.waitForFunction(
+    () => document.querySelector('[data-testid="kanban-move-modal"]').style.display === 'none',
+    null, { timeout: 3000 },
+  ).catch(() => {});
+  const menuClosedAgain = await page.locator(tid('kanban-move-modal')).evaluate(el => el.style.display === 'none').catch(() => false);
   record('Verschieben-Menue laesst sich ohne Aktion wieder schliessen', menuClosedAgain);
 }
 
 // Tag-Reiter: Kalender-/Aufgaben-Spalten stapeln sich mobil (dieselbe
 // 760px-Schwelle wie oben).
-await page.evaluate((dateStr) => window.location.hash = '#tagebuch/tag/' + dateStr, todayInResolvedTz);
-await page.waitForTimeout(800);
+await gotoHash('#tagebuch/tag/' + todayInResolvedTz, 'day-view-grid');
 {
-  const mobileCols = await page.locator('.day-view-grid').evaluate(el => getComputedStyle(el).gridTemplateColumns.trim().split(/\s+/).length).catch(() => null);
+  const mobileCols = await page.locator(tid('day-view-grid')).evaluate(el => getComputedStyle(el).gridTemplateColumns.trim().split(/\s+/).length).catch(() => null);
   await page.setViewportSize({ width: 1280, height: 1000 });
-  await page.waitForTimeout(500);
-  const desktopCols = await page.locator('.day-view-grid').evaluate(el => getComputedStyle(el).gridTemplateColumns.trim().split(/\s+/).length).catch(() => null);
+  await page.waitForFunction(
+    () => getComputedStyle(document.querySelector('[data-testid="day-view-grid"]')).gridTemplateColumns.trim().split(/\s+/).length === 2,
+    null, { timeout: 4000 },
+  ).catch(() => {});
+  const desktopCols = await page.locator(tid('day-view-grid')).evaluate(el => getComputedStyle(el).gridTemplateColumns.trim().split(/\s+/).length).catch(() => null);
   record('Tagesansicht-Raster stapelt Kalender/Aufgaben mobil (1 statt 2 Spalten)', mobileCols === 1 && desktopCols === 2, `mobil: ${mobileCols} Spalte(n), desktop: ${desktopCols} Spalte(n)`);
 }
 
 // ---- Konsolenfehler ----
 record('Keine Konsolen-/Seitenfehler während des Laufs', consoleErrors.length === 0, consoleErrors.join(' | '));
 
+// Alle route()-Handler abhaengen, bevor der Browser schliesst -- sonst kann
+// ein noch laufendes route.fetch() beim close() einen TargetClosedError
+// werfen (unhandled rejection -> Exit != 0, obwohl alle Tests bestanden).
+await page.unrouteAll({ behavior: 'ignoreErrors' }).catch(() => {});
 await browser.close();
 
 const failed = results.filter(r => !r.pass);

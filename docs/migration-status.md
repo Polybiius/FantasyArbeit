@@ -13,9 +13,10 @@ Voller Fahrplan: Claude-Erinnerung `project_framework_migration_plan`
 
 | # | Block | Status | Notiz |
 |---|-------|--------|-------|
-| — | Vor-Block-1: Suite ins Repo + `data-testid` | offen | solange `index.html` noch Vanilla |
-| — | Vor-Block-1: Brücke `window.__bridge` + `onAuthStateChange` (ADR-0002) | offen | ~30 Zeilen in `index.html` |
-| — | Vor-Block-1: Vorschau-Deployment (Cloudflare/Netlify) | offen | GitHub Pages kann es nicht |
+| — | Vor-Block-1: Suite ins Repo (`npm test`) | ✅ erledigt (2026-09-02, `2634e6e`) | |
+| — | Vor-Block-1: `data-testid` + Flakiness-Fix (S2) | ✅ erledigt (2026-09-02) | Register in `tests/README.md`; 20+ Läufe grün |
+| — | Vor-Block-1: Brücke `window.__bridge` + `onAuthStateChange` (ADR-0002) | ✅ erledigt (2026-09-02, `32a8a94`) | |
+| — | Vor-Block-1: Vorschau-Deployment (Cloudflare/Netlify) | offen | GitHub Pages kann es nicht — braucht Account-Aktion des Nutzers |
 | 1 | Grundgerüst (React/TS/Vite/TanStack Query/RHF+Zod/ESLint-Umstieg) | offen | keine Seite migriert |
 | 2 | Brücke (Routing/Auth/Theming/globale Muster/Deploy) | offen | hairiest step, isoliert |
 | 3 | Pilot im Wegwerf-Layout (Kandidat: Einstellungen) | offen | testet Block 1–2 |

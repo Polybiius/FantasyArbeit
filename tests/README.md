@@ -47,16 +47,47 @@ siehe `CLAUDE.md`). Schlägt eine Prüfung fehl: **nicht pushen**, den Fund
 erst melden und klären, ob es ein echter Bug, ein veralteter Test oder
 Flakiness ist.
 
-## Bekannte Baustelle (Stand 2026-09-02)
+## testid-Register (stabiler Vertrag über die React-Migration)
 
-Die Suiten nutzen an vielen Stellen feste `page.waitForTimeout(...)`-
-Wartezeiten statt auf eine echte Bedingung zu warten — das erzeugt unter
-Last gelegentliche, nicht-deterministische Fehlschläge (wechselnde
-Tests). Wird im Zuge der React-Migration behoben (feste Wartezeiten →
-`waitForSelector`/`waitForFunction`), zusammen mit dem Setzen von
-`data-testid`-Attributen an den ~32 aktuell über Klassennamen/IDs
-angesteuerten Stellen (damit die Selektoren die Migration überleben).
-Siehe `project_framework_migration_plan`, Fund S2.
+Die Suiten sprechen die App **ausschließlich über `data-testid`** an (plus
+die semantischen Attribute `data-page` / `data-movestage` / `data-contact`
+/ `data-event-id`, die auch die App-Logik selbst nutzt). Wird ein Bereich
+nach React migriert, bekommt die neue Komponente **denselben
+`data-testid`** — dann bleibt der Suite-Selektor unverändert, nur die
+Prüf-Logik (z.B. `style.display` → aktive Route) passt sich an.
+
+| testid | Ort (Vanilla) | Zweck |
+|---|---|---|
+| `auth-email` / `auth-password` / `auth-submit` | Login-Screen | Anmeldung |
+| `level-num` | App-Shell | XP/Level-Anzeige, „App bereit"-Signal |
+| `page-charakter` / `page-produkte` / `page-fehlerprotokoll` / `page-notfallzugriff` / `page-team-reporting` | `<div class="page">` | Seiten-Sichtbarkeit / Redirect-Prüfung |
+| `kanban-board` | `#kanbanBoard` | Kanban-Container, Layout-Umschaltung 760px |
+| `kanban-card` | `renderKanbanBoard()` | Kanban-Karte (+ `data-contact` / `data-stage`) |
+| `kanban-move-btn` | `renderKanbanBoard()` | Touch-Verschieben-Knopf |
+| `kanban-move-modal` / `kanban-move-close` / `kanban-move-grid` | Verschieben-Popup | Zielspalten-Menü |
+| `contact-detail-content` / `contact-detail-notfound` | Kontakt-Seite | Deep-Link vorhanden / Fehlerseite |
+| `contact-detail-title` | Kontakt-Seite | Name des geladenen Kontakts |
+| `contact-detail-chronik` | Kontakt-Seite | zusammengeführte Chronik |
+| `contact-stat-strip` / `contact-stat-value` | `renderContactStatStrip()` | Kennzahlen-Leiste (Verträge/Chronik/…) |
+| `cal-month-view` / `cal-week-view` | Kalender | Ansichts-Umschaltung |
+| `week-header-row` | Wochenansicht | Tages-Kopfzeile |
+| `week-event` / `week-event-time` | `renderDayEvents()` | Termin-Kachel (+ `data-event-id`) / Uhrzeit |
+| `stat-card` | `statHeroCard()` | KPI-Kachel (+ `data-label` = Kennzahl-Name) |
+| `day-view-grid` | Tagesansicht | Kalender/Aufgaben-Raster, Stapelung 760px |
+
+Neue Suite-Prüfungen: immer über `tid('...')` (Helfer oben in beiden
+Skripten), nie über rohe Klassennamen/IDs.
+
+## Warten auf Zustand statt auf Zeit
+
+Die Suiten warten über `waitForSelector` / `waitForFunction` auf echte
+Bedingungen (Element sichtbar, Text stimmt, Karten gerendert) statt über
+feste `waitForTimeout(...)`. Der Helfer `gotoHash(hash, testid)` navigiert
+per Hash und wartet, bis das Ziel sichtbar ist. Vor `browser.close()` wird
+`page.unrouteAll({ behavior: 'ignoreErrors' })` aufgerufen, sonst kann ein
+noch laufendes `route.fetch()` einen `TargetClosedError` werfen (Exit != 0
+trotz bestandener Tests). Ergebnis: 20+ Läufe hintereinander grün, wo
+vorher ~jeder 6. Lauf einen wechselnden Test verlor.
 
 ## Die losen `check_*.mjs`/`shot_*.mjs` (nicht hier)
 

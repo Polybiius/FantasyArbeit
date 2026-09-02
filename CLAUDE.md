@@ -276,12 +276,13 @@ begründen (Business/Motivation-Engine-Trennung, PvE, Gilden-Größe, SDT).
   lässt `npm test` automatisch vor jedem `git push` laufen, ohne vorher
   zu fragen. Schlägt eine Prüfung fehl, NICHT einfach pushen — den Fund
   kurz melden und gemeinsam klären, ob es ein echter Bug, ein veralteter
-  Test oder Flakiness ist. **Bekannte Flakiness:** feste
-  `waitForTimeout()`-Wartezeiten erzeugen unter Last gelegentliche,
-  nicht-deterministische Fehlschläge (wechselnde Tests) — wird im Zuge
-  der React-Migration behoben (→ `waitForSelector`/`waitForFunction`,
-  zusammen mit `data-testid`-Attributen), siehe
-  `project_framework_migration_plan` Fund S2.
+  Test oder Flakiness ist. **Seit 2026-09-02 (S2, Teil 2):** die Suiten
+  sprechen die App nur noch über `data-testid` an (stabiler Vertrag über
+  die React-Migration, Register in `tests/README.md`) und warten auf
+  echte Zustände statt feste Zeiten — die frühere Flakiness (~jeder 6.
+  Lauf verlor einen wechselnden Test) ist damit weg (20+ Läufe grün).
+  **Beim Setzen neuer `data-testid`:** ein migrierter Bereich bekommt
+  denselben testid-Wert wie die Vanilla-Fassung.
 - **Lokales Öffnen von HTML-Dateien beim Nutzer** (seit 2026-08-02): Brave
   läuft bei ihm sandboxed (vermutlich Flatpak) — ein direkter `file://`-Zugriff
   auf den Projektordner schlägt fehl (`ERR_FILE_NOT_FOUND`), und Dateien über

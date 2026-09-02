@@ -30,6 +30,10 @@ function record(name, pass, detail) {
   console.log((pass ? 'PASS' : 'FAIL') + ' - ' + name + (detail ? ' (' + detail + ')' : ''));
 }
 
+// data-testid-Selektor -- stabiler Vertrag über die React-Migration hinweg
+// (siehe tests/README.md, "testid-Register").
+const tid = (name) => `[data-testid="${name}"]`;
+
 const browser = await chromium.launch({ args: ['--no-sandbox'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 1000 } });
 const consoleErrors = [];
@@ -50,18 +54,21 @@ await page.route('**/rest/v1/profiles*', async route => {
 
 // ---- Login ----
 await page.goto(`http://localhost:${PORT}/index.html`, { waitUntil: 'load' });
-await page.fill('#authEmail', creds.email);
-await page.fill('#authPassword', creds.password);
-await page.click('#authSubmitBtn');
-await page.waitForSelector('#levelNum', { timeout: 15000 }).catch(() => {});
-await page.waitForTimeout(1500);
+await page.fill(tid('auth-email'), creds.email);
+await page.fill(tid('auth-password'), creds.password);
+await page.click(tid('auth-submit'));
+await page.waitForSelector(tid('level-num'), { state: 'visible', timeout: 15000 }).catch(() => {});
+await page.waitForFunction(() => {
+  const t = document.querySelector('[data-testid="level-num"]');
+  return t && t.offsetParent !== null && t.textContent.trim() !== '';
+}, null, { timeout: 12000 }).catch(() => {});
 
-record('Login mit Nicht-Admin-Konto gelingt', await page.locator('#levelNum').isVisible().catch(() => false));
+record('Login mit Nicht-Admin-Konto gelingt', await page.locator(tid('level-num')).isVisible().catch(() => false));
 record('Testkonto hat tatsaechlich die Rolle "member" (kein versehentliches Admin-Konto)', capturedRole === 'member', 'capturedRole=' + capturedRole);
 
 // ---- Admin-exklusive Nav-Buttons duerfen fuer Nicht-Admins nicht sichtbar sein ----
-for (const [id, label] of [['navProdukteBtn', 'Produkte'], ['navFehlerprotokollBtn', 'Fehlerprotokoll'], ['navNotfallzugriffBtn', 'Notfallzugriff'], ['navTeamReportingBtn', 'Team-Reporting']]) {
-  const hidden = await page.locator('#' + id).isHidden().catch(() => false);
+for (const [dataPage, label] of [['produkte', 'Produkte'], ['fehlerprotokoll', 'Fehlerprotokoll'], ['notfallzugriff', 'Notfallzugriff'], ['team-reporting', 'Team-Reporting']]) {
+  const hidden = await page.locator(`[data-page="${dataPage}"]`).isHidden().catch(() => false);
   record(`Nicht-Admin sieht Nav-Button "${label}" nicht`, hidden);
 }
 
@@ -69,15 +76,19 @@ for (const [id, label] of [['navProdukteBtn', 'Produkte'], ['navFehlerprotokollB
 // Adresszeile (dieselbe Pruefung wie in regression_suite.mjs, dort aber nur
 // mit dem Admin-Konto lauffaehig fuer den "darf rein"-Zweig) ----
 for (const [hash, page_id] of [['#produkte', 'page-produkte'], ['#fehlerprotokoll', 'page-fehlerprotokoll'], ['#notfallzugriff', 'page-notfallzugriff'], ['#team-reporting', 'page-team-reporting']]) {
-  await page.evaluate((h) => window.location.hash = h, hash);
-  await page.waitForTimeout(600);
-  const pageVisible = await page.locator('#' + page_id).evaluate(el => el.style.display !== 'none').catch(() => true);
+  await page.evaluate((h) => { window.location.hash = h; }, hash);
+  await page.waitForFunction(() => window.location.hash === '#charakter', null, { timeout: 5000 }).catch(() => {});
+  const pageVisible = await page.locator(tid(page_id)).evaluate(el => el.style.display !== 'none').catch(() => true);
   const hashCorrected = await page.evaluate(() => window.location.hash) === '#charakter';
   record(`Nicht-Admin wird von ${hash} auf Charakter zurueckgeworfen (inkl. Adresszeile)`, !pageVisible && hashCorrected, 'hash: ' + (await page.evaluate(() => window.location.hash)));
 }
 
 record('Keine Konsolen-/Seitenfehler während des Laufs', consoleErrors.length === 0, consoleErrors.join(' | '));
 
+// Alle route()-Handler abhaengen, bevor der Browser schliesst -- sonst kann
+// ein noch laufendes route.fetch() beim close() einen TargetClosedError
+// werfen (unhandled rejection -> Exit != 0, obwohl alle Tests bestanden).
+await page.unrouteAll({ behavior: 'ignoreErrors' }).catch(() => {});
 await browser.close();
 
 const failed = results.filter(r => !r.pass);
