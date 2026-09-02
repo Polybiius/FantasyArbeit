@@ -5,13 +5,16 @@ Wiederverwendbare React-Hooks, die bereichsübergreifend gebraucht werden.
 | Hook | Zweck |
 |---|---|
 | `useCharacterClass()` | aktuelle Charakterklasse aus dem Vanilla-Profil (über die Brücke), aktualisiert bei Login/Logout. |
+| `useGuardedAction(fn)` | Doppelklick-Schutz für schreibende Aktionen (Entsprechung zu `withClickGuard()`). Liefert `{ pending, run }`. |
 
-## Noch offen (folgende Block-2-Stücke)
+Konfliktbehandlung bei gleichzeitiger Bearbeitung liegt in
+`src/shared/lib/` (`notifyConflict`, `rpcLockedUpdate`, `lockedUpdate`) —
+das sind reine Funktionen ohne React-Zustand.
 
-- `useClickGuard()` — Doppelklick-/Doppel-Absende-Schutz (Entsprechung
-  zu `withClickGuard()` im Vanilla-Code).
-- Konfliktmeldung bei gleichzeitiger Bearbeitung (Entsprechung zu
-  `alertConflict()`), zusammen mit dem Locked-Update-Wrapper.
-- `useProfile()` — allgemeiner Profil-Zugriff, falls mehr als nur die
-  Klasse gebraucht wird.
+## Noch offen
+
+- `useProfile()` — allgemeiner Profil-Zugriff, falls mehr als die Klasse
+  gebraucht wird.
 - Energie-Budget-Anzeige.
+- Toast-System (ersetzt das `window.alert` in `notifyConflict`) — kommt
+  mit dem Styling-Spike (`docs/adr` 0006).

@@ -5,10 +5,9 @@ Die einzige Schicht, die die **Brücke zum Vanilla-Code** kennt.
 | Datei | Inhalt |
 |---|---|
 | `bridge.ts` | typisierter Zugriff auf `window.__bridge` (Supabase-Client + Session + Profil, nur lesen). `getBridge()` / `sb()`. Siehe `docs/adr/0002`. |
-
-**Noch offen (Block 2, folgende Stücke):**
-- `errorLog.ts` — React-Anbindung an die `error_log`-Tabelle
-  (Entsprechung zu `reportError()` / `logSilentError()` im Vanilla-Code).
+| `errorLog.ts` | `logSilentError()` / `logToErrorLog()` — schreibt in dieselbe `error_log`-Tabelle wie `reportError()`/`logSilentError()` im Vanilla-Code. |
+| `notifyConflict.ts` | `notifyConflict(subject)` — Meldung bei gleichzeitiger Bearbeitung (Entsprechung zu `alertConflict()`). Vorerst `window.alert`. |
+| `lockedUpdate.ts` | `rpcLockedUpdate()` (roh) und `lockedUpdate()` (mit Konfliktmeldung + Fehlerprotokoll) — der einzige Schreibweg auf `contacts`/`locations`/`sales`/`termine`/`termin_series` (CLAUDE.md „Konflikt-Schutz"). |
 
 ## Typen
 
