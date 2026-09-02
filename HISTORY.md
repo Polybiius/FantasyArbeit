@@ -3278,3 +3278,153 @@ internen Org-Recheck — durch die neue Trigger-Invariante an der Quelle
 neutralisiert, aber architektonisch implizit. Und ein Enumerations-
 Orakel für exakte Anzeigenamen über die Firmengrenze bleibt der Preis
 der app-weiten Freundes-Suche.
+
+---
+
+## 2026-09-02: Phase 3 gestartet — blinder Review, Brücken-Vorbereitung, React-Etappen 1+2
+
+Nach dem erfolgreichen Pitch bei einem IT-Unternehmen hat der Nutzer den
+Baustart für Phase 3 (React-Migration, siehe `project_framework_
+migration_plan`) freigegeben. Eine Sitzung, 10 Commits (`3b38c0c` …
+`b982dcb`), alle mit grüner Regressions-Suite (33/33 + 11/11),
+`npm run lint` und (ab Etappe 1) `npm run typecheck` gepusht.
+
+### Blinder Review des konsolidierten Plans
+
+Der Nutzer fragte gezielt nach ("Hast du eine Zweitmeinung zu exakt
+diesem Fahrplan eingeholt?"). Die 3 Spezialisten-Reviews vom 2026-08-29
+liefen iterativ *während* der Planung — es gab keinen blinden
+Gegenlese-Durchgang der fertigen Fassung. Also: Opus-Agent, kein
+Sitzungskontext, Prüfung gegen den echten Code. Urteil "tragfähig mit
+Korrekturen", 3 davon vor Block 1 zu lösen. Wichtigste Funde:
+
+- **S1 — "ein geteilter Supabase-Client" ist unmöglich:** der gesamte
+  `<script>` ist eine geschlossene IIFE (`grep -c "window\.\w* *="` →
+  0), nichts exportiert, und **kein `onAuthStateChange`-Listener** —
+  die Session wird genau einmal beim Init gelesen. Entscheidung (Nutzer:
+  "wenn das best practice ist, dann weg a"): Weg A, ein bewusstes
+  benanntes Fenster `window.__bridge` + den fehlenden Listener
+  nachrüsten.
+- **S2 — die Regressions-Suite lag nicht im Repo** (`~/.local/share/
+  playwright-portable/`), an Klassennamen/IDs gekoppelt (`grep -c
+  data-testid index.html` → 0), und im Strangler-Fig sagt "grün" nicht,
+  welche Implementierung getestet wurde. Entscheidung: lokaler
+  Vor-Push-Check bleibt (kein CI für Tests), aber Suite ins Repo +
+  `data-testid` + Flakiness-Fix vor Block 1.
+- **S3 — kein Plan für Feature-Velocity:** `index.html` wuchs ~1.750
+  Zeilen/Woche über 6 Wochen, 150 Commits/30 Tage. Entscheidung:
+  **harter Feature-Stopp im Alt-Code bis Ende Block 3** (nur Bugfixes),
+  Blöcke 1–3 zeitboxen.
+- **S4 — Reihenfolge:** Block 3 (App-Rahmen, `render()` von 9 Stellen,
+  XP/Level/Energie) kam vor dem Pilot, der ihn entschärfen soll →
+  getauscht. Neue Reihenfolge: Grundgerüst → Brücke → **Pilot im
+  Wegwerf-Layout** → App-Rahmen → Kanban+Kontakte → **5b B2C→B2B-Rework
+  (erste Prio danach, Nutzer: "notier das aber sauber")** → Rest.
+- **S6:** Baseline-Zahlen im Plan ~15 % veraltet — `index.html` 11.175
+  (nicht 9.800), `<script>` 9.013, 102 Migrationen (nicht "~60+").
+- **S7:** `loadContactsBundle()` ohne `.limit()` — geprüft, KEIN
+  aktueller Bug (größte Tabelle 274 Zeilen), aber echte serverseitige
+  Paginierung gehört fest in Block 5.
+- **S8 — Tailwind vs. das Runtime-CSS-Variablen-Theme ist eine
+  ungescopte Kollision.** Entscheidung: Styling-Ansatz (Tailwind ja/
+  nein) offen bis zu einem Praxis-Spike (`docs/adr` 0006), CSS-Variablen
+  bleiben Quelle der Wahrheit.
+- Kleineres: TanStack Query + Tailwind sind KEIN "austauschbares
+  Kleingeld" → eigene ADRs; React-vs-Vue-Begründung von "Hireability" auf
+  Trainingsdaten-Dichte geschärft; "striktes TS ersetzt Code-Review" als
+  Overclaim entschärft; Vorschau-Deployments von "erwägen" auf Pflicht;
+  `@supabase/supabase-js`-CDN pinnen; GDPR-Nebengewinn (npm-Bundling
+  entfernt jsDelivr+unpkg).
+
+Alle Entscheidungen in `project_framework_migration_plan` (Abschnitt "⭐
+BLINDER REVIEW") + als ADRs 0001–0005 in `docs/adr/` + `docs/migration-
+status.md` festgehalten (`3b38c0c`).
+
+### Sicherung vor Baustart
+
+git-Tag `demo-2026-09-02-pre-react` (annotiert, gepusht) + Desktop-Ordner
+`~/Schreibtisch/FantasyArbeit-Backup-2026-09-02/` (`git bundle` mit
+kompletter Historie + `git archive`-Snapshot + `index.html` + README).
+
+### Vor-Block-1-Vorbereitung
+
+- **`32a8a94` — `window.__bridge`** (~27 Zeilen in `index.html`, rein
+  additiv): `{ sb, getSession, getProfile, onAuthChange }` als einziger
+  Übergabepunkt (ADR-0002), plus der bisher komplett fehlende
+  `sb.auth.onAuthStateChange`-Listener (hielt die `session`-Variable u.a.
+  bei Token-Refresh nie nach — eigenständige Lücke).
+- **`2634e6e` — Suiten ins Repo** unter `tests/`, `tests/run-
+  regression.mjs` startet den `python3 -m http.server` selbst → `npm
+  test`. Playwright als exakte devDependency (`1.62.1`, Chromium über
+  die normale Auflösung gefunden, kein Download). Zugangsdaten bleiben
+  außerhalb des Repos (per Env überschreibbar).
+- **`fade371` — `data-testid` + Entflackerung:** an ~30 von den Suiten
+  angesteuerten Stellen `data-testid` gesetzt (statisches HTML + 5
+  `render*`-Templates), Suiten laufen nur noch über `tid('...')` bzw.
+  `data-page`. Register in `tests/README.md` — **ein migrierter Bereich
+  bekommt denselben testid-Wert.** Flakiness: feste `waitForTimeout()`
+  → `waitForSelector`/`waitForFunction` auf echte Zustände, Helfer
+  `gotoHash()`. Fund unterwegs: die Suiten warfen manchmal einen
+  `TargetClosedError` aus einem laufenden `route.fetch()` beim
+  `browser.close()` → `page.unrouteAll({behavior:'ignoreErrors'})` davor.
+  Vorher ~jeder 6. Lauf verlor einen wechselnden Test, danach 22 Läufe
+  hintereinander grün.
+
+### Etappe 1 — Grundgerüst (`bd96246`)
+
+React 19 / Vite 8 / TanStack Query 5 / RHF 7 + Zod 4. **Stolperstein
+genau wie im Review vorhergesagt:** `npm i typescript@latest` zog TS
+**7.0.2** (das native GA-`tsc`), aber `typescript-eslint@8` hat Peer
+`typescript <6.1.0`. typescript-eslint ist laut Review der strukturelle
+Ersatz fürs Code-Review → muss laufen → **TS exakt auf 5.9.3 gepinnt**,
+volle Begründung in `docs/setup-notes.md`. Vite-Einstieg **`dev.html`**
+(kollidiert nicht mit der produktiven `index.html`). `tsconfig` strict +
+`noUncheckedIndexedAccess` + `noUnused*` von Anfang an, aufgeteilt in
+`tsconfig.app.json` / `tsconfig.node.json`. `eslint.config.js` in drei
+gescopte Blöcke (src / index.html / tests). `src/`-Struktur nach
+ADR-0005 mit README-Stubs. `npm run dev|build|typecheck` dazu. Verifiziert
+inkl. headless-Render von `dev.html`.
+
+### Etappe 2 — die Brücke (4 Stücke, alle einzeln committbar)
+
+Auf ausdrücklichen Nutzerwunsch ("du musst an angemessenen stellen halt
+machen … überheb dich nicht", Erinnerung `feedback_commit_sized_chunks_
+pause_often`) in 4 gepushte Teilstücke zerlegt, nach jedem gemeldet:
+
+- **`a9169e6`** — `npm run gen:types` (`supabase gen types typescript
+  --linked` → `src/shared/types/supabase.ts`, mitversioniert, 2.622
+  Zeilen, nie von Hand ändern). `@supabase/supabase-js` als devDep
+  **exakt `2.114.0`** (nur Typen — der Runtime-Client kommt aus der
+  Brücke), `index.html`-CDN von `@2` auf `@2.114.0` gepinnt (Review-
+  Blindspot, Regressions-Suite grün nach dem Pin). `src/shared/lib/
+  bridge.ts`: typisierter `getBridge()`/`sb()`, wirft mit klarer Meldung
+  ohne Brücke.
+- **`13e7e0e`** — `src/app/queryClient.ts` (`refetchOnWindowFocus:
+  false` wie Vanilla, Mutations `retry: 0` damit die `updated_at`-
+  Sperrprüfung nicht doppelt läuft, Query- UND Mutation-Fehler global
+  → `error_log`). `src/shared/lib/errorLog.ts` (`logSilentError`/
+  `logToErrorLog`, schreibt in dieselbe Tabelle wie `reportError()`).
+  `src/app/ErrorBoundary.tsx` + `createRoot`-`onUncaughtError`/
+  `onCaughtError` (React 19). `main.tsx`: ErrorBoundary >
+  QueryClientProvider > HashRouter > App.
+- **`ba43e8c`** — `src/shared/design-tokens/classTheme.ts` (typisierte
+  `CharacterClass`, `CLASS_LABELS`, `THEME_VARS`, `getThemeColor()` —
+  Farbwerte bewusst NICHT dupliziert, die CSS-Variablen sind die Quelle
+  der Wahrheit, Vanilla `applyClassTheme()` setzt sie, React im selben
+  Dokument erbt sie). `src/shared/hooks/useCharacterClass.ts`
+  (`useSyncExternalStore` auf `onAuthChange`, fällt ohne Brücke sauber
+  auf Default). `App.tsx` nutzt beides als Nachweis.
+- **`b982dcb`** — `src/shared/hooks/useGuardedAction.ts` (`{ pending,
+  run }`, `busy`-Ref synchron — wie `withClickGuard()`).
+  `src/shared/lib/notifyConflict.ts` (`window.alert` wie
+  `alertConflict()`, wird Toast mit adr 0006). `src/shared/lib/
+  lockedUpdate.ts` (`rpcLockedUpdate` inkl. der PostgREST-NULL-als-
+  Objekt-Eigenheit + `lockedUpdate` mit Konfliktmeldung + `error_log`,
+  typisiert gegen die 6 `*_locked`-Funktionen). Cast an der supabase-js-
+  Grenze nötig, weil `.rpc()` die Signatur nicht aus einem generischen
+  Funktionsnamen ableiten kann; öffentliche API bleibt voll typisiert.
+
+**Stand am Sitzungsende:** Etappen 1+2 fertig, **keine einzige Seite
+migriert**, `index.html` außer dem CDN-Pin unberührt, die echte App
+läuft unverändert. Offen: Vorschau-Deployment (Nutzer-Account nötig),
+dann Etappe 3 (Pilot).
