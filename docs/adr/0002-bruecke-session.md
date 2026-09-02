@@ -70,3 +70,46 @@ Alt-Hälfte propagiert nach React.
   Weg A mit mehr beweglichen Teilen.
 - **Getrennte `storageKey`s / zwei Logins** — inakzeptabel (Nutzer
   müsste sich zweimal anmelden).
+
+---
+
+## Nachtrag 2026-09-03 — Auslieferung des Bundles + Härtung aus dem Fundament-Review
+
+Der Fundament-Review (blind, Opus) hat drei Lücken gefunden, die dieses
+ADR eigentlich abdecken sollte:
+
+### 1. Wie kommt der gebaute Bundle in die Produktion? (war offen)
+
+**Entscheidung:** `dist/` wird **mitversioniert**. `vite build` erzeugt
+STABILE Namen (`dist/assets/react.js`, künftig `dist/assets/react.css`)
+über `rollupOptions.output.entryFileNames`. GitHub Pages serviert `dist/`
+aus dem Repo-Wurzelverzeichnis. Ab **Block 3** bekommt `index.html` einen
+festen `<script type="module" src="dist/assets/react.js">` — der ändert
+sich nie wieder. `npm run build` läuft vor jedem Commit, der `src/`
+ändert (sobald der Tag steht).
+
+**Verworfen für jetzt:** GitHub Actions (Build+Deploy automatisch). Das
+ist der dokumentierte Zielzustand (Plan: "löst die manuelle Ablage ab"),
+aber ein eigener Schritt — Pages-Quelle umstellen, Workflow, Test —, der
+nicht zum "billig vor Block 3"-Rahmen passt. Interim: `dist/` committen.
+
+**Vite-Einstieg von `dev.html` auf `app.html` umbenannt** — der
+Produktions-Chunk soll nicht "dev" heißen.
+
+### 2. Skript-Reihenfolge
+
+`index.html` (der Vanilla-`<script>`) MUSS vor dem React-Bundle laufen,
+sonst fehlt `window.__bridge` beim Mount. Als klassisches Inline-Skript
+läuft es ohnehin vor jedem `type="module"`-Skript (deferred). Als
+Kommentar an der Brücke in `index.html` festgehalten — den React-Tag
+nicht in den `<head>` ziehen.
+
+### 3. "Nur lesen" jetzt tatsächlich erzwungen
+
+`window.__bridge` ist `Object.freeze`d, `getSession()`/`getProfile()`
+geben `Readonly<>`. Der `onAuthStateChange`-Listener schreibt `session`
+nur noch bei einer echten Session; `SIGNED_OUT` (auch cross-tab per
+BroadcastChannel) führt zu `location.reload()` statt einem `null` in
+einer Variablen, die der Alt-Code als non-null behandelt.
+
+Umgesetzt in Commits `e5e3865` (Härtung) + diesem.

@@ -7,7 +7,7 @@ export function App() {
   return (
     <main style={{ font: '14px/1.5 system-ui, sans-serif', maxWidth: 640, margin: '48px auto', padding: '0 20px' }}>
       {/* var(--arcane) wird vom Vanilla-Code je nach Klasse gesetzt;
-          der Fallback greift nur im Vite-Standalone (dev.html). */}
+          der Fallback greift nur im Vite-Standalone (app.html). */}
       <h1 style={{ fontSize: 20, color: 'var(--arcane, #8b5cf6)' }}>React-Grundgerüst steht</h1>
       <p>
         Etappe 2 der Migration (docs/adr/0001): das React-Gerüst kennt jetzt die
@@ -21,7 +21,7 @@ export function App() {
       <p>
         Es ist noch <strong>keine Seite umgebaut</strong>. Die App läuft
         weiterhin vollständig über die bestehende <code>index.html</code>.
-        Diese Seite hier ist nur der Entwicklungs-Einstieg (<code>dev.html</code>).
+        Diese Seite hier ist nur der Entwicklungs-Einstieg (<code>app.html</code>).
       </p>
     </main>
   );

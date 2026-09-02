@@ -3,7 +3,8 @@ Design/
 .claude/settings.local.json
 supabase/.temp/
 
-# React-Umbau (Vite)
-dist/
+# React-Umbau (Vite): dist/ IST mitversioniert (GitHub Pages serviert es
+# aus dem Repo-Wurzelverzeichnis, kein CI). Siehe docs/adr/0002 Nachtrag.
+# `npm run build` vor jedem src/-Commit, sobald index.html den Bundle lädt.
 node_modules/.tmp/
 *.tsbuildinfo

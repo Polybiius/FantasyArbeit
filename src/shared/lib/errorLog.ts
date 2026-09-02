@@ -24,7 +24,7 @@ export function logToErrorLog(context: string, message: string): void {
         if (error) console.error('error_log insert fehlgeschlagen', error);
       });
   } catch (e) {
-    // Brücke nicht verfügbar (z.B. dev.html ohne Vanilla-Bundle).
+    // Brücke nicht verfügbar (z.B. app.html ohne Vanilla-Bundle).
     console.error('[error_log nicht verfügbar]', context, message, e);
   }
 }

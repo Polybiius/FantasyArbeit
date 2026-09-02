@@ -40,7 +40,7 @@ declare global {
 /**
  * Zugriff auf `window.__bridge`. Wirft mit klarer Meldung, wenn sie fehlt
  * -- dann läuft der React-Code außerhalb der produktiven `index.html`
- * (z.B. der Vite-Einstieg `dev.html` ohne den Vanilla-Bundle).
+ * (z.B. der Vite-Einstieg `app.html` ohne den Vanilla-Bundle).
  */
 export function getBridge(): AppBridge {
   const b = window.__bridge;

@@ -30,7 +30,7 @@ genannte Zod-3/4-Bruch ist damit abgedeckt).
 
 ## Struktur
 
-- Vite-Einstieg ist **`dev.html`** (nicht `index.html` — die ist die
+- Vite-Einstieg ist **`app.html`** (nicht `index.html` — die ist die
   produktive Vanilla-Seite). `vite.config.ts` setzt das über
   `rollupOptions.input`.
 - `tsconfig.json` ist nur ein Verweis-Container; die echten Optionen
@@ -46,6 +46,6 @@ genannte Zod-3/4-Bruch ist damit abgedeckt).
 npm run typecheck   # tsc -b (beide tsconfig-Projekte)
 npm run lint        # eslint . -- alle drei Code-Welten (src/index.html/tests)
 npm run build       # tsc -b && vite build  -> dist/
-npm run dev         # Vite-Dev-Server auf dev.html
+npm run dev         # Vite-Dev-Server auf app.html
 npm test            # Regressions-Suiten (unverändert)
 ```
