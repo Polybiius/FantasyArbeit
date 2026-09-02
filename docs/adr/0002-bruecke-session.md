@@ -81,12 +81,14 @@ ADR eigentlich abdecken sollte:
 ### 1. Wie kommt der gebaute Bundle in die Produktion? (war offen)
 
 **Entscheidung:** `dist/` wird **mitversioniert**. `vite build` erzeugt
-STABILE Namen (`dist/assets/react.js`, künftig `dist/assets/react.css`)
-über `rollupOptions.output.entryFileNames`. GitHub Pages serviert `dist/`
-aus dem Repo-Wurzelverzeichnis. Ab **Block 3** bekommt `index.html` einen
-festen `<script type="module" src="dist/assets/react.js">` — der ändert
-sich nie wieder. `npm run build` läuft vor jedem Commit, der `src/`
-ändert (sobald der Tag steht).
+STABILE Namen: `dist/assets/react.js` (Entry-JS, über
+`rollupOptions.output.entryFileNames`) und `dist/assets/app.css` (aus dem
+`app.html`-Entry extrahiertes CSS). GitHub Pages serviert `dist/` aus dem
+Repo-Wurzelverzeichnis. Ab **Block 3** bekommt `index.html` einen festen
+`<script type="module" src="dist/assets/react.js">` + einen festen
+`<link rel="stylesheet" href="dist/assets/app.css">` — beide ändern sich
+nie wieder. `npm run build` läuft vor jedem Commit, der `src/` ändert
+(sobald die Tags stehen).
 
 **Verworfen für jetzt:** GitHub Actions (Build+Deploy automatisch). Das
 ist der dokumentierte Zielzustand (Plan: "löst die manuelle Ablage ab"),

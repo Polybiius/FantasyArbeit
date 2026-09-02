@@ -8,12 +8,12 @@ import react from '@vitejs/plugin-react';
 // kollidiert.
 //
 // Auslieferung (docs/adr/0002, Nachtrag 2026-09-03): der Build erzeugt
-// dist/ mit STABILEN Dateinamen (assets/react.js, assets/react.css) --
-// dist/ ist mitversioniert, GitHub Pages serviert es aus dem Repo-Wurzel-
-// verzeichnis. Ab Block 3 lädt index.html assets/react.js per einem
-// festen <script>-Tag. `npm run build` läuft vor jedem Commit, der src/
-// ändert (sobald der <script>-Tag in index.html steht). GitHub Actions
-// als automatischer Build+Deploy bleibt der spätere Zielzustand (Plan).
+// dist/ mit STABILEN Dateinamen -- assets/react.js (Entry-JS) und
+// assets/app.css (aus dem app.html-Entry extrahiertes CSS). dist/ ist
+// mitversioniert, GitHub Pages serviert es aus dem Repo-Wurzelverzeichnis.
+// Ab Block 3 lädt index.html beide per festen Tags. `npm run build` läuft
+// vor jedem Commit, der src/ ändert (sobald die Tags stehen). GitHub
+// Actions als automatischer Build+Deploy bleibt der spätere Zielzustand.
 //
 // Assets (Schriftarten, Charakter-Sprites) bleiben vorerst an ihrem
 // bestehenden Ort im Repo-Wurzelverzeichnis. Der public/-Ordner für die

@@ -6,9 +6,9 @@ export function App() {
 
   return (
     <main style={{ font: '14px/1.5 system-ui, sans-serif', maxWidth: 640, margin: '48px auto', padding: '0 20px' }}>
-      {/* var(--arcane) wird vom Vanilla-Code je nach Klasse gesetzt;
-          der Fallback greift nur im Vite-Standalone (app.html). */}
-      <h1 style={{ fontSize: 20, color: 'var(--arcane, #8b5cf6)' }}>React-Grundgerüst steht</h1>
+      {/* --arcane kommt aus styles/tokens.css (Standalone) bzw. wird vom
+          Vanilla-Code je nach Klasse gesetzt (Produktion). Kein Hex hier. */}
+      <h1 style={{ fontSize: 20, color: 'var(--arcane)' }}>React-Grundgerüst steht</h1>
       <p>
         Etappe 2 der Migration (docs/adr/0001): das React-Gerüst kennt jetzt die
         Brücke zum Vanilla-Code — geteilter Datenbank-Client, Login-Status,

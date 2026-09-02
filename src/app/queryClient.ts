@@ -42,6 +42,13 @@ export const queryClient = new QueryClient({
 
 function describeKey(key: readonly unknown[]): string {
   return key
-    .map((part) => (typeof part === 'string' || typeof part === 'number' ? String(part) : '…'))
+    .map((part) => {
+      if (typeof part === 'string' || typeof part === 'number') return String(part);
+      try {
+        return JSON.stringify(part);
+      } catch {
+        return '…';
+      }
+    })
     .join('/');
 }

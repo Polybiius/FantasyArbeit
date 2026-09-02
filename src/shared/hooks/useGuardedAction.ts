@@ -1,5 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 
+import { logSilentError } from '@/shared/lib/errorLog';
+
 interface GuardedAction<Args extends unknown[]> {
   /** true, solange die Aktion läuft — für `disabled`/Spinner am Auslöser. */
   pending: boolean;
@@ -16,6 +18,11 @@ interface GuardedAction<Args extends unknown[]> {
  * Schützt NUR gegen den Doppelklick im selben Tab — nicht gegen Netzwerk-
  * Retries oder einen zweiten Tab; das deckt die serverseitige Idempotenz-
  * Härtung ab (siehe CLAUDE.md).
+ *
+ * Ein geworfener Fehler wird protokolliert und geschluckt (kein „kein
+ * fehlgeschlagener DB-Vorgang verschwindet spurlos"). Wer eine sichtbare
+ * Fehlermeldung braucht, nutzt den `error`-Zustand der zugrundeliegenden
+ * TanStack-Mutation, nicht diesen Hook.
  */
 export function useGuardedAction<Args extends unknown[]>(
   action: (...args: Args) => Promise<unknown>,
@@ -30,6 +37,8 @@ export function useGuardedAction<Args extends unknown[]>(
       setPending(true);
       try {
         await action(...args);
+      } catch (err) {
+        logSilentError('Geschützte Aktion fehlgeschlagen', err);
       } finally {
         busy.current = false;
         setPending(false);

@@ -38,14 +38,23 @@ genannte Zod-3/4-Bruch ist damit abgedeckt).
   (`vite.config.ts`). `strict` + `noUncheckedIndexedAccess` +
   `noUnusedLocals/Parameters` von Anfang an.
 - Import-Alias `@/` → `src/` (in `tsconfig.app.json` UND `vite.config.ts`
-  — beide Stellen pflegen).
+  — beide Stellen pflegen). Kein `baseUrl` (in TS 7 deprecated;
+  `paths` funktioniert mit `moduleResolution: bundler` auch ohne).
+- **Skript-Reihenfolge:** der React-Bundle (`dist/assets/react.js`) muss
+  NACH dem Vanilla-`<script>` in `index.html` geladen werden, sonst
+  fehlt `window.__bridge` beim Mount. Als `type="module"`-Skript ist er
+  ohnehin deferred → läuft nach dem klassischen Inline-Skript. Den Tag
+  also nicht in den `<head>` ziehen.
+- **Auslieferung:** `dist/` ist mitversioniert (kein CI), stabile Namen
+  (`assets/react.js`). Siehe `docs/adr/0002` Nachtrag 2026-09-03.
 
 ## Prüf-Befehle
 
 ```
 npm run typecheck   # tsc -b (beide tsconfig-Projekte)
-npm run lint        # eslint . -- alle drei Code-Welten (src/index.html/tests)
-npm run build       # tsc -b && vite build  -> dist/
+npm run lint        # eslint . -- alle Code-Welten (src / index.html / tests / *.mjs)
+npm run build       # tsc -b && vite build  -> dist/  (VOR jedem src/-Commit, Block 3+)
+npm run gen:types   # Schema-Typen neu erzeugen (nach jeder Migration)
 npm run dev         # Vite-Dev-Server auf app.html
 npm test            # Regressions-Suiten (unverändert)
 ```

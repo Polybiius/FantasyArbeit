@@ -108,9 +108,9 @@ export default tseslint.config(
     },
   },
 
-  // --- 4) Node-Konfigdateien im Wurzelverzeichnis ---
+  // --- 4) Node-Konfig-/Werkzeug-Dateien (Wurzelverzeichnis, scripts/) ---
   {
-    files: ['*.js', '*.ts'],
+    files: ['*.js', '*.mjs', '*.ts', 'scripts/**/*.{js,mjs,ts}'],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
     languageOptions: {
       globals: globals.node,

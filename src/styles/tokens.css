@@ -1,0 +1,41 @@
+/*
+ * Basis-Werte der Design-Tokens -- 1:1 aus dem :root-Block der
+ * produktiven index.html.
+ *
+ * Zweck: der Vite-Standalone (app.html) hat kein index.html-<style> und
+ * keinen Vanilla-Code, der die Klassenfarben setzt -- ohne diese Datei
+ * würde `var(--arcane)` dort ins Leere greifen.
+ *
+ * In der Produktion (React in index.html) ist das redundant, aber
+ * harmlos: index.html definiert dieselben :root-Werte, und der
+ * Vanilla-`applyClassTheme()` schreibt die klassenabhängigen Farben als
+ * INLINE-Style auf `document.documentElement` -- Inline-Style schlägt
+ * jeden Stylesheet-`:root`-Wert, egal in welcher Reihenfolge geladen.
+ *
+ * Der vollständige Token-Satz (Schrift, mehr Abstufungen, Abbildung aufs
+ * gewählte Styling-System) entsteht mit dem Styling-Spike, docs/adr 0006.
+ */
+:root {
+  --void: #0b0a12;
+  --panel: #151220;
+  --panel-2: #1c1830;
+  --border: #2c2540;
+  --arcane: #8b5cf6;
+  --arcane-glow: #a78bfa;
+  --mana: #22d3c8;
+  --amber: #f2a154;
+  --success: #34d399;
+  --danger: #f16565;
+  --text: #ede9f5;
+  --muted: #9089a8;
+  --muted-2: #6b6483;
+  --bg-glow-1: rgba(139, 92, 246, 0.14);
+  --bg-glow-2: rgba(34, 211, 200, 0.1);
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+  --shadow-rest: 0 4px 14px rgba(0, 0, 0, 0.28);
+  --shadow-raised: 0 10px 24px rgba(0, 0, 0, 0.35);
+}
