@@ -2166,6 +2166,33 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   let session=null, profile=null, org=null, config=null, log=[];
+
+  // ---- Koexistenz-Brücke (ADR-0002, docs/adr/0002-bruecke-session.md) ----
+  // Während der schrittweisen React-Migration teilen sich der alte
+  // Vanilla-Code und der neue React-Code EINEN Supabase-Client und EINE
+  // Session. window.__bridge ist der einzige, bewusst schmale Übergabepunkt.
+  // Von außen NUR lesen -- alle Schreibpfade bleiben hier im Vanilla-Code.
+  // Jede Erweiterung dieses Objekts ist eine bewusste Änderung von ADR-0002.
+  const __bridgeAuthSubs = new Set();
+  function __bridgeNotifyAuth(event, s){
+    __bridgeAuthSubs.forEach(fn=>{ try{ fn(event, s); }catch(e){ console.error('bridge auth subscriber', e); } });
+  }
+  window.__bridge = {
+    sb,
+    getSession: ()=>session,
+    getProfile: ()=>profile,
+    // fn(event, session) -- liefert eine Abmelde-Funktion zurück
+    onAuthChange(fn){ __bridgeAuthSubs.add(fn); return ()=>__bridgeAuthSubs.delete(fn); }
+  };
+  // Hält die modul-lokale session-Variable frisch (u.a. bei TOKEN_REFRESHED,
+  // wo der alte Code sie bisher nie nachzog) und benachrichtigt React.
+  // Löst bewusst NICHT afterLogin() aus -- einziger Auslöser dafür bleibt
+  // der explizite Aufruf im Login-Handler bzw. in init().
+  sb.auth.onAuthStateChange((event, s)=>{
+    session = s;
+    __bridgeNotifyAuth(event, s);
+  });
+
   // Org-Pool-Verteilung (Aufgabe 1) + Plattformadmin (Aufgabe 3), beide
   // einmal pro Login in enterApp() geladen -- siehe dort.
   let isPoolDistributor=false, isPlatformAdmin=false;
