@@ -16,10 +16,14 @@ export type AuthChangeHandler = (event: string, session: Session | null) => void
 export interface AppBridge {
   /** Der EINE Supabase-Client, geteilt mit dem Vanilla-Code. */
   readonly sb: AppSupabaseClient;
-  /** Aktuelle Auth-Session (nur lesen). */
-  getSession(): Session | null;
-  /** Profilzeile der eingeloggten Person (nur lesen). */
-  getProfile(): Profile | null;
+  /**
+   * Aktuelle Auth-Session. NUR LESEN — das Objekt gehört dem Vanilla-Code
+   * (ADR-0002). `Readonly` verhindert versehentliches Schreiben von der
+   * React-Seite; `window.__bridge` selbst ist zusätzlich `Object.freeze`d.
+   */
+  getSession(): Readonly<Session> | null;
+  /** Profilzeile der eingeloggten Person. NUR LESEN, siehe `getSession`. */
+  getProfile(): Readonly<Profile> | null;
   /**
    * Auf Login / Logout / Token-Refresh reagieren.
    * Gibt eine Abmelde-Funktion zurück.
@@ -29,7 +33,7 @@ export interface AppBridge {
 
 declare global {
   interface Window {
-    __bridge?: AppBridge;
+    readonly __bridge?: AppBridge;
   }
 }
 

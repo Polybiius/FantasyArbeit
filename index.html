@@ -2174,25 +2174,47 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // Während der schrittweisen React-Migration teilen sich der alte
   // Vanilla-Code und der neue React-Code EINEN Supabase-Client und EINE
   // Session. window.__bridge ist der einzige, bewusst schmale Übergabepunkt.
-  // Von außen NUR lesen -- alle Schreibpfade bleiben hier im Vanilla-Code.
-  // Jede Erweiterung dieses Objekts ist eine bewusste Änderung von ADR-0002.
+  // Von außen NUR lesen (Object.freeze unten, Readonly-Typen in bridge.ts)
+  // -- alle Schreibpfade bleiben hier im Vanilla-Code. Jede Erweiterung
+  // dieses Objekts ist eine bewusste Änderung von ADR-0002.
+  //
+  // WICHTIG: dieser <script>-Block muss VOR dem React-Bundle laufen, damit
+  // window.__bridge existiert, wenn React mountet. Als klassisches Inline-
+  // Skript läuft er ohnehin vor jedem `type="module"`-Skript (die sind
+  // deferred) -- den React-<script>-Tag also NICHT in den <head> ziehen.
   const __bridgeAuthSubs = new Set();
   function __bridgeNotifyAuth(event, s){
-    __bridgeAuthSubs.forEach(fn=>{ try{ fn(event, s); }catch(e){ console.error('bridge auth subscriber', e); } });
+    // Kopie, falls ein Subscriber während der Benachrichtigung
+    // ab-/anmeldet (React-Komponente mountet/unmountet).
+    [...__bridgeAuthSubs].forEach(fn=>{ try{ fn(event, s); }catch(e){ console.error('bridge auth subscriber', e); } });
   }
-  window.__bridge = {
+  window.__bridge = Object.freeze({
     sb,
     getSession: ()=>session,
     getProfile: ()=>profile,
     // fn(event, session) -- liefert eine Abmelde-Funktion zurück
     onAuthChange(fn){ __bridgeAuthSubs.add(fn); return ()=>__bridgeAuthSubs.delete(fn); }
-  };
+  });
   // Hält die modul-lokale session-Variable frisch (u.a. bei TOKEN_REFRESHED,
   // wo der alte Code sie bisher nie nachzog) und benachrichtigt React.
   // Löst bewusst NICHT afterLogin() aus -- einziger Auslöser dafür bleibt
   // der explizite Aufruf im Login-Handler bzw. in init().
   sb.auth.onAuthStateChange((event, s)=>{
-    session = s;
+    if(event === 'SIGNED_OUT'){
+      // Session ist wirklich weg (auch per BroadcastChannel aus einem
+      // anderen Tab). Der Alt-Code hat dafür genau eine Antwort -- wie
+      // der Logout-Knopf: zurück auf den Anmeldeschirm.
+      session = null;
+      __bridgeNotifyAuth(event, null);
+      location.reload();
+      return;
+    }
+    // SIGNED_IN / TOKEN_REFRESHED / INITIAL_SESSION / USER_UPDATED:
+    // nur mit einer echten Session überschreiben -- ein transientes null
+    // (z.B. INITIAL_SESSION-catch-Zweig) darf den Alt-Code, der session
+    // an einigen Stellen als non-null behandelt, nicht ins Leere laufen
+    // lassen.
+    if(s) session = s;
     __bridgeNotifyAuth(event, s);
   });
 
@@ -2919,6 +2941,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   document.getElementById('appearanceDoneBtn').addEventListener('click', async ()=>{
     if(!selectedSkin || !selectedHair) return;
     const errEl = document.getElementById('appearanceError');
+    if(!session?.user?.id){ reportError('Charakter erstellen', new Error('Deine Anmeldung ist abgelaufen. Bitte lade die Seite neu und melde dich erneut an.'), errEl); return; }
     const realName = document.getElementById('realNameInput').value.trim();
     const company = document.getElementById('companyInput').value.trim();
     const charName = document.getElementById('charNameInput').value.trim();
@@ -2943,7 +2966,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   });
 
   async function checkProfileExists(){
-    const uid = session.user.id;
+    const uid = session?.user?.id;
+    if(!uid){ throw new Error('checkProfileExists ohne gültige Session'); }
     const { data, error } = await sb.from('profiles').select('*').eq('id', uid).maybeSingle();
     if(error){ reportError('Profil laden', error); throw error; }
     return data || null;
