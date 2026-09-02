@@ -42,13 +42,20 @@ Fahrplan Phase 1+2". Kurzfassung:
 Betrifft die seit Langem dokumentierte, bisher nie ausgelöste
 "Frontend-Framework-Frage" (siehe Tech-Stack-Abschnitt weiter unten,
 Alarmglocken-Schwellen) UND einen echten UI/UX-Überarbeitungsdurchgang
-der Anwenderoberfläche. **Kompletter Fahrplan dafür bereits erarbeitet**
-(reine Planungssitzung 2026-08-29, React+Vite+TS+Ordnerstruktur+Doku,
-3 unabhängige Spezialisten-Zweitmeinungen eingearbeitet) — Erinnerung
-`project_framework_migration_plan` vor Baustart komplett lesen, sie
-ersetzt kein erneutes Durchsprechen, sondern spart es. Das
-B2C→B2B-Konzeptgespräch (siehe oben) fließt in den Umbau der
-Handlungen-Seite mit ein.
+der Anwenderoberfläche. **Fahrplan erarbeitet 2026-08-29, am 2026-09-02
+blind gegen den echten Code gegengelesen (Opus) und Fund für Fund mit
+dem Nutzer entschieden — GRÜNES LICHT für Baustart nach erfolgreichem
+Pitch.** Vor jedem Weiterbauen zwingend lesen: Erinnerung
+`project_framework_migration_plan` (Abschnitt "⭐ BLINDER REVIEW + FINALE
+ENTSCHEIDUNGEN" ganz oben — überschreibt den ursprünglichen Plantext),
+`docs/adr/` (ADR-0001–0005), `docs/migration-status.md`. Kernpunkte:
+React+Vite+striktes TS, Backend unangetastet, Strangler-Fig, git-Tag
+`demo-2026-09-02-pre-react` als Rückfallpunkt. Reihenfolge: Vor-Block-1-
+Vorbereitung (Suite ins Repo + `data-testid`, Brücke `window.__bridge`,
+Vorschau-Deploy) → 1 Grundgerüst → 2 Brücke → 3 Pilot → 4 App-Rahmen →
+5 Kanban+Kontakte (Verhalten eingefroren) → 5b B2C→B2B-Rework (erste
+Prio danach) → 6 Rest. **Harter Feature-Stopp im Alt-`index.html` bis
+Ende Block 3 — nur Bugfixes.** Styling (Tailwind?) offen bis Spike.
 
 **Bei jeder neuen Session, solange dieser Fahrplan aktiv ist:** zuerst
 prüfen, in welcher Phase wir stehen, dann erst weiterarbeiten. Den
