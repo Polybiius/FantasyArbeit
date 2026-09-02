@@ -17,7 +17,7 @@ Voller Fahrplan: Claude-Erinnerung `project_framework_migration_plan`
 | — | Vor-Block-1: `data-testid` + Flakiness-Fix (S2) | ✅ erledigt (2026-09-02) | Register in `tests/README.md`; 20+ Läufe grün |
 | — | Vor-Block-1: Brücke `window.__bridge` + `onAuthStateChange` (ADR-0002) | ✅ erledigt (2026-09-02, `32a8a94`) | |
 | — | Vor-Block-1: Vorschau-Deployment (Cloudflare/Netlify) | offen | GitHub Pages kann es nicht — braucht Account-Aktion des Nutzers |
-| 1 | Grundgerüst (React/TS/Vite/TanStack Query/RHF+Zod/ESLint-Umstieg) | offen | keine Seite migriert |
+| 1 | Grundgerüst (React/TS/Vite/TanStack Query/RHF+Zod/ESLint-Umstieg) | ✅ erledigt (2026-09-02) | Versionen + Begründung: `docs/setup-notes.md`. Vite-Einstieg `dev.html`. Keine Seite migriert. |
 | 2 | Brücke (Routing/Auth/Theming/globale Muster/Deploy) | offen | hairiest step, isoliert |
 | 3 | Pilot im Wegwerf-Layout (Kandidat: Einstellungen) | offen | testet Block 1–2 |
 | 4 | App-Rahmen (Sidebar/Vollbreite, Design-Grundlage) | offen | nach dem Pilot, nicht davor (S4) |

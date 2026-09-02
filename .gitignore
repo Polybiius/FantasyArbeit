@@ -2,3 +2,8 @@ node_modules/
 Design/
 .claude/settings.local.json
 supabase/.temp/
+
+# React-Umbau (Vite)
+dist/
+node_modules/.tmp/
+*.tsbuildinfo
