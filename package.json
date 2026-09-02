@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b",
+    "gen:types": "supabase gen types typescript --linked > src/shared/types/supabase.ts",
     "lint": "eslint .",
     "test": "node tests/run-regression.mjs",
     "test:admin": "node tests/run-regression.mjs admin",
@@ -26,6 +27,7 @@
   "homepage": "https://github.com/Polybiius/FantasyArbeit#readme",
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@supabase/supabase-js": "2.114.0",
     "@types/node": "^26.4.1",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.5",

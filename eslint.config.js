@@ -11,7 +11,14 @@ import reactRefresh from 'eslint-plugin-react-refresh';
 //   3) tests/**          Node-ESM + Playwright (Regressions-Suiten)
 // plus die Node-Konfigdateien im Wurzelverzeichnis.
 export default tseslint.config(
-  { ignores: ['dist/**', 'node_modules/**', 'sql/**'] },
+  {
+    ignores: [
+      'dist/**',
+      'node_modules/**',
+      'sql/**',
+      'src/shared/types/supabase.ts', // generiert (npm run gen:types)
+    ],
+  },
 
   // --- 1) React + TypeScript ---
   {
