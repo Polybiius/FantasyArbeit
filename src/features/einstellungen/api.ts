@@ -36,10 +36,26 @@ export function useOwnProfileQuery() {
 
 /**
  * Schreibt einen Patch aufs eigene Profil. Aktualisiert nach Erfolg sowohl
- * den React-Query-Cache (mit der vom Server zurückgegebenen, bestätigten
- * Zeile) als auch -- über die einzige erlaubte Ausnahme in ADR-0002 -- das
- * im Vanilla-Code lebende `profile`-Objekt, damit beide Hälften
- * synchron bleiben.
+ * den React-Query-Cache als auch -- über die einzige erlaubte Ausnahme in
+ * ADR-0002 -- das im Vanilla-Code lebende `profile`-Objekt.
+ *
+ * **Unabhängiger Review (2026-09-03) fand zwei echte Bugs hier, beide
+ * behoben:**
+ * 1. `setQueryData(key, data)` ersetzte die GESAMTE gecachte Zeile durch
+ *    die Antwort dieser einen Mutation. Laufen zwei Mutationen auf
+ *    verschiedenen Feldern (z.B. beide Kalender-Toggles) knapp
+ *    hintereinander, kann die zuletzt VERARBEITETE (nicht: zuletzt
+ *    gesendete) Antwort die andere, bereits bestätigte Änderung wieder
+ *    aus dem Cache verdrängen -- ein Race, das die Anzeige kurzzeitig
+ *    falsch zeigt (die DB selbst bleibt korrekt). Fix: nur die Felder
+ *    mergen, die dieser Aufruf tatsächlich geändert hat
+ *    (`confirmedFields`), nie die volle Zeile überschreiben.
+ * 2. `notifyProfilePatch(patch)` bekam den ANGEFRAGTEN (noch nicht vom
+ *    Server bestätigten) Wert, obwohl die eigene Doku in bridge.ts einen
+ *    bereits bestätigten Patch verspricht. Fix: dieselben
+ *    `confirmedFields` (aus `data`, nicht `patch`) auch hier -- engt den
+ *    Seiteneffekt-Bereich nicht aus (gleiche Schlüsselmenge wie `patch`),
+ *    liefert aber echte Server-Werte.
  */
 export function useUpdateOwnProfileMutation() {
   const queryClient = useQueryClient();
@@ -58,8 +74,11 @@ export function useUpdateOwnProfileMutation() {
       return data;
     },
     onSuccess: (data, patch) => {
-      queryClient.setQueryData(qk.einstellungen.self(), data);
-      getBridge().notifyProfilePatch(patch);
+      const confirmedFields = Object.fromEntries(
+        Object.keys(patch).map((key) => [key, (data as Record<string, unknown>)[key]]),
+      ) as Partial<Profile>;
+      queryClient.setQueryData<Profile>(qk.einstellungen.self(), (old) => (old ? { ...old, ...confirmedFields } : data));
+      getBridge().notifyProfilePatch(confirmedFields);
     },
   });
 }

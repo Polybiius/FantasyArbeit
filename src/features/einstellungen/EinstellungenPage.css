@@ -107,6 +107,17 @@
   color: var(--danger);
 }
 
+.ein-undo-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--arcane-glow);
+  text-decoration: underline;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+}
+
 .ein-subheading {
   margin: 4px 0 0;
   font-size: 13px;

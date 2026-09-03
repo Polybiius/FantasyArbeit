@@ -1,28 +1,37 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useEffect } from 'react';
-import { useForm } from 'react-hook-form';
+
+import type { Profile } from '@/shared/lib/bridge';
 
 import { useOwnProfileQuery, useUpdateOwnProfileMutation } from '../api';
 import { profilFormSchema, type ProfilFormValues } from '../schema';
+import { useResettableForm } from '../useResettableForm';
+
+function toDefaults(p: Profile): ProfilFormValues {
+  return { real_name: p.real_name ?? '', company: p.company ?? '' };
+}
 
 export function ProfilSection() {
   const { data: profile } = useOwnProfileQuery();
   const updateProfil = useUpdateOwnProfileMutation();
 
-  const form = useForm<ProfilFormValues>({
+  const form = useResettableForm<ProfilFormValues, Profile>(profile, toDefaults, {
     resolver: zodResolver(profilFormSchema),
     defaultValues: { real_name: '', company: '' },
   });
-  const { reset } = form;
-
-  useEffect(() => {
-    if (profile) reset({ real_name: profile.real_name ?? '', company: profile.company ?? '' });
-  }, [profile, reset]);
 
   if (!profile) return null;
 
   const onSubmit = form.handleSubmit((values) => {
-    updateProfil.mutate({ real_name: values.real_name, company: values.company });
+    updateProfil.mutate(
+      { real_name: values.real_name, company: values.company },
+      {
+        // Baseline NACH dem eigenen bestätigten Speichern neu setzen --
+        // sonst bleibt isDirty dauerhaft true (Save-Button bliebe aktiv,
+        // "Gespeichert." würde nie erscheinen). Bewusst NICHT über den
+        // useResettableForm-Init-Effekt gelöst, siehe dessen Doku.
+        onSuccess: (data) => form.reset(toDefaults(data)),
+      },
+    );
   });
 
   return (

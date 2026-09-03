@@ -38,6 +38,48 @@ Wegwerf-Layout liegt alles offen auf einer Seite, eine Suche darüber hätte
 kaum Mehrwert. Kein "noch zu tun", sondern eine Layout-bedingte
 Vereinfachung.
 
+## Unabhängiger Review (2026-09-03) — vier echte Funde, alle behoben
+
+Nach Fertigstellung ein blinder Review (`/code-review`, mehrere parallele
+Verifikations-Agenten) über den kompletten Block-3-Diff. Alle vier Funde
+unabhängig bestätigt und noch am selben Tag behoben:
+
+1. **Kritisch — stiller Datenverlust:** `ProfilSection`/`ProvisionSection`
+   teilen sich mit den anderen zwei Sektionen denselben Query-Key
+   (`qk.einstellungen.self()`). Ein `useEffect(() => reset(...), [profile,
+   reset])` feuerte deshalb bei JEDER erfolgreichen Speicherung
+   IRGENDEINER Sektion auf der Seite — tippte man z.B. in "Echter Name"
+   und toggelte dann "XP-Werte anzeigen" in einer anderen Karte, wurde
+   der ungespeicherte Name-Text kommentarlos gelöscht. **Fix:**
+   `useResettableForm()` (neuer Hook) — setzt `defaultValues` nur EINMAL,
+   wenn das Profil zum ersten Mal ankommt; die eigene Sektion setzt nach
+   ihrem EIGENEN erfolgreichen Speichern die Baseline selbst neu (mit dem
+   vom Server bestätigten Stand).
+2. **Race bei gleichzeitigen Speicherungen:** `onSuccess` ersetzte die
+   GESAMTE gecachte Profilzeile durch die Antwort der eigenen Mutation —
+   liefen zwei Mutationen auf verschiedenen Feldern knapp hintereinander,
+   konnte die zuletzt verarbeitete (nicht: zuletzt gesendete) Antwort die
+   andere, bereits bestätigte Änderung aus dem Anzeige-Cache verdrängen
+   (DB blieb korrekt, nur die UI kurz falsch). **Fix:** `api.ts` merged
+   jetzt nur die tatsächlich geänderten Felder in den Cache.
+3. **Fehlende Rückgängig-Funktion:** Vanillas Toggle-Speichern zeigt einen
+   5s-Toast mit funktionierendem "Rückgängig" — im React-Teil fehlte das
+   komplett, unbemerkt und nicht in dieser README als bewusster Schnitt
+   vermerkt (anders als die Suche). **Fix:** ein dauerhafter Inline-Link
+   "Rückgängig" nach dem Speichern (kein Timer, bewusst einfacher als der
+   Vanilla-Toast — passt zum Wegwerf-Layout, stellt aber die eigentliche
+   Funktion wieder her) bei allen drei Toggles (Chronik,
+   `calendar_hide_weekends`, `calendar_show_birthdays`).
+4. **Kleinere Funde:** `notifyProfilePatch()` löste `renderCalTasksNow()`
+   nur bei den zwei Toggles aus, nicht bei Zeitzone/Arbeitszeiten (die es
+   in Vanilla auch tun) — ergänzt. `numberFields.ts` nutzte `Number()`
+   statt `parseFloat()` und lehnte beim Leben-Satz-Feld tolerantere
+   Eingaben ab als das noch aktive Vanilla-Gegenstück (z.B. "2,5%") —
+   umgestellt.
+
+Alle vier Fixes per Playwright gegen die echte Seite + echte DB erneut
+verifiziert (`~/.local/share/playwright-portable/check_review_fixes.mjs`).
+
 **Vanilla-Gegenstück ist damit komplett funktional tot** (`SETTINGS_REGISTRY`/
 `SETTINGS_GROUPS`, `renderEinstellungenPage()` + alle ausschließlich davon
 aufgerufenen Helfer wie `openSettingsGroupModal()`/`settingsToggleChanged()`/

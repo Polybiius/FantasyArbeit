@@ -1,6 +1,3 @@
-import { useEffect } from 'react';
-import { useForm } from 'react-hook-form';
-
 import type { Profile } from '@/shared/lib/bridge';
 
 import { useOwnProfileQuery, useUpdateOwnProfileMutation } from '../api';
@@ -12,6 +9,7 @@ import {
   parseGermanDecimal,
   parsePlainNumber,
 } from '../numberFields';
+import { useResettableForm } from '../useResettableForm';
 
 interface ProvisionFormValues {
   taetig_seit_jahr: string;
@@ -43,31 +41,37 @@ function toDefaults(profile: Profile): ProvisionFormValues {
  * kannte auch in Vanilla keine), RHFs eingebautes `validate` reicht dafür
  * ohne zusätzliches Schema.
  */
+const EMPTY_VALUES: ProvisionFormValues = {
+  taetig_seit_jahr: '', lv_prozent_satz: '', kv_mb_satz: '', pma_suh_satz: '',
+  pma_kv_satz: '', planung_lv_bws: '', planung_kv_mb: '', planung_bwp: '',
+};
+
 export function ProvisionSection() {
   const { data: profile } = useOwnProfileQuery();
   const updateProvision = useUpdateOwnProfileMutation();
-  const form = useForm<ProvisionFormValues>({
-    defaultValues: { taetig_seit_jahr: '', lv_prozent_satz: '', kv_mb_satz: '', pma_suh_satz: '', pma_kv_satz: '', planung_lv_bws: '', planung_kv_mb: '', planung_bwp: '' },
+  const form = useResettableForm<ProvisionFormValues, Profile>(profile, toDefaults, {
+    defaultValues: EMPTY_VALUES,
   });
-  const { reset, register, formState } = form;
-
-  useEffect(() => {
-    if (profile) reset(toDefaults(profile));
-  }, [profile, reset]);
+  const { register, formState } = form;
 
   if (!profile) return null;
 
   const onSubmit = form.handleSubmit((values) => {
-    updateProvision.mutate({
-      taetig_seit_jahr: parsePlainNumber(values.taetig_seit_jahr),
-      lv_prozent_satz: parseGermanDecimal(values.lv_prozent_satz),
-      kv_mb_satz: parsePlainNumber(values.kv_mb_satz),
-      pma_suh_satz: parsePlainNumber(values.pma_suh_satz),
-      pma_kv_satz: parsePlainNumber(values.pma_kv_satz),
-      planung_lv_bws: parsePlainNumber(values.planung_lv_bws),
-      planung_kv_mb: parsePlainNumber(values.planung_kv_mb),
-      planung_bwp: parsePlainNumber(values.planung_bwp),
-    });
+    updateProvision.mutate(
+      {
+        taetig_seit_jahr: parsePlainNumber(values.taetig_seit_jahr),
+        lv_prozent_satz: parseGermanDecimal(values.lv_prozent_satz),
+        kv_mb_satz: parsePlainNumber(values.kv_mb_satz),
+        pma_suh_satz: parsePlainNumber(values.pma_suh_satz),
+        pma_kv_satz: parsePlainNumber(values.pma_kv_satz),
+        planung_lv_bws: parsePlainNumber(values.planung_lv_bws),
+        planung_kv_mb: parsePlainNumber(values.planung_kv_mb),
+        planung_bwp: parsePlainNumber(values.planung_bwp),
+      },
+      // Baseline nach dem eigenen bestätigten Speichern neu setzen --
+      // gleicher Grund wie in ProfilSection.
+      { onSuccess: (data) => form.reset(toDefaults(data)) },
+    );
   });
 
   return (

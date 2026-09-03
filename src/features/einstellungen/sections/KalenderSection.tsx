@@ -14,10 +14,10 @@ import { allTimezones } from '../timezones';
 
 /**
  * Kalender-Gruppe: zwei sofort speichernde Toggles + zwei Sonder-Widgets
- * (Zeitzone, Arbeitszeiten). Beide Toggles haben in Vanilla einen
+ * (Zeitzone, Arbeitszeiten). Alle vier haben in Vanilla einen
  * Seiteneffekt auf die Kalender-Seite (`renderCalTasksNow()`, bei
- * `calendar_show_birthdays` zusätzlich einen Aufgaben-Resync) -- das
- * übernimmt jetzt `window.__bridge.notifyProfilePatch()` selbst
+ * `calendar_show_birthdays` zusätzlich ein Aufgaben-Resync) -- das
+ * übernimmt `window.__bridge.notifyProfilePatch()` selbst
  * (bridge.ts/index.html), nicht diese Komponente.
  */
 export function KalenderSection() {
@@ -35,35 +35,90 @@ export function KalenderSection() {
   );
 }
 
+// Rückgängig-Link nach dem Speichern -- gleiches Muster/gleiche
+// Begründung wie in ChronikSection.tsx (Regressions-Fund, Review
+// 2026-09-03: Vanillas Undo-Toast fehlte hier komplett).
 function CalendarTogglesBlock({ profile }: { profile: Profile }) {
   const updateHideWeekends = useUpdateOwnProfileMutation();
   const updateShowBirthdays = useUpdateOwnProfileMutation();
+  const [undoHideWeekends, setUndoHideWeekends] = useState<boolean | null>(null);
+  const [undoShowBirthdays, setUndoShowBirthdays] = useState<boolean | null>(null);
+
+  const hideWeekendsChecked = profile.calendar_hide_weekends;
+  const showBirthdaysChecked = profile.calendar_show_birthdays !== false;
+
   return (
     <div style={{ display: 'grid', gap: 10 }}>
       <label className="ein-toggle-row">
         <input
           type="checkbox"
-          checked={profile.calendar_hide_weekends}
+          checked={hideWeekendsChecked}
           disabled={updateHideWeekends.isPending}
-          onChange={(e) => updateHideWeekends.mutate({ calendar_hide_weekends: e.target.checked })}
+          onChange={(e) => {
+            const previous = hideWeekendsChecked;
+            updateHideWeekends.mutate(
+              { calendar_hide_weekends: e.target.checked },
+              { onSuccess: () => setUndoHideWeekends(previous) },
+            );
+          }}
         />
         <span>
           Wochenenden ausblenden
           <div className="ein-toggle-desc">Samstag/Sonntag in der Wochenansicht komplett ausblenden statt nur grau.</div>
         </span>
       </label>
+      {undoHideWeekends !== null && !updateHideWeekends.isPending && (
+        <div className="ein-status">
+          Gespeichert.{' '}
+          <button
+            type="button"
+            className="ein-undo-link"
+            onClick={() =>
+              updateHideWeekends.mutate(
+                { calendar_hide_weekends: undoHideWeekends },
+                { onSuccess: () => setUndoHideWeekends(null) },
+              )
+            }
+          >
+            Rückgängig
+          </button>
+        </div>
+      )}
       <label className="ein-toggle-row">
         <input
           type="checkbox"
-          checked={profile.calendar_show_birthdays !== false}
+          checked={showBirthdaysChecked}
           disabled={updateShowBirthdays.isPending}
-          onChange={(e) => updateShowBirthdays.mutate({ calendar_show_birthdays: e.target.checked })}
+          onChange={(e) => {
+            const previous = showBirthdaysChecked;
+            updateShowBirthdays.mutate(
+              { calendar_show_birthdays: e.target.checked },
+              { onSuccess: () => setUndoShowBirthdays(previous) },
+            );
+          }}
         />
         <span>
           Geburtstage anzeigen
           <div className="ein-toggle-desc">Geburtstage deiner Kontakte als Hinweis im Kalender.</div>
         </span>
       </label>
+      {undoShowBirthdays !== null && !updateShowBirthdays.isPending && (
+        <div className="ein-status">
+          Gespeichert.{' '}
+          <button
+            type="button"
+            className="ein-undo-link"
+            onClick={() =>
+              updateShowBirthdays.mutate(
+                { calendar_show_birthdays: undoShowBirthdays },
+                { onSuccess: () => setUndoShowBirthdays(null) },
+              )
+            }
+          >
+            Rückgängig
+          </button>
+        </div>
+      )}
       {(updateHideWeekends.isError || updateShowBirthdays.isError) && (
         <span className="ein-status is-error">Speichern fehlgeschlagen — bitte erneut versuchen.</span>
       )}

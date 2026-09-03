@@ -2213,12 +2213,15 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     notifyProfilePatch(patch){
       if(!profile) return;
       Object.assign(profile, patch);
-      // Deckt jetzt auch die Kalender-Toggles ab (Block 3, Kalender-Gruppe)
-      // -- exakt derselbe Seiteneffekt-Block wie in settingsToggleChanged()
-      // weiter unten, nur von der React-Seite statt einem Vanilla-Klick
-      // ausgelöst.
-      if('calendar_hide_weekends' in patch || 'calendar_show_birthdays' in patch){
-        if('calendar_show_birthdays' in patch){ profile.tasks_synced_date = null; syncBirthdayTasksIfNeeded(); }
+      // Vier Felder aus dem Kalender-Bereich lösen in Vanilla ein
+      // renderCalTasksNow() aus -- die zwei Toggles (settingsToggleChanged())
+      // UND Zeitzone/Arbeitszeiten (wireTimezoneExtras()/
+      // wireArbeitszeitenExtras()). Erst nur die zwei Toggles geprüft,
+      // Timezone/Arbeitszeiten fehlten -- vom unabhängigen Review
+      // 2026-09-03 gefunden (Kommentar hier behauptete "exakt derselbe
+      // Seiteneffekt-Block", stimmte nur für die Hälfte der Felder).
+      if('calendar_show_birthdays' in patch){ profile.tasks_synced_date = null; syncBirthdayTasksIfNeeded(); }
+      if('calendar_hide_weekends' in patch || 'calendar_show_birthdays' in patch || 'timezone' in patch || 'arbeitszeiten' in patch){
         renderCalTasksNow();
       }
     }

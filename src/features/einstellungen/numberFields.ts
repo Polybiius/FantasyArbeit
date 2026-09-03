@@ -14,7 +14,11 @@
 export function parsePlainNumber(raw: string): number | null {
   const trimmed = raw.trim();
   if (trimmed === '') return null;
-  return Number(trimmed);
+  // parseFloat (nicht Number()) -- spiegelt Vanillas settingsSaveBarSave
+  // (index.html), das ebenfalls parseFloat nutzt und dadurch Nachsilben
+  // toleriert ("123abc" -> 123). Unabhängiger Review 2026-09-03: Number()
+  // hätte hier strenger abgelehnt als das noch aktive Vanilla-Gegenstück.
+  return parseFloat(trimmed);
 }
 
 export function displayPlainNumber(v: number | null | undefined): string {
@@ -25,7 +29,7 @@ export function displayPlainNumber(v: number | null | undefined): string {
 export function parseGermanDecimal(raw: string): number | null {
   const trimmed = raw.trim();
   if (trimmed === '') return null;
-  return Number(trimmed.replace(',', '.'));
+  return parseFloat(trimmed.replace(',', '.'));
 }
 
 export function displayGermanDecimal(v: number | null | undefined): string {
