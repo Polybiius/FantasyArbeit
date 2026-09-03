@@ -1,0 +1,156 @@
+# ADR-0006 — Styling-Grundlage: Tailwind (ohne Preflight) + shadcn-Stil
+
+**Status:** akzeptiert (2026-09-03)
+**Bezug:** ADR-0001 · ADR-0005 (Radix/shadcn im "Code gehört euch"-Modus) · S8 aus dem Fahrplan
+
+## Kontext
+
+Der Plan sah einen Praxis-Test vor Festlegung vor (S8): dieselbe
+Statistik-Kachel einmal mit Tailwind-Utilities, einmal mit eigenem CSS
+(CSS-Modul) auf dem bestehenden Design-Token-System bauen und
+vergleichen. Beide Varianten wurden gebaut und gegen alle drei
+Klassenfarben (Zauberer/Krieger/Schütze) verifiziert — **pixelidentisch**,
+weil das bestehende Theme-System bereits vollständig über CSS-Variablen
+läuft, die beide Varianten gleich lesen.
+
+Ein Ein-Komponenten-Test kann Tailwinds eigentlichen Vorteil aber nicht
+zeigen — der liegt nicht im Einzelergebnis, sondern in der Wirkung über
+viele Komponenten und (bei uns: viele unabhängige KI-Sitzungen ohne
+gemeinsames Gedächtnis) hinweg:
+
+1. **shadcn/ui setzt Tailwind voraus.** ADR-0005 (Design-Ebene) legt
+   bereits fest, dass die Optik über Radix/shadcn im "Code gehört
+   euch"-Modus entstehen soll, um das dokumentierte "sieht nicht wie
+   08/15-App aus"-Ziel zu erreichen. Jede shadcn-Komponente kommt fertig
+   in Tailwind-Klassen — ohne Tailwind müsste jede künftig übernommene
+   Komponente (Dialog, Dropdown, Kalender-Picker) von Hand zurück in
+   eigenes CSS übersetzt werden, dauerhaft, bei jeder einzelnen.
+2. **Trainingsdaten-Dichte**, dasselbe Argument wie React vs. Vue
+   (ADR-0001), nur schärfer: Tailwind ist der de-facto-Standard in
+   praktisch jedem aktuellen React-Projekt/-Beispiel/-Tutorial. Reines
+   Custom-CSS ist die Nische.
+3. **Design-System-Drift-Schutz.** Das reale Risiko dieses Projekts ist
+   nicht "ein Entwickler-Team vergisst eine Konvention", sondern "eine
+   neue KI-Sitzung ohne Kontext der vorherigen erfindet leicht
+   abweichende Werte" — genau das Muster, das im Projekt bereits mehrfach
+   strukturelle statt Prosa-Lösungen nötig gemacht hat (`html`-Tag statt
+   "bitte immer escHtml() benutzen", `withClickGuard` statt "bitte immer
+   deaktivieren"). Tailwinds Config ist eine harte Grenze: nur Werte aus
+   dem Theme sind ohne Weiteres erreichbar, ein Ausreißer
+   (`bg-[#123456]`) fällt im Diff sofort auf.
+
+## Entscheidung
+
+**Tailwind v4** (`4.3.3`, exakt gepinnt) als Utility-Schicht für den
+React-Teil, **kombiniert mit shadcn-Stil-Komponenten** (unbestylte
+Radix-Primitive + Tailwind-Klassen, ins eigene Projekt kopiert, nicht als
+fertiges Theme-Paket).
+
+**Zwei technische Einschränkungen, beide beim Praxis-Test entdeckt, nicht
+vorher absehbar:**
+
+1. **Preflight-Reset wird NICHT eingebunden.** Preflight setzt über
+   ungescopte Selektoren (`*, button, input, h1..h6, ...`) einen globalen
+   Reset. Da `assets/app.css` in der produktiven `index.html` in
+   DERSELBEN Kaskade wie die komplette, gewachsene Vanilla-CSS lädt
+   (React und Vanilla-Seiten sind DOM-Geschwister, kein iframe/Shadow-DOM),
+   würde Preflight jeden Vanilla-Button/-Input/-Überschrift in Kanban,
+   Kontakte, Kalender usw. mit-zurücksetzen — nicht nur die React-Teile.
+2. **Jede Utility-Klasse bekommt zwingend das Präfix `tw:`**
+   (`prefix(tw)`), UND das automatische Scannen nach Kandidaten-Klassen
+   ist auf `src/**/*.{ts,tsx}` eingegrenzt (`@source`, `source(none)` auf
+   dem Utilities-Import). Grund, empirisch verifiziert: Tailwinds
+   Standard-Erkennung durchsucht sonst das GESAMTE Repo (respektiert nur
+   `.gitignore`) nach Text, der wie eine Utility-Klasse aussieht — ein
+   Beispielwert aus diesem ADR-Text (`bg-[#123456]`) landete beim ersten
+   Testlauf als echte, ausgelieferte Klasse im Bundle, ebenso `flex`/
+   `grid`/`block`/`static`/`inline` aus `style={{display:'flex'}}`-artigen
+   Inline-Style-Strings in eigenem React-Code (Tailwinds Scanner ist reine
+   Text-Erkennung, kein CSS-/JS-bewusstes Parsen). **Ohne Präfix wäre das
+   scharf gewesen:** `index.html` hat bereits eine eigene
+   `.grid{grid-template-columns:1fr}`-Regel (mobile Layout-Anpassung) —
+   Tailwinds gleichnamiges `.grid{display:grid}` hätte bei gleicher
+   Spezifität je nach Ladereihenfolge diese Regel in Produktion überschrieben,
+   ein unsichtbarer Layout-Bug auf schmalen Bildschirmen. Das Präfix macht
+   eine Namenskollision mit bestehendem Vanilla-CSS strukturell unmöglich,
+   statt sich auf "kein Vanilla-Name kollidiert zufällig" zu verlassen.
+
+Einbindung (`src/styles/tailwind.css`):
+
+```css
+@import 'tailwindcss/theme.css' prefix(tw);
+@import 'tailwindcss/utilities.css' source(none) prefix(tw);
+@import './tokens.css';
+
+@source '../**/*.{ts,tsx}';
+
+@theme {
+  --color-panel-2: var(--panel-2);
+  /* … Rest der bestehenden Tokens, siehe src/styles/tailwind.css */
+}
+```
+
+Eine Utility-Klasse im JSX sieht dadurch so aus: `className="tw:flex
+tw:bg-panel-2 tw:rounded-lg"`. Verifiziert: `--tw-color-panel-2:
+var(--panel-2)` wird korrekt erzeugt, der Klassenfarbwechsel
+(`applyClassTheme()`) wirkt dadurch unverändert auch auf Tailwind-Klassen.
+
+**CSS-Variablen bleiben die Quelle der Wahrheit** (unverändert zu ADR-0002):
+`applyClassTheme()` in der Vanilla-`index.html` schreibt weiterhin die
+9 Theme-Variablen zur Laufzeit auf `document.documentElement`. Tailwinds
+`@theme`-Block ist nur eine zweite, für Utility-Klassen nutzbare
+Schreibweise derselben Werte (`--color-arcane: var(--arcane)` usw.) —
+kein Duplikat, keine zweite Farbquelle. Ein Klassenfarbwechsel wirkt
+dadurch automatisch auch auf jede Tailwind-Klasse, ohne Re-Render.
+
+**Radix-Primitive** kommen unabhängig davon zum Einsatz, sobald echte
+interaktive Bausteine (Dialog, Dropdown, Combobox) gebraucht werden —
+das ist eine Frage des Verhaltens, nicht des Stylings, und von dieser
+Entscheidung unberührt.
+
+## Konsequenzen
+
+**Positiv:** shadcn-Komponenten lassen sich ohne Übersetzungsschritt
+übernehmen; Utility-Klassen sind im JSX selbst sichtbar (Code-Review
+sieht das Ergebnis direkt im Diff, kein Sprung in eine zweite Datei);
+tote Utility-Klassen verschwinden automatisch (Tailwind scannt nur
+tatsächlich genutzte Klassen); harte Werte-Grenze schützt gegen Drift
+über viele getrennte KI-Sitzungen hinweg.
+
+**Negativ:** zusätzliche Build-Abhängigkeit mit realer Versions-Historie
+(v3→v4 war ein Breaking Change, im Fahrplan bereits als Risiko markiert)
+— durch exaktes Pinnen (`4.3.3`, `package.json`) eingehegt. `@theme`-
+Mapping muss bei jeder neuen Basis-Token-Ergänzung in `tokens.css`
+manuell nachgezogen werden (zwei Dateien statt einer) — akzeptabel, da
+Tokens selten neu hinzukommen (aktuell 9 Theme-Variablen, historisch
+stabil). Jede Tailwind-Klasse braucht das `tw:`-Präfix — minimal mehr
+Tipparbeit, dafür strukturell kollisionsfrei mit der bestehenden
+Vanilla-CSS, siehe oben.
+
+**Verbindliche Regel für neuen React-Code ab jetzt:** Tailwind-Utilities
+IMMER mit `tw:`-Präfix schreiben (`tw:flex`, nicht `flex`) — das Präfix
+ist keine Stilfrage, sondern der einzige Schutz gegen Namenskollisionen
+mit der noch aktiven Vanilla-CSS.
+
+**Bewusst NICHT Preflight** — siehe oben, dauerhafte Einschränkung, nicht
+nur für den Umbau: solange React-Seiten und Vanilla-Seiten im selben
+Dokument koexistieren (bis "Fertig"-Definition, `docs/migration-status.md`),
+bleibt Preflight tabu. Nach vollständigem Abschluss der Migration (kein
+Vanilla-CSS mehr im Dokument) könnte Preflight erneut bewertet werden —
+kein aktueller Bedarf, da das bestehende `tokens.css`/Vanilla-CSS bereits
+einen eigenen, funktionierenden Basis-Reset mitbringt.
+
+## Verworfene Alternativen
+
+- **Eigenes CSS (CSS-Module) auf den bestehenden Tokens** — funktioniert
+  nachweislich (Spike verifiziert, pixelidentisch zu Tailwind bei diesem
+  Test), aber inkompatibel mit dem bereits beschlossenen shadcn-Modell
+  (ADR-0005) ohne dauerhaften Übersetzungsaufwand pro Komponente. Bleibt
+  die richtige Wahl für sehr spezielle Fälle (`<canvas>`-Sprite-Rendering,
+  komplexe SVG-Zeichnungen), die ohnehin nie Utility-Klassen nutzen würden.
+- **Tailwind MIT Preflight** — verworfen wegen des dokumentierten
+  Kaskaden-Konflikts mit der noch aktiven Vanilla-CSS.
+- **Fertiges Komponenten-Theme (Material UI, Ant Design, Chakra)** —
+  bereits in der ursprünglichen Planung verworfen (ADR-0005/Design-Ebene):
+  bringt die sofort wiedererkennbare "Standard-App"-Optik mit, die der
+  Nutzer explizit ablehnt.

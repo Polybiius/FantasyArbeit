@@ -1,0 +1,45 @@
+/*
+ * Tailwind-Einbindung für den React-Teil (docs/adr/0006).
+ *
+ * BEWUSST OHNE Preflight (`tailwindcss/preflight.css`): Preflight setzt
+ * einen globalen Reset über ungescopte Selektoren (`*, button, input,
+ * h1..h6, ...`) -- da `assets/app.css` in der PRODUKTIVEN `index.html`
+ * neben der kompletten Vanilla-CSS geladen wird (gemeinsames Dokument,
+ * gemeinsame Kaskade), würde Preflight jeden Vanilla-Button/-Input in
+ * Kanban/Kontakte/etc. mit-zurücksetzen -- nicht nur die React-Teile.
+ * Nur `theme.css` (unser @theme-Mapping unten) + `utilities.css`
+ * (die eigentlichen Utility-Klassen) einbinden.
+ *
+ * Farben/Radien kommen über @theme aus tokens.css -- CSS-Variablen
+ * bleiben die Quelle der Wahrheit (ADR-0002/0006), Tailwind ist nur eine
+ * zweite Schreibweise für dieselben Werte.
+ */
+@import 'tailwindcss/theme.css' prefix(tw);
+@import 'tailwindcss/utilities.css' source(none) prefix(tw);
+@import './tokens.css';
+
+/* Nur echten React-Quellcode scannen -- ohne das würde Tailwinds
+ * automatische Erkennung das GANZE Repo durchsuchen (Doku, index.html,
+ * HISTORY.md, ...) und dort zufällig passende Wörter als Utility-Klassen
+ * mit ausliefern (empirisch beobachtet: ein Beispielwert aus einem
+ * ADR-Text landete als echte Klasse im Bundle). */
+@source '../**/*.{ts,tsx}';
+
+@theme {
+  --color-void: var(--void);
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-border: var(--border);
+  --color-arcane: var(--arcane);
+  --color-arcane-glow: var(--arcane-glow);
+  --color-mana: var(--mana);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-muted-2: var(--muted-2);
+  --radius-xs: var(--radius-xs);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --font-display: 'Cinzel', serif;
+  --font-mono-brand: 'JetBrains Mono', monospace;
+}

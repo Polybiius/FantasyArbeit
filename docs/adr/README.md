@@ -20,4 +20,4 @@ Verworfene Alternativen**.
 | [0003](0003-hash-routing-vertrag.md) | Hash-Routing als stabiler, dokumentierter Vertrag | akzeptiert (2026-09-02) |
 | [0004](0004-tanstack-query.md) | TanStack Query für den Supabase-Datenverkehr | akzeptiert (2026-09-02) |
 | [0005](0005-ordnerstruktur-doku.md) | Feature-basierte Ordnerstruktur + vier Doku-Schubladen | akzeptiert (2026-09-02) |
-| 0006 | Styling-Ansatz (Tailwind vs. CSS-Variablen-System) | offen — erst nach Spike |
+| [0006](0006-styling-tailwind.md) | Styling-Grundlage: Tailwind (ohne Preflight) + shadcn-Stil | akzeptiert (2026-09-03) |

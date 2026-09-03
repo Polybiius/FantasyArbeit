@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { HashRouter } from 'react-router-dom';
 
-import '@/styles/tokens.css';
+import '@/styles/tailwind.css';
 
 import { App } from '@/app/App';
 import { ErrorBoundary } from '@/app/ErrorBoundary';

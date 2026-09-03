@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
 
 // Der React-Umbau (docs/adr/0001) läuft als Strangler-Fig PARALLEL zur
 // bestehenden Vanilla-index.html. Vite bekommt deshalb einen EIGENEN
@@ -18,9 +19,10 @@ import react from '@vitejs/plugin-react';
 // Assets (Schriftarten, Charakter-Sprites) bleiben vorerst an ihrem
 // bestehenden Ort im Repo-Wurzelverzeichnis. Der public/-Ordner für die
 // React-Seite kommt in Block 3/5 (docs/adr/0005, "Asset-Pipeline-Falle").
+// tailwindcss()-Plugin: Styling-Grundlage ab Block 4 (docs/adr/0006).
 export default defineConfig({
   base: './',
-  plugins: [react()],
+  plugins: [react(), tailwindcss()],
   resolve: {
     alias: { '@': resolve(import.meta.dirname, 'src') },
   },
