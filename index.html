@@ -2210,7 +2210,18 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     // triggert dieser Patch bewusst nicht mit -- die betroffenen Felder
     // aus dem React-Pilot (real_name/company/chronik_show_xp) haben
     // keinen solchen Seiteneffekt).
-    notifyProfilePatch(patch){ if(profile) Object.assign(profile, patch); }
+    notifyProfilePatch(patch){
+      if(!profile) return;
+      Object.assign(profile, patch);
+      // Deckt jetzt auch die Kalender-Toggles ab (Block 3, Kalender-Gruppe)
+      // -- exakt derselbe Seiteneffekt-Block wie in settingsToggleChanged()
+      // weiter unten, nur von der React-Seite statt einem Vanilla-Klick
+      // ausgelöst.
+      if('calendar_hide_weekends' in patch || 'calendar_show_birthdays' in patch){
+        if('calendar_show_birthdays' in patch){ profile.tasks_synced_date = null; syncBirthdayTasksIfNeeded(); }
+        renderCalTasksNow();
+      }
+    }
   });
   // Hält die modul-lokale session-Variable frisch (u.a. bei TOKEN_REFRESHED,
   // wo der alte Code sie bisher nie nachzog) und benachrichtigt React.

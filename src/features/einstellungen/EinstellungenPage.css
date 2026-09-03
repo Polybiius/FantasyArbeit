@@ -12,7 +12,7 @@
 .ein-wrap {
   display: grid;
   gap: 18px;
-  max-width: 520px;
+  max-width: 600px;
 }
 
 .ein-pilot-note {
@@ -105,4 +105,45 @@
 
 .ein-status.is-error {
   color: var(--danger);
+}
+
+.ein-subheading {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.ein-hint {
+  margin: 0 0 4px;
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.ein-az-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.ein-az-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.ein-az-times {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ein-az-times .ein-input {
+  width: 110px;
 }

@@ -37,6 +37,11 @@ export interface AppBridge {
    * -- der Vanilla-Code bleibt der einzige Ort, der das Objekt wirklich
    * mutiert, React liefert nur den bereits vom Server bestätigten Patch.
    * Löst KEINE Re-Renders in React aus (das übernimmt TanStack Query).
+   * Zwei Felder (`calendar_hide_weekends`/`calendar_show_birthdays`)
+   * haben in Vanilla einen zusätzlichen Seiteneffekt (Kalender-Aufgaben
+   * neu rendern, bei Geburtstagen zusätzlich einen Resync) -- den führt
+   * die Vanilla-Implementierung dieser Funktion selbst aus, React weiß
+   * davon nichts (siehe index.html-Kommentar an der Bridge-Definition).
    */
   notifyProfilePatch(patch: Partial<Profile>): void;
 }
