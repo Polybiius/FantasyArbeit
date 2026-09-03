@@ -26,7 +26,10 @@ export function Sidebar() {
   const { activePage, isGuildFounder } = useNavState();
 
   return (
-    <nav className="tw:flex tw:w-[190px] tw:flex-none tw:flex-col tw:gap-1.5 tw:rounded-lg tw:border tw:border-border tw:bg-panel tw:p-3">
+    <nav
+      className="tw:flex tw:flex-row tw:gap-1.5 tw:overflow-x-auto tw:rounded-lg tw:border tw:border-border tw:bg-panel tw:p-3
+        tw:min-[721px]:sticky tw:min-[721px]:top-5 tw:min-[721px]:w-[190px] tw:min-[721px]:flex-none tw:min-[721px]:flex-col tw:min-[721px]:overflow-visible"
+    >
       {NAV_ITEMS.filter((item) => isNavItemVisible(item, { isPool, isAdmin, isGuildFounder })).map((item) => {
         const active = item.page === activePage;
         return (
@@ -34,7 +37,7 @@ export function Sidebar() {
             key={item.page}
             href={`#${item.page}`}
             data-page={item.page}
-            className="tw:rounded-sm tw:border tw:border-transparent tw:px-3.5 tw:py-2.5 tw:font-sans tw:text-[13.5px] tw:font-medium tw:no-underline tw:transition-colors"
+            className="tw:flex-none tw:whitespace-nowrap tw:rounded-sm tw:border tw:border-transparent tw:px-3.5 tw:py-2.5 tw:font-sans tw:text-[13.5px] tw:font-medium tw:no-underline tw:transition-colors"
             style={{
               color: active ? 'var(--text)' : 'var(--muted)',
               background: active ? ACTIVE_BG : undefined,
