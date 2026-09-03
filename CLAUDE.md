@@ -221,10 +221,24 @@ begründen (Business/Motivation-Engine-Trennung, PvE, Gilden-Größe, SDT).
   (Google-Fonts-CSS mit Browser-UA abrufen, `latin`-Subset-Blöcke
   extrahieren, `.woff2`-Dateien herunterladen, lokal einbinden) statt
   einfach einen neuen `<link>` auf Google zu setzen.
-- **Hosting**: GitHub Pages, Repo ist öffentlich (nötig für den kostenlosen
-  GitHub-Pages-Plan; unbedenklich, weil der Supabase-Key im Code ein bewusst
-  öffentlicher "publishable key" ist, abgesichert durch RLS, nicht durch
-  Geheimhaltung).
+- **Hosting**: GitHub Pages (Produktion), Repo ist öffentlich (nötig für den
+  kostenlosen GitHub-Pages-Plan; unbedenklich, weil der Supabase-Key im Code
+  ein bewusst öffentlicher "publishable key" ist, abgesichert durch RLS,
+  nicht durch Geheimhaltung).
+- **Vorschau-Deployment (React-Umbau, seit 2026-09-03):** Cloudflare
+  Workers (Static Assets), Projekt "fantasyarbeit", `https://
+  fantasyarbeit.murrem.workers.dev` — mit GitHub verbunden ("Workers
+  Builds", Settings → Builds im Cloudflare-Dashboard), deployt bei jedem
+  Push auf `main` automatisch neu (`npm run build` dann `npx wrangler
+  deploy`). Konfiguration: `wrangler.jsonc` (reiner Assets-Worker, kein
+  `main`-Skript, liefert den Repo-Wurzelordner 1:1 wie GitHub Pages aus)
+  + `.assetsignore` (schließt `node_modules/` u.a. aus — existiert auf
+  der Cloudflare-Build-Maschine physisch nach `npm install`, sonst würde
+  der Deploy an einer viel zu großen Datei darin scheitern). `wrangler`
+  liegt als exakt gepinnte devDependency im Repo. **Rein additiv** — die
+  echte Produktion bleibt GitHub Pages, dies ist nur die im Framework-
+  Migrationsplan vorgesehene Vorschau-URL für den nicht-technischen
+  Tester während der React-Übergangszeit.
 - **Codequalität**: ESLint (seit 2026-07-31, `eslint.config.js` +
   `eslint-plugin-html`, prüft direkt den `<script>`-Block in `index.html`,
   keine Datei-Aufteilung nötig). Node.js liegt dafür portabel unter
