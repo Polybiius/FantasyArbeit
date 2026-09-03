@@ -24,6 +24,23 @@ export interface CharacterStats {
 }
 
 /**
+ * Navigations-Zustand, der echte (teils asynchrone) Vanilla-Logik
+ * braucht -- alle ANDEREN Sichtbarkeitsregeln (Admin-Rolle, Pool-Zustand)
+ * liest der React-Sidebar direkt aus `getProfile()`, das sind einfache
+ * Feldabfragen ohne eigenen Rechenweg.
+ */
+export interface NavState {
+  /** Die von `showPage()` NACH allen Weiterleitungsregeln aufgelöste
+   * Seite (ungültiger Hash, fehlende Admin-/Gildengründer-Rechte, Pool-
+   * Zustand) -- z.B. `'charakter'`, niemals ein abgelehnter Wert. */
+  readonly activePage: string;
+  /** Ob die eingeloggte Person mindestens eine Gilde gegründet hat
+   * (`guilds.founder_id`) -- steuert die Team-Reporting-Sichtbarkeit,
+   * kommt aus einer eigenen DB-Abfrage, steht nicht in `profile`. */
+  readonly isGuildFounder: boolean;
+}
+
+/**
  * Die Koexistenz-Brücke, die die produktive `index.html` unter
  * `window.__bridge` bereitstellt (docs/adr/0002). Der React-Teil liest
  * ausschließlich hierüber -- er erzeugt keinen eigenen Supabase-Client.
@@ -75,6 +92,12 @@ export interface AppBridge {
    * Abmelde-Funktion zurück.
    */
   onStatsChange(fn: () => void): () => void;
+  /** Immer verfügbar (sinnvoller Default schon vor dem ersten Login,
+   * passend zur statischen HTML). Siehe `NavState`. */
+  getNavState(): Readonly<NavState>;
+  /** Feuert nach jedem `showPage()`-Aufruf und nach jedem Neuladen des
+   * Gildengründer-Status. Kein Payload, siehe `onStatsChange`. */
+  onNavChange(fn: () => void): () => void;
 }
 
 declare global {

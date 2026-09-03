@@ -183,3 +183,68 @@ energyUsed:0, energyMax:20, energyRemaining:20}` gegen `#levelNum` →
 `17`). Bundle-Größe unverändert (die neuen Dateien werden noch von
 nichts importiert, Tree-Shaking entfernt sie aus dem Produktions-Build).
 Beide Regressions-Suiten weiterhin grün.
+
+## Nachtrag 2026-09-03 (4) — Nav-Status + erste echte Sidebar/Header-Komponenten
+
+Direkte Fortsetzung von Nachtrag (3): die React-Sidebar braucht zwei
+weitere Informationen, die NUR Vanilla korrekt kennt, weil sie über eine
+reine Feldabfrage hinausgehen — welche Seite gerade WIRKLICH aktiv ist
+(nach allen Weiterleitungsregeln in `showPage()`: ungültiger Hash → Pool-
+Zustand → fehlende Admin-/Gildengründer-Rechte, in dieser Reihenfolge)
+und ob die eingeloggte Person mindestens eine Gilde gegründet hat
+(`myFoundedGuildIds`, eine eigene DB-Abfrage, steht nicht in `profile`).
+
+**Bewusste Grenze, um die Bridge nicht ausufern zu lassen:** Admin-Rolle
+(`profile.role`) und Pool-Zustand (`profile.org_id`) werden NICHT über
+die Bridge dupliziert — das sind einfache, stabile Feldabfragen auf dem
+ohnehin schon lesbaren `profile`-Objekt, kein eigener Rechenweg mit
+Redundanz-Risiko. Nur die zwei oben genannten, echt abgeleiteten Werte
+bekommen einen eigenen Bridge-Kanal:
+
+- `getNavState(): Readonly<NavState>` — `{activePage, isGuildFounder}`,
+  immer verfügbar (sinnvoller Default schon vor dem ersten Login).
+- `onNavChange(fn: () => void): () => void` — feuert nach jedem
+  `showPage()`-Aufruf (via `__bridgeNotifyNav({activePage})`) und nach
+  jedem Neuladen des Gildengründer-Status
+  (`__bridgeNotifyNav({isGuildFounder})` in `loadMyFoundedGuilds()`).
+
+React-seitig: `useNavState()` (gleiches `useSyncExternalStore`-Muster wie
+`useCharacterStats()`), `useProfileFlags()` (liest `isPool`/`isAdmin`
+direkt aus `getProfile()`, reagiert wie `useCharacterClass()` auf
+Login/Logout — ein Live-Wechsel mitten in der Sitzung braucht bewusst
+weiterhin ein Neuladen, akzeptierte Einschränkung wie dort).
+
+**Erste echte App-Rahmen-Komponenten:** `src/app/navItems.ts` (1:1-
+Portierung der Nav-Struktur aus `index.html` als reine Daten — Icons,
+klassenabhängige Label-Tabellen, vier unabhängige Sichtbarkeitsregeln,
+keine Logik), `src/app/Sidebar.tsx`, `src/app/StatsHeader.tsx`. Navigation
+läuft über echte `<a href="#seite">`, kein `onClick`/`location.hash=` —
+Rechtsklick/neuer Tab/Bookmark funktionieren unverändert (ADR-0003),
+Vanillas `showPage()` bleibt über den bestehenden `hashchange`-Listener
+die einzige Instanz, die eine Seite tatsächlich zeigt/verbietet.
+
+**Noch NICHT in `index.html` scharf geschaltet** — isoliert per
+Wegwerf-Vorschau (gemockte `window.__bridge`, kein echter Login nötig)
+gebaut und per Playwright-Screenshot in allen 3 Klassenfarben + Pool-
+Zustand + Nicht-Admin/Nicht-Gildengründer verifiziert: korrekte
+klassenabhängige Labels, korrekte aktive Markierung, korrekte
+Sichtbarkeits-Kombination je Zustand (Pool zeigt nur Organisation +
+weiterhin die von Pool unabhängigen Admin-/Gildengründer-Punkte — exakt
+das mitunter überraschende, aber echte Vanilla-Verhalten, keine
+Vereinfachung). Bundle-Größe der Produktion unverändert (JS), `app.css`
+wuchs um die jetzt im Quellcode vorhandenen, aber noch von nichts
+importierten Tailwind-Klassen (Tailwind scannt Text, nicht den
+Modul-Graphen — tote, aber harmlose zusätzliche Regeln, verschwinden
+automatisch wieder, sobald diese Dateien sich ändern oder entfernt
+werden). Beide Regressions-Suiten weiterhin grün.
+
+**Lehre aus dem Bau der Wegwerf-Vorschau:** ein State-getriebener
+`window.__bridge`-Mock (`useState`+Neuzuweisung im Render-Körper) löste
+eine `useSyncExternalStore`-Endlosschleife aus ("getSnapshot should be
+cached") — jeder Getter muss bei wiederholtem Aufruf dieselbe
+Objekt-Referenz liefern, ein neues Objektliteral pro Aufruf reicht schon.
+Die echte Vanilla-Bridge macht das schon richtig (`navState`/
+`characterStats` sind stabile Modul-Variablen); der Mock wurde auf
+synchrones Setzen vor dem Mount (URL-Parameter + echtes Neuladen statt
+React-State) umgestellt, entspricht damit auch eher der echten
+Produktions-Reihenfolge.

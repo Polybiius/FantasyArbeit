@@ -2175,6 +2175,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
   let session=null, profile=null, org=null, config=null, log=[], characterStats=null;
+  // Block 4 (App-Rahmen): der künftige React-Sidebar braucht "welche Seite
+  // ist gerade aktiv" + "bin ich Gildengründer" (steuert Team-Reporting-
+  // Sichtbarkeit) -- beides mit echter, teils asynchroner Logik, die
+  // ausschließlich hier in showPage()/loadMyFoundedGuilds() lebt. Alle
+  // ANDEREN Sichtbarkeitsregeln (Admin-Rolle, Pool-Zustand) liest React
+  // direkt aus profile -- das sind einfache Feldabfragen, kein eigener
+  // Rechenweg, keine Doppelpflege-Gefahr.
+  let navState = { activePage:'charakter', isGuildFounder:false };
 
   // ---- Koexistenz-Brücke (ADR-0002, docs/adr/0002-bruecke-session.md) ----
   // Während der schrittweisen React-Migration teilen sich der alte
@@ -2211,12 +2219,19 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     characterStats = stats;
     [...__bridgeStatsSubs].forEach(fn=>{ try{ fn(); }catch(e){ console.error('bridge stats subscriber', e); } });
   }
+  const __bridgeNavSubs = new Set();
+  function __bridgeNotifyNav(patch){
+    navState = { ...navState, ...patch };
+    [...__bridgeNavSubs].forEach(fn=>{ try{ fn(); }catch(e){ console.error('bridge nav subscriber', e); } });
+  }
   window.__bridge = Object.freeze({
     sb,
     getSession: ()=>session,
     getProfile: ()=>profile,
     getCharacterStats: ()=>characterStats,
     onStatsChange(fn){ __bridgeStatsSubs.add(fn); return ()=>__bridgeStatsSubs.delete(fn); },
+    getNavState: ()=>navState,
+    onNavChange(fn){ __bridgeNavSubs.add(fn); return ()=>__bridgeNavSubs.delete(fn); },
     // fn(event, session) -- liefert eine Abmelde-Funktion zurück
     onAuthChange(fn){ __bridgeAuthSubs.add(fn); return ()=>__bridgeAuthSubs.delete(fn); },
     // Einzige Ausnahme von "nur lesen" (Block 3, siehe bridge.ts): React
@@ -5511,6 +5526,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(error){ logSilentError('loadMyFoundedGuilds', error); return; }
     myFoundedGuildIds = (data||[]).map(g=>g.id);
     document.getElementById('navTeamReportingBtn').style.display = myFoundedGuildIds.length ? 'inline-block' : 'none';
+    __bridgeNotifyNav({ isGuildFounder: myFoundedGuildIds.length>0 });
   }
 
   // Für canEdit auf der Kontakt-Seite (siehe dort): ob ein fremder Kontakt
@@ -11157,6 +11173,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(pageName==='notfallzugriff' && profile.role!=='admin') pageName = 'charakter';
     if(pageName==='team-reporting' && myFoundedGuildIds.length===0) pageName = 'charakter';
     document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active', b.dataset.page===pageName));
+    __bridgeNotifyNav({ activePage: pageName });
     document.querySelectorAll('.page').forEach(p=>p.style.display='none');
     document.getElementById('page-'+pageName).style.display='block';
     // Wurde pageName wegen ungültigem/verbotenem Wert umgebogen, muss der
