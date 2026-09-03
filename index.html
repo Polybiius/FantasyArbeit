@@ -53,6 +53,11 @@
     transition:background-color 999999s ease-in-out 0s;
   }
   body{margin:0;background:radial-gradient(ellipse 900px 500px at 20% -10%, var(--bg-glow-1), transparent),radial-gradient(ellipse 700px 500px at 100% 10%, var(--bg-glow-2), transparent),var(--void);color:var(--text);font-family:'Inter',sans-serif;padding:28px 16px 60px;min-height:100vh;transition:background-color .4s ease;}
+  /* .wrap wird seit Block 4 (Scharfschalten) von nichts mehr benutzt --
+     #app hat jetzt die tw:grid-Klassen direkt (siehe index.html-Markup),
+     .wrap war die Ursache des "nicht die ganze Seite wird genutzt"-
+     Schmerzpunkts (max-width:1040px). Bewusst nicht gelöscht (totes,
+     harmloses CSS), gleiches Prinzip wie renderEinstellungenPage(). */
   .wrap{max-width:1040px;margin:0 auto;}
   .mono{font-family:'JetBrains Mono',monospace;}
   .display{font-family:'Cinzel',serif;}
@@ -157,6 +162,10 @@
   .grid{display:grid;grid-template-columns:1.1fr 1fr;gap:18px;}
   @media (max-width:860px){.grid{grid-template-columns:1fr;}}
 
+  /* .app-shell/.sidebar/.nav-btn(+.active) werden seit Block 4
+     (Scharfschalten) von nichts mehr benutzt -- die Sidebar ist jetzt
+     Sidebar.tsx (React), gerendert in #reactSidebarAnchor. Bewusst
+     nicht gelöscht, siehe Kommentar bei .wrap oben. */
   .app-shell{display:flex;gap:18px;align-items:flex-start;}
   .sidebar{
     flex:0 0 190px;display:flex;flex-direction:column;gap:6px;
@@ -946,8 +955,31 @@
   <div class="auth-error" id="appearanceError"></div>
 </div>
 
-<div class="wrap" id="app">
+<!--
+  Zweiter, routen-unabhängiger React-Root (main.tsx) -- rendert nichts
+  selbst sichtbar an dieser Stelle, sondern nur zwei createPortal()-Ziele
+  (#reactStatsHeaderAnchor/#reactSidebarAnchor weiter unten im App-Rahmen-
+  Grid). Getrennt vom bestehenden #react-root (Einstellungen-Pilot, an
+  eine Route gebunden), weil Kopfbereich+Sidebar auf JEDER Seite (auch
+  Vanilla-Seiten) bestehen bleiben müssen.
+-->
+<div id="app-shell-root"></div>
 
+<!--
+  App-Rahmen-Grid (Block 4, Scharfschalten): ersetzt `.wrap{max-width:1040px}`
+  (dokumentierter Schmerzpunkt "nicht die ganze Seite wird auf der
+  Desktopversion genutzt") durch ein Grid ohne äußere Breitenobergrenze,
+  siehe docs/adr/0002-bruecke-session.md Nachtrag 4/5 und
+  src/app/AppShellPortals.tsx. `#reactStatsHeaderAnchor`/
+  `#reactSidebarAnchor` sind leere Anker-Divs -- React rendert per
+  createPortal() hinein (zweiter, routen-unabhängiger React-Root in
+  main.tsx). `.content` (mit allen `.page`-Kindern) bleibt UNANGETASTETES
+  Vanilla-Gebiet, kein DOM-Umbau, nur die neue Utility-Klasse `tw:min-w-0`
+  zusätzlich.
+-->
+<div id="app" class="tw:grid tw:min-h-screen tw:content-start tw:grid-cols-1 tw:gap-4.5 tw:bg-void tw:p-5 tw:min-[721px]:grid-cols-[220px_1fr]">
+
+  <div class="tw:col-span-full">
   <div class="header">
     <div class="header-top">
       <div class="name-row">
@@ -955,10 +987,6 @@
         <div class="subtitle" id="orgSubtitle">Klasse: Zauberer</div>
       </div>
       <div class="header-right">
-        <div class="level-badge">
-          <div class="num mono" id="levelNum" data-testid="level-num">1</div>
-          <div class="lbl">Level</div>
-        </div>
         <div class="class-switcher" id="classSwitcher" style="display:none;">
           <button class="cs-btn" data-class="zauberer" title="Zauberer">🧙</button>
           <button class="cs-btn" data-class="krieger" title="Krieger">⚔️</button>
@@ -970,12 +998,37 @@
       </div>
     </div>
 
-    <div class="xpbar-wrap">
-      <div class="xpbar-labels">
-        <span id="xpCurrentLabel">0 / 100 XP</span>
-        <span id="xpToNextLabel">100 XP bis Level 2</span>
+    <!--
+      Volle Header-Breite (wie zuvor .xpbar-wrap) statt in .header-right
+      gequetscht -- ein erster Versuch dort führte zu überlappenden
+      XP-Texten, weil .header-right ein Flex-Row ohne verfügbare
+      Extra-Breite ist (Playwright-Screenshot-Fund).
+    -->
+    <div id="reactStatsHeaderAnchor" class="tw:mt-3.5"></div>
+
+    <!--
+      Level-Badge/XP-Balken bleiben im DOM, aber unsichtbar: render()
+      (index.html, ~9 Aufrufstellen) schreibt weiterhin unbedingt auf
+      #levelNum/#xpCurrentLabel/#xpToNextLabel/#xpFill -- ein Entfernen
+      dieser Elemente würde render() bei jeder Aktion mit einem
+      TypeError abbrechen lassen. Die sichtbare Anzeige übernimmt jetzt
+      StatsHeader.tsx (React), das dieselben render()-Werte über die
+      Bridge bekommt (ADR-0002-Nachtrag 3). `data-testid="level-num"`
+      wandert auf die React-Entsprechung (tests/README.md-Konvention:
+      migrierter Bereich behält denselben testid-Wert).
+    -->
+    <div style="display:none" aria-hidden="true">
+      <div class="level-badge">
+        <div class="num mono" id="levelNum">1</div>
+        <div class="lbl">Level</div>
       </div>
-      <div class="xpbar-track"><div class="xpbar-fill" id="xpFill" style="width:0%"></div></div>
+      <div class="xpbar-wrap">
+        <div class="xpbar-labels">
+          <span id="xpCurrentLabel">0 / 100 XP</span>
+          <span id="xpToNextLabel">100 XP bis Level 2</span>
+        </div>
+        <div class="xpbar-track"><div class="xpbar-fill" id="xpFill" style="width:0%"></div></div>
+      </div>
     </div>
 
     <div class="levelup-banner" id="levelUpBanner">⬆ Level Up!</div>
@@ -995,27 +1048,17 @@
       </div>
     </div>
   </div>
+  </div>
 
-  <div class="app-shell">
-    <nav class="sidebar">
-      <button class="nav-btn" data-page="organisation" id="navOrganisationBtn" style="display:none;">🏛 Organisation</button>
-      <button class="nav-btn active" data-page="charakter">🧙 Charakter</button>
-      <button class="nav-btn" data-page="handlungen">⚔ Handlungen</button>
-      <button class="nav-btn" data-page="kontakte" id="navKontakteBtn">📇 Register</button>
-      <button class="nav-btn" data-page="dungeons">🗺 Dungeons</button>
-      <button class="nav-btn" data-page="kanban" id="navKanbanBtn">🗂 Kanban</button>
-      <button class="nav-btn" data-page="inventar">🎒 Inventar</button>
-      <button class="nav-btn" data-page="gilde" id="navGildeBtn">🛡 Gilde</button>
-      <button class="nav-btn" data-page="tagebuch">📖 Abenteuerlog</button>
-      <button class="nav-btn" data-page="statistik" id="navStatistikBtn">📊 Kompendium</button>
-      <button class="nav-btn" data-page="einstellungen">⚙️ Einstellungen</button>
-      <button class="nav-btn" data-page="produkte" id="navProdukteBtn" style="display:none;">📦 Produkte</button>
-      <button class="nav-btn" data-page="fehlerprotokoll" id="navFehlerprotokollBtn" style="display:none;">🛠 Fehlerprotokoll</button>
-      <button class="nav-btn" data-page="notfallzugriff" id="navNotfallzugriffBtn" style="display:none;">🚨 Notfallzugriff</button>
-      <button class="nav-btn" data-page="team-reporting" id="navTeamReportingBtn" style="display:none;">👥 Team-Reporting</button>
-    </nav>
+  <!--
+    Ersetzt die frühere statische <nav class="sidebar">-Buttonliste --
+    React (Sidebar.tsx) rendert per Portal hinein, gespeist aus
+    src/app/navItems.ts (1:1-Portierung der 15 Einträge oben) +
+    useNavState()/useProfileFlags() für Sichtbarkeit/aktive Markierung.
+  -->
+  <div id="reactSidebarAnchor"></div>
 
-    <div class="content">
+    <div class="content tw:min-w-0">
 
       <!-- SEITE 1: CHARAKTER -->
       <div class="page" id="page-organisation" style="display:none;">
@@ -1751,7 +1794,6 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       </div>
 
     </div>
-  </div>
 </div>
 
 <div class="qt-fullscreen" id="questTreeModal" style="display:none;">
@@ -2258,7 +2300,17 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       if('calendar_hide_weekends' in patch || 'calendar_show_birthdays' in patch || 'timezone' in patch || 'arbeitszeiten' in patch){
         renderCalTasksNow();
       }
-    }
+    },
+    // Einzige weitere Ausnahme von "nur lesen" (Block 4, Scharfschalten):
+    // der frühere Sidebar-Klick-Handler auf "Abenteuerlog" rief bewusst
+    // NICHT `location.hash='tagebuch'` auf (das hätte den per
+    // updateCalendarHash() gespeicherten Ansicht+Tag-Unterhash verworfen,
+    // Bugfix vom 2026-08-20), sondern `showPage('tagebuch', false)` +
+    // `updateCalendarHash()`. Sidebar.tsx nutzt für "tagebuch" deshalb
+    // `onClick`+`preventDefault()` statt der reinen `href`-Navigation und
+    // ruft diese Funktion -- alle anderen Nav-Einträge brauchen das nicht
+    // (einziger Sonderfall im alten Klick-Handler).
+    navigateToTagebuch(){ showPage('tagebuch', false); updateCalendarHash(); },
   });
   // Hält die modul-lokale session-Variable frisch (u.a. bei TOKEN_REFRESHED,
   // wo der alte Code sie bisher nie nachzog) und benachrichtigt React.
@@ -3126,13 +3178,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   // standardmäßig sichtbar sind und dort nie extra ein-/ausgeblendet
   // werden mussten, bevor es den Pool-Zustand gab.
   const POOL_HIDDEN_NAV_PAGES = ['charakter','handlungen','kontakte','dungeons','kanban','inventar','gilde','tagebuch','statistik','einstellungen'];
-  function setPoolNavVisibility(isPool){
-    document.getElementById('navOrganisationBtn').style.display = isPool ? 'block' : 'none';
-    POOL_HIDDEN_NAV_PAGES.forEach(p=>{
-      const btn = document.querySelector(`.nav-btn[data-page="${p}"]`);
-      if(btn) btn.style.display = isPool ? 'none' : 'block';
-    });
-  }
+  // Seit Block 4 (Scharfschalten) ein Kein-Op: die alten Nav-Buttons
+  // (#navOrganisationBtn, .nav-btn[data-page]) existieren nicht mehr --
+  // Sidebar.tsx entscheidet Pool-Sichtbarkeit jetzt selbst, direkt aus
+  // profile.org_id (useProfileFlags().isPool, siehe src/app/navItems.ts,
+  // Regel 'poolOnly'/'always'). Funktion + POOL_HIDDEN_NAV_PAGES bewusst
+  // nicht gelöscht (beide Aufrufstellen unten bleiben unverändert),
+  // gleiches Prinzip wie renderEinstellungenPage().
+  function setPoolNavVisibility(){}
 
   async function renderWaitingRoom(){
     setPoolNavVisibility(true);
@@ -3252,7 +3305,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     // org_id voraus) noch irgendeine andere org-gebundene Funktion auf.
     if(profile.org_id === null){
       document.getElementById('loading').style.display='none';
-      document.getElementById('app').style.display='block';
+      // 'grid', nicht 'block' -- #app hat seit Block 4 (Scharfschalten) die
+    // tw:grid-Layoutklassen; ein Inline-Style gewinnt immer gegen jede
+    // Stylesheet-Klasse (unabhängig von Spezifität), 'block' hätte das
+    // Grid-Layout also unsichtbar überschrieben (echter Bug, per
+    // Playwright-Screenshot gefunden: riesige Leerfläche über dem Inhalt,
+    // weil Sidebar+Inhalt sich normal untereinander gestapelt haben statt
+    // nebeneinander zu stehen).
+    document.getElementById('app').style.display='grid';
       await renderWaitingRoom();
       return;
     }
@@ -3280,14 +3340,22 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     phoneTally = Number(localStorage.getItem('phoneTally_'+profile.id) || 0);
     lastKnownLevel = levelInfo(computeTotals().totalXp).level;
     document.getElementById('loading').style.display='none';
-    document.getElementById('app').style.display='block';
+    // 'grid', nicht 'block' -- #app hat seit Block 4 (Scharfschalten) die
+    // tw:grid-Layoutklassen; ein Inline-Style gewinnt immer gegen jede
+    // Stylesheet-Klasse (unabhängig von Spezifität), 'block' hätte das
+    // Grid-Layout also unsichtbar überschrieben (echter Bug, per
+    // Playwright-Screenshot gefunden: riesige Leerfläche über dem Inhalt,
+    // weil Sidebar+Inhalt sich normal untereinander gestapelt haben statt
+    // nebeneinander zu stehen).
+    document.getElementById('app').style.display='grid';
     document.getElementById('nameInput').value = profile.display_name;
     updateOrgSubtitle();
     document.getElementById('adminToggleBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
     document.getElementById('charRespawnBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
-    document.getElementById('navFehlerprotokollBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
-    document.getElementById('navNotfallzugriffBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
-    document.getElementById('navProdukteBtn').style.display = profile.role==='admin' ? 'inline-block' : 'none';
+    // navFehlerprotokollBtn/navNotfallzugriffBtn/navProdukteBtn existieren
+    // seit Block 4 (Scharfschalten) nicht mehr -- Sidebar.tsx zeigt diese
+    // drei Einträge jetzt selbst nur bei profile.role==='admin'
+    // (useProfileFlags().isAdmin, src/app/navItems.ts, Regel 'admin').
     await Promise.all([loadMyFoundedGuilds(), loadMyGuildContactWriteAccess()]);
     // Org-Pool-Verteilung (alleiniger Gildenführer einer Ein-Gilde-Org)
     // + Plattformadmin -- beide reine Lese-Flags, einmal pro Login.
@@ -3303,7 +3371,9 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       document.getElementById('classSwitcher').style.display='flex';
       updateClassSwitcherActive();
     }
-    initScrollFade(document.querySelector('.sidebar'));
+    // Sidebar-Scroll-Fade läuft seit Block 4 (Scharfschalten) in
+    // Sidebar.tsx selbst (useScrollFade()) -- .sidebar existiert nicht
+    // mehr, der frühere Aufruf hier wäre seitdem ein Kein-Op.
     buildActionGrid();
     await loadPendingDeletionQuests();
     render();
@@ -5510,7 +5580,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   const CLASS_KANBAN_LABELS = { zauberer:'Questpfad', krieger:'Gildenbrett', schuetze:'Feldzug' };
   function updateKanbanLabels(){
     const label = CLASS_KANBAN_LABELS[profile.character_class] || CLASS_KANBAN_LABELS.zauberer;
-    document.getElementById('navKanbanBtn').textContent = '🗂 ' + label;
+    // navKanbanBtn existiert seit Block 4 (Scharfschalten) nicht mehr --
+    // Sidebar.tsx löst dasselbe Label selbst über navItems.ts.
     document.getElementById('kanbanHeaderTitle').textContent = label;
   }
   let currentGuild = null;
@@ -5525,7 +5596,10 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     const { data, error } = await sb.from('guilds').select('id').eq('founder_id', profile.id);
     if(error){ logSilentError('loadMyFoundedGuilds', error); return; }
     myFoundedGuildIds = (data||[]).map(g=>g.id);
-    document.getElementById('navTeamReportingBtn').style.display = myFoundedGuildIds.length ? 'inline-block' : 'none';
+    // navTeamReportingBtn existiert seit Block 4 (Scharfschalten) nicht
+    // mehr -- Sidebar.tsx zeigt "Team-Reporting" jetzt selbst über
+    // useNavState().isGuildFounder (dieselbe Bridge-Benachrichtigung
+    // gleich darunter).
     __bridgeNotifyNav({ isGuildFounder: myFoundedGuildIds.length>0 });
   }
 
@@ -5597,7 +5671,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   function updateContactLabels(){
     const label = CLASS_CONTACT_LABELS[profile.character_class] || CLASS_CONTACT_LABELS.zauberer;
-    document.getElementById('navKontakteBtn').textContent = '📇 ' + label;
+    // navKontakteBtn existiert seit Block 4 (Scharfschalten) nicht mehr --
+    // Sidebar.tsx löst dasselbe Label selbst über navItems.ts.
     document.getElementById('contactsHeaderTitle').textContent = label;
   }
 
@@ -5605,7 +5680,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   const CLASS_STATISTIK_LABELS = { zauberer:'Arkanes Kompendium', krieger:'Kriegskasse', schuetze:'Trophäenkammer' };
   function updateStatistikLabels(){
     const label = CLASS_STATISTIK_LABELS[profile.character_class] || CLASS_STATISTIK_LABELS.zauberer;
-    document.getElementById('navStatistikBtn').textContent = '📊 ' + label;
+    // navStatistikBtn existiert seit Block 4 (Scharfschalten) nicht mehr --
+    // Sidebar.tsx löst dasselbe Label selbst über navItems.ts.
     document.getElementById('statistikHeaderTitle').textContent = label;
   }
 
@@ -6377,6 +6453,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     // -URL der zuletzt aktive Button hängen, meist "Charakter" (Standard
     // im HTML), statt dass die Navigation zum tatsächlichen Seiteninhalt passt.
     document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active', b.dataset.page==='kontakte'));
+    __bridgeNotifyNav({ activePage: 'kontakte' });
     document.querySelectorAll('.page').forEach(p=>p.style.display='none');
     document.getElementById('page-kontakt-detail').style.display='block';
     document.getElementById('kdContent').style.display='none';
@@ -7263,7 +7340,8 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
   function updateGuildLabels(){
     const labels = CLASS_GUILD_LABELS[profile.character_class] || CLASS_GUILD_LABELS.zauberer;
-    document.getElementById('navGildeBtn').textContent = '🛡 ' + labels.navLabel;
+    // navGildeBtn existiert seit Block 4 (Scharfschalten) nicht mehr --
+    // Sidebar.tsx löst dasselbe Label selbst über navItems.ts.
     document.getElementById('guildHeaderTitle').textContent = labels.navLabel;
     document.getElementById('guildAddBtn').textContent = '+ ' + labels.addBtn;
   }

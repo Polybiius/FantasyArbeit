@@ -78,6 +78,15 @@ export interface AppBridge {
    */
   notifyProfilePatch(patch: Partial<Profile>): void;
   /**
+   * Einzige weitere Ausnahme von "nur lesen" (Block 4, Scharfschalten):
+   * navigiert zur Tagebuch-Seite OHNE den Hash blind auf die bare Seite
+   * zurückzusetzen -- bewahrt den von `updateCalendarHash()` gepflegten
+   * Ansicht+Tag-Unterhash (`#tagebuch/woche/<datum>` usw.), genau wie es
+   * der frühere Vanilla-Sidebar-Klick-Handler für "Abenteuerlog" tat.
+   * Alle anderen Seiten navigieren über normale `<a href="#seite">`.
+   */
+  navigateToTagebuch(): void;
+  /**
    * Aktueller Level-/XP-/Energie-Snapshot, oder `null` vor dem ersten
    * `render()`-Lauf (z.B. während des Logins). Zusammen mit
    * `onStatsChange` bewusst im `useSyncExternalStore`-Vertrag gehalten

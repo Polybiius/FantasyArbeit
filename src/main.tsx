@@ -6,6 +6,7 @@ import { HashRouter } from 'react-router-dom';
 import '@/styles/tailwind.css';
 
 import { App } from '@/app/App';
+import { AppShellPortals } from '@/app/AppShellPortals';
 import { ErrorBoundary } from '@/app/ErrorBoundary';
 import { RouteErrorBoundary } from '@/app/RouteErrorBoundary';
 import { queryClient } from '@/app/queryClient';
@@ -44,6 +45,35 @@ if (!rootEl) {
               <App />
             </RouteErrorBoundary>
           </HashRouter>
+        </QueryClientProvider>
+      </ErrorBoundary>
+    </StrictMode>,
+  );
+}
+
+// Zweiter, routen-unabhängiger Root (Block 4, App-Rahmen): Kopfbereich +
+// Sidebar müssen auf JEDER Seite bestehen bleiben, auch noch nicht
+// migrierten Vanilla-Seiten -- anders als der obige, an eine Route
+// gebundene Root. Rendert nichts selbst sichtbar an seiner eigenen
+// Stelle im DOM, sondern nur zwei createPortal()-Ziele
+// (AppShellPortals.tsx). Kein HashRouter nötig -- Sidebar/StatsHeader
+// nutzen keine Routing-Hooks, nur die Bridge.
+const shellRootEl = document.getElementById('app-shell-root');
+if (!shellRootEl) {
+  console.error('#app-shell-root nicht gefunden — App-Rahmen wird nicht gemountet.');
+} else {
+  createRoot(shellRootEl, {
+    onUncaughtError: (error) => {
+      logToErrorLog('React AppShell onUncaughtError', String(error));
+    },
+    onCaughtError: (error) => {
+      logToErrorLog('React AppShell onCaughtError', String(error));
+    },
+  }).render(
+    <StrictMode>
+      <ErrorBoundary>
+        <QueryClientProvider client={queryClient}>
+          <AppShellPortals />
         </QueryClientProvider>
       </ErrorBoundary>
     </StrictMode>,

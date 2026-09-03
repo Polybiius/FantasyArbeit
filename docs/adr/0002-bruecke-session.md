@@ -248,3 +248,57 @@ Die echte Vanilla-Bridge macht das schon richtig (`navState`/
 synchrones Setzen vor dem Mount (URL-Parameter + echtes Neuladen statt
 React-State) umgestellt, entspricht damit auch eher der echten
 Produktions-Reihenfolge.
+
+## Nachtrag 2026-09-03 (5) — Scharfschalten in der echten `index.html`
+
+Sidebar+Kopfbereich laufen jetzt tatsächlich in Produktion (Branch
+`block4-scharfschalten`), nicht mehr nur isoliert. Architektur wie in
+Nachtrag (4) skizziert, jetzt umgesetzt: `AppShellPortals.tsx` nutzt
+`createPortal()` in zwei statische Anker-Divs (`#reactStatsHeaderAnchor`/
+`#reactSidebarAnchor`) über einen ZWEITEN, routen-unabhängigen React-Root
+(`#app-shell-root`, in `main.tsx`) — der bestehende `#react-root`
+(Einstellungen-Pilot) bleibt unverändert, an seine Route gebunden.
+Vanillas `.content` (alle `.page`-Kinder) bleibt komplett unangetastet:
+kein Reparenting eines aktiv genutzten DOM-Teilbaums (Canvas-Sprites,
+Leaflet-Karte), nur zwei neue leere Geschwister-Divs im selben, jetzt
+`tw:grid`-basierten `#app`-Container.
+
+**Zweite (und letzte) bewusste Ausnahme von "nur lesen"**, neben
+`notifyProfilePatch()`: `navigateToTagebuch()`. Der frühere Vanilla-
+Klick-Handler auf "Abenteuerlog" behandelte diese eine Seite anders als
+alle übrigen (`showPage('tagebuch', false)` + `updateCalendarHash()`
+statt eines blinden `location.hash='tagebuch'`) — sonst wäre der von
+`updateCalendarHash()` gepflegte Ansicht+Tag-Unterhash
+(`#tagebuch/woche/<datum>`) beim Zurücknavigieren verworfen worden
+(Bugfix vom 2026-08-20, in Vanilla längst gelöst). `Sidebar.tsx` ruft für
+genau diesen einen Nav-Eintrag `onClick`+`preventDefault()` statt reiner
+`href`-Navigation auf; `href` bleibt für Mittelklick/neuer-Tab trotzdem
+gesetzt (kein Verhaltensunterschied zu vorher, der alte Klick-Handler
+reagierte auf dieselben Klicks ohnehin nur genauso).
+
+**Sieben echte Bugs beim Scharfschalten gefunden und behoben** (nicht
+beim isolierten Test sichtbar, weil dort keine echte Vanilla-Seite
+drumherum lief) — volle Liste inkl. Fund-Methode:
+`docs/migration-status.md`, Block 4. Kurzfassung der wichtigsten
+Lektion: **ein Inline-Style (`el.style.display=...`) schlägt IMMER jede
+CSS-Klasse, unabhängig von Spezifität** — `document.getElementById('app').
+style.display='block'` (aus der Vor-Grid-Ära, als `#app` ein simples Div
+war) hat die neue `tw:grid`-Klasse unsichtbar außer Kraft gesetzt, bis ein
+Playwright-Screenshot die daraus resultierende riesige Leerfläche zeigte.
+Bei jeder künftigen Layout-Umstellung eines Elements, dessen Sichtbarkeit
+irgendwo per `.style.display=` gesteuert wird, diesen Fall explizit
+gegenprüfen.
+
+**Zweite Lektion:** die bestehende Regressions-Suite prüfte an einer
+Stelle (`Nav-Highlight nach Reload`) `classList.contains('active')` statt
+eines `data-testid` — ein Vertrag, der beim Entwurf der Sidebar nicht auf
+dem Schirm war, weil er nirgends im testid-Register (`tests/README.md`)
+steht, nur implizit im Test-Code selbst. Vor künftigen Komponenten-
+Ablösungen lohnt sich ein Volltext-Grep des Testcodes nach dem
+abzulösenden Element (Klassennamen, IDs, nicht nur `data-testid`), nicht
+nur das offizielle Register.
+
+Verifiziert: alle 14 Seiten (Admin) + 11 (Mitglied) + mobiler Breakpoint
+per echtem Login/Klick, beide Regressions-Suiten 44/44, 0 Konsolen-/
+Seitenfehler. Vor dem Merge nach `main`: unabhängige Zweitmeinung
+(derselbe Ablauf wie bei ADR-0006).
