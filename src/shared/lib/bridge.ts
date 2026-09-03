@@ -8,6 +8,22 @@ export type Profile = Database['public']['Tables']['profiles']['Row'];
 export type AuthChangeHandler = (event: string, session: Session | null) => void;
 
 /**
+ * Snapshot der Level-/XP-/Energie-Anzeige (ADR-0002-Nachtrag 3, Block 4).
+ * Kommt fertig berechnet aus Vanillas `render()` -- React baut die
+ * Level-Kurve/Energie-Formel NICHT selbst nach (Doppelpflege-Risiko),
+ * sondern zeigt nur das bereits berechnete Ergebnis an.
+ */
+export interface CharacterStats {
+  readonly level: number;
+  readonly xpIntoLevel: number;
+  readonly xpNeededForLevel: number;
+  readonly totalXp: number;
+  readonly energyUsed: number;
+  readonly energyMax: number;
+  readonly energyRemaining: number;
+}
+
+/**
  * Die Koexistenz-Brücke, die die produktive `index.html` unter
  * `window.__bridge` bereitstellt (docs/adr/0002). Der React-Teil liest
  * ausschließlich hierüber -- er erzeugt keinen eigenen Supabase-Client.
@@ -44,6 +60,21 @@ export interface AppBridge {
    * davon nichts (siehe index.html-Kommentar an der Bridge-Definition).
    */
   notifyProfilePatch(patch: Partial<Profile>): void;
+  /**
+   * Aktueller Level-/XP-/Energie-Snapshot, oder `null` vor dem ersten
+   * `render()`-Lauf (z.B. während des Logins). Zusammen mit
+   * `onStatsChange` bewusst im `useSyncExternalStore`-Vertrag gehalten
+   * (subscribe ohne Nutzlast + separater Snapshot-Getter) -- siehe
+   * `useCharacterStats()`.
+   */
+  getCharacterStats(): Readonly<CharacterStats> | null;
+  /**
+   * Wird nach JEDEM Vanilla-`render()`-Lauf aufgerufen (deckt damit alle
+   * ~9 Aufrufstellen automatisch ab). Der Callback bekommt keine
+   * Nutzlast -- neu lesen über `getCharacterStats()`. Gibt eine
+   * Abmelde-Funktion zurück.
+   */
+  onStatsChange(fn: () => void): () => void;
 }
 
 declare global {

@@ -2174,7 +2174,7 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   const SUPABASE_ANON_KEY = 'sb_publishable_X_ltuj_9Hejeu5WKENaSZQ_DfNmUNrK';
   const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-  let session=null, profile=null, org=null, config=null, log=[];
+  let session=null, profile=null, org=null, config=null, log=[], characterStats=null;
 
   // ---- Koexistenz-Brücke (ADR-0002, docs/adr/0002-bruecke-session.md) ----
   // Während der schrittweisen React-Migration teilen sich der alte
@@ -2194,10 +2194,29 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     // ab-/anmeldet (React-Komponente mountet/unmountet).
     [...__bridgeAuthSubs].forEach(fn=>{ try{ fn(event, s); }catch(e){ console.error('bridge auth subscriber', e); } });
   }
+  // Block 4 (App-Rahmen, ADR-0002-Nachtrag 3): der künftige React-
+  // Kopfbereich zeigt Level/XP/Energie -- dieselben Werte, die render()
+  // (Zeile ~4397) bei JEDER geloggten Aktion aus dem Log neu berechnet.
+  // Statt die Level-Formel/Energie-Berechnung ein zweites Mal in
+  // TypeScript nachzubauen (Doppelpflege-Risiko, siehe die wiederholten
+  // "zwei Formeln laufen auseinander"-Lehren im Projekt), liefert render()
+  // die bereits berechneten Werte hier durch -- React bekommt nur das
+  // fertige Ergebnis, nie den Rechenweg. Bewusst ein reiner
+  // Benachrichtigungs-Kanal ohne Payload (kompatibel mit Reacts
+  // useSyncExternalStore: subscribe(fn) + getSnapshot()), nicht wie
+  // onAuthChange ein Event mit Nutzlast -- der Snapshot selbst kommt über
+  // getCharacterStats().
+  const __bridgeStatsSubs = new Set();
+  function __bridgeNotifyStats(stats){
+    characterStats = stats;
+    [...__bridgeStatsSubs].forEach(fn=>{ try{ fn(); }catch(e){ console.error('bridge stats subscriber', e); } });
+  }
   window.__bridge = Object.freeze({
     sb,
     getSession: ()=>session,
     getProfile: ()=>profile,
+    getCharacterStats: ()=>characterStats,
+    onStatsChange(fn){ __bridgeStatsSubs.add(fn); return ()=>__bridgeStatsSubs.delete(fn); },
     // fn(event, session) -- liefert eine Abmelde-Funktion zurück
     onAuthChange(fn){ __bridgeAuthSubs.add(fn); return ()=>__bridgeAuthSubs.delete(fn); },
     // Einzige Ausnahme von "nur lesen" (Block 3, siehe bridge.ts): React
@@ -4426,6 +4445,19 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       ? `${remaining} / ${config.energyMax} Energie verfügbar (regeneriert morgen)`
       : `⚡ Mana verbraucht — keine weiteren Kommandos möglich, regeneriert morgen früh.`;
     document.getElementById('energyLabel').style.color = remaining>0 ? '' : 'var(--danger)';
+
+    // Bridge-Snapshot für den künftigen React-Kopfbereich (ADR-0002-
+    // Nachtrag 3) -- läuft bei JEDEM render()-Aufruf mit, deckt damit
+    // automatisch alle ~9 Aufrufstellen ab, ohne sie einzeln anzufassen.
+    __bridgeNotifyStats({
+      level: lvl.level,
+      xpIntoLevel: lvl.into,
+      xpNeededForLevel: lvl.need,
+      totalXp,
+      energyUsed: used,
+      energyMax: config.energyMax,
+      energyRemaining: remaining,
+    });
 
     document.querySelectorAll('.abtn').forEach(btn=>{
       const a = config.actions[btn.dataset.action];

@@ -141,3 +141,45 @@ check_react_pilot_einstellungen.mjs`): Bridge eingefroren,
 `notifyProfilePatch` vorhanden, Toggle- und Formular-Schreibpfad
 patchen die Bridge korrekt zurück, Seitenwechsel zu einer Vanilla-Seite
 funktioniert unverändert, keine Konsolen-/Seitenfehler.
+
+## Nachtrag 2026-09-03 (3) — Stats-Snapshot für den künftigen App-Rahmen (Block 4, S4)
+
+Der laut Fahrplan "schwerste Brückenfall": der App-Rahmen (Block 4)
+enthält die Level-/XP-/Energie-Leiste, sichtbar auf JEDER Seite — auch
+den noch-Vanilla-Seiten. Jede geloggte Aktion (Kanban, Kontakt-Chronik,
+Verkauf, ...) läuft weiterhin im alten `<script>`-Block und muss dem
+künftigen React-Kopfbereich mitteilen, dass sich die Zahlen geändert
+haben.
+
+**Entscheidung:** kein zweiter Rechenweg. Die Level-Kurve/Energie-Formel
+existiert nur einmal, in Vanillas `render()` (Zeile ~4416, läuft nach
+jeder der ~9 Aufrufstellen). `render()` liefert das bereits fertig
+berechnete Ergebnis über `__bridgeNotifyStats(stats)` an die Bridge
+durch — React bekommt nie den Rechenweg, nur den Snapshot. Ein
+TypeScript-Nachbau derselben Formel wäre exakt die "zwei Quellen laufen
+auseinander"-Bug-Klasse, die im Projekt bereits mehrfach real aufgetreten
+ist (siehe CLAUDE.md, Abschnitt "Sonderquest-Hinweise": Warnung und
+tatsächliche Löschung müssen denselben Aktivitäts-Anker benutzen).
+
+**Neue Bridge-Mitglieder** (bewusst im `useSyncExternalStore`-Vertrag
+gehalten — subscribe ohne Nutzlast + separater Snapshot-Getter, nicht
+wie `onAuthChange` ein Event mit Payload):
+- `getCharacterStats(): Readonly<CharacterStats> | null` — `null` vor
+  dem ersten `render()`-Lauf (z.B. während des Logins).
+- `onStatsChange(fn: () => void): () => void` — feuert nach JEDEM
+  `render()`-Aufruf, deckt damit alle Aufrufstellen automatisch ab, ohne
+  sie einzeln anzufassen.
+
+React-seitig: `useCharacterStats()` (`src/shared/hooks/`), ein
+`useSyncExternalStore`-Hook nach demselben Muster wie
+`useCharacterClass()`. Verwendet wird das erst mit den echten
+App-Rahmen-Komponenten (Block 4, Kopfbereich).
+
+Empirisch gegen die echte, laufende Seite verifiziert (Playwright, echter
+Login): `getCharacterStats()` liefert direkt nach dem Login einen
+Snapshot, der exakt mit der im DOM angezeigten Levelzahl übereinstimmt
+(`{level:17, xpIntoLevel:316, xpNeededForLevel:473, totalXp:3299,
+energyUsed:0, energyMax:20, energyRemaining:20}` gegen `#levelNum` →
+`17`). Bundle-Größe unverändert (die neuen Dateien werden noch von
+nichts importiert, Tree-Shaking entfernt sie aus dem Produktions-Build).
+Beide Regressions-Suiten weiterhin grün.
