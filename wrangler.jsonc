@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // Cloudflare-Vorschau-Deployment (docs/adr, "Vorschau-Deployments" im
+  // Framework-Migrationsplan) -- rein additiv, GitHub Pages bleibt die
+  // echte Produktion. "Workers Builds" (Cloudflare-Projekt "fantasyarbeit",
+  // Settings -> Builds) ist bereits mit Polybiius/FantasyArbeit verbunden
+  // und ruft bei jedem Push auf main automatisch `npm run build` dann
+  // `npx wrangler deploy` auf. Ohne diese Datei wusste `wrangler deploy`
+  // nicht, WAS es ausliefern soll -- deshalb die vorherigen manuellen
+  // Deploys nur eine leere 404-Seite zeigten.
+  //
+  // Reiner "Assets"-Worker (kein `main`-Skript noetig) -- liefert den
+  // kompletten Repo-Wurzelordner statisch aus, exakt wie GitHub Pages es
+  // heute schon tut (index.html, fonts/, img/, dist/ liegen alle im
+  // Root). Hash-Routing (ADR-0003) braucht KEIN SPA-Fallback -- der
+  // Hash-Teil einer URL geht nie an den Server, jede Route liefert die
+  // gleiche index.html plus clientseitiges Routing.
+  "name": "fantasyarbeit",
+  "compatibility_date": "2026-09-03",
+  "assets": {
+    "directory": "."
+  }
+}

@@ -1,0 +1,17 @@
+# Cloudflare Workers "Assets" (siehe wrangler.jsonc) -- diese Datei
+# bestimmt, was aus dem Repo-Wurzelordner NICHT als statische Datei
+# ausgeliefert wird. Wichtig: node_modules existiert auf der Cloudflare-
+# Build-Maschine physisch (npm install laeuft dort vor dem Deploy),
+# obwohl es git-ignoriert ist -- ohne diesen Ausschluss wuerde der Deploy
+# versuchen, alle ~14.000 node_modules-Dateien (inkl. eines 146-MiB-
+# Binaries, weit ueber dem 25-MiB-Limit pro Datei) mit auszuliefern.
+#
+# Alles andere hier (sql/, supabase/, tests/, docs/, businessvorbereitung/
+# etc.) ist schon heute über GitHub Pages oeffentlich erreichbar (das
+# Repo ist bewusst oeffentlich, siehe CLAUDE.md Tech-Stack) -- keine neue
+# Exposition durch dieselben Dateien auch hier auszuliefern.
+node_modules/
+.git/
+Design/
+supabase/.temp/
+*.tsbuildinfo

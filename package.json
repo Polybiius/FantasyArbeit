@@ -41,7 +41,8 @@
     "supabase": "^2.116.0",
     "typescript": "5.9.3",
     "typescript-eslint": "8.69.0",
-    "vite": "8.2.2"
+    "vite": "8.2.2",
+    "wrangler": "^4.128.0"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",
