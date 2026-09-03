@@ -1,28 +1,23 @@
-import { CLASS_LABELS } from '@/shared/design-tokens/classTheme';
-import { useCharacterClass } from '@/shared/hooks/useCharacterClass';
+import { Route, Routes } from 'react-router-dom';
 
+import { EinstellungenPage } from '@/features/einstellungen/EinstellungenPage';
+
+/**
+ * Strangler-Fig-Wurzel (ADR-0001/0003): jede Route hier entspricht genau
+ * einem `#page-<name>`-Div im Vanilla-`index.html`, das eigene Sichtbarkeit
+ * bereits per `display:none`/`block` regelt. React muss dafür nichts
+ * Eigenes beitragen -- ein nicht-migrierter Pfad rendert schlicht nichts
+ * (Vanilla übernimmt die betreffende Seite komplett).
+ *
+ * `path="einstellungen"` matcht `#einstellungen` (kein führender Slash im
+ * Vanilla-Hash-Format nötig -- empirisch gegen HashRouter verifiziert,
+ * siehe Fundament-Review 2026-09-02).
+ */
 export function App() {
-  const characterClass = useCharacterClass();
-
   return (
-    <main style={{ font: '14px/1.5 system-ui, sans-serif', maxWidth: 640, margin: '48px auto', padding: '0 20px' }}>
-      {/* --arcane kommt aus styles/tokens.css (Standalone) bzw. wird vom
-          Vanilla-Code je nach Klasse gesetzt (Produktion). Kein Hex hier. */}
-      <h1 style={{ fontSize: 20, color: 'var(--arcane)' }}>React-Grundgerüst steht</h1>
-      <p>
-        Etappe 2 der Migration (docs/adr/0001): das React-Gerüst kennt jetzt die
-        Brücke zum Vanilla-Code — geteilter Datenbank-Client, Login-Status,
-        Fehlerprotokoll, Adress- und Datenzugriffs-Verwaltung, und das
-        Klassen-Farbthema.
-      </p>
-      <p>
-        Aktive Klasse (über die Brücke gelesen): <strong>{CLASS_LABELS[characterClass]}</strong>
-      </p>
-      <p>
-        Es ist noch <strong>keine Seite umgebaut</strong>. Die App läuft
-        weiterhin vollständig über die bestehende <code>index.html</code>.
-        Diese Seite hier ist nur der Entwicklungs-Einstieg (<code>app.html</code>).
-      </p>
-    </main>
+    <Routes>
+      <Route path="einstellungen" element={<EinstellungenPage />} />
+      <Route path="*" element={null} />
+    </Routes>
   );
 }

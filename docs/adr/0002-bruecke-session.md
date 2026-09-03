@@ -115,3 +115,29 @@ BroadcastChannel) führt zu `location.reload()` statt einem `null` in
 einer Variablen, die der Alt-Code als non-null behandelt.
 
 Umgesetzt in Commits `e5e3865` (Härtung) + diesem.
+
+## Nachtrag 2026-09-03 (2) — Block 3 live geschaltet + `notifyProfilePatch()`
+
+`index.html` lädt `dist/assets/react.js`/`dist/assets/app.css` jetzt
+tatsächlich (nicht mehr nur vorbereitet) — React läuft ab sofort in der
+echten Seite, für `#page-einstellungen` (Block-3-Pilot, siehe
+`src/features/einstellungen/README.md`).
+
+**Eine bewusste, schmale Ausnahme von "nur lesen":** `window.__bridge`
+bekommt `notifyProfilePatch(patch: Partial<Profile>): void`. React
+schreibt weiterhin nie direkt in das Vanilla-`profile`-Objekt — es liefert
+nur einen bereits vom Server bestätigten Patch (nach erfolgreicher
+`profiles`-Mutation), den derselbe Vanilla-Code mutiert, der `profile`
+auch sonst immer mutiert (`Object.assign` innerhalb der Bridge-Definition,
+nicht in React). Ohne das würde die Vanilla-Hälfte nach einer React-
+Schreibaktion (z.B. `chronik_show_xp`) bis zum nächsten Neuladen einen
+veralteten Wert zeigen. Löst keine Vanilla-Re-Renders aus — Seiten, die
+`profile` live lesen, tun das ohnehin erst bei ihrem nächsten eigenen
+Render.
+
+Empirisch gegen die echte Seite verifiziert (Playwright, echter
+Login+DB-Roundtrip, `~/.local/share/playwright-portable/
+check_react_pilot_einstellungen.mjs`): Bridge eingefroren,
+`notifyProfilePatch` vorhanden, Toggle- und Formular-Schreibpfad
+patchen die Bridge korrekt zurück, Seitenwechsel zu einer Vanilla-Seite
+funktioniert unverändert, keine Konsolen-/Seitenfehler.

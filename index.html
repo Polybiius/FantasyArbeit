@@ -1593,10 +1593,16 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
 
       <!-- SEITE: EINSTELLUNGEN (jeder für sich selbst) -->
       <div class="page" id="page-einstellungen" style="display:none;">
-        <div class="card">
+        <!-- Block-3-Pilot (docs/migration-status.md): Suche + Gruppen-
+             Kacheln sind React (unten, #react-root). Die Suchleiste bleibt
+             vorerst ausgeblendet, ihr Listener unten filtert Elemente, die
+             es in dieser Fassung noch nicht gibt -- kommt zurück, sobald
+             Provision/Kalender in React nachziehen (siehe React-Pilot-Hinweis
+             in der Seite selbst). Danger Zone bleibt komplett Vanilla. -->
+        <div class="card" style="display:none;">
           <input type="search" id="settingsSearchInput" class="settings-search-input" placeholder="🔍 Einstellungen durchsuchen…">
         </div>
-        <div id="settingsGroupsWrap"></div>
+        <div id="react-root"></div>
         <div class="card settings-danger-zone" style="margin-top:18px;">
           <h2>⚠️ Danger Zone</h2>
           <div class="empty-page-hint" style="margin-bottom:8px;">Destruktive Aktionen — mit Vorsicht behandeln.</div>
@@ -2193,7 +2199,18 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     getSession: ()=>session,
     getProfile: ()=>profile,
     // fn(event, session) -- liefert eine Abmelde-Funktion zurück
-    onAuthChange(fn){ __bridgeAuthSubs.add(fn); return ()=>__bridgeAuthSubs.delete(fn); }
+    onAuthChange(fn){ __bridgeAuthSubs.add(fn); return ()=>__bridgeAuthSubs.delete(fn); },
+    // Einzige Ausnahme von "nur lesen" (Block 3, siehe bridge.ts): React
+    // schreibt NICHT direkt in profile, sondern liefert einen bereits vom
+    // Server bestätigten Patch, den hier -- im Vanilla-Code -- derselbe
+    // Ort mutiert, der profile auch sonst immer mutiert (z.B.
+    // settingsToggleChanged()). Kein Re-Render wird dadurch ausgelöst;
+    // Vanilla-Seiten, die profile live lesen, holen sich den neuen Wert
+    // ohnehin erst beim nächsten eigenen Render (renderCalTasksNow() etc.
+    // triggert dieser Patch bewusst nicht mit -- die betroffenen Felder
+    // aus dem React-Pilot (real_name/company/chronik_show_xp) haben
+    // keinen solchen Seiteneffekt).
+    notifyProfilePatch(patch){ if(profile) Object.assign(profile, patch); }
   });
   // Hält die modul-lokale session-Variable frisch (u.a. bei TOKEN_REFRESHED,
   // wo der alte Code sie bisher nie nachzog) und benachrichtigt React.
@@ -11108,7 +11125,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     if(pageName==='notfallzugriff') renderEmergencyAccessPage();
     if(pageName==='produkte') renderProductsPage();
     if(pageName==='team-reporting') renderTeamReportingPage();
-    if(pageName==='einstellungen') renderEinstellungenPage();
+    // 'einstellungen' bewusst NICHT mehr über renderEinstellungenPage() --
+    // Block-3-Pilot, die Seite ist jetzt React (#react-root oben in der
+    // Seite), siehe docs/migration-status.md. renderEinstellungenPage()
+    // bleibt vorerst als toter Code stehen (referenziert von nichts mehr),
+    // wird entfernt, sobald der React-Teil vollständig ist.
     if(pageName==='statistik'){ renderStatTabs(); renderStatistikPage(); }
     if(pageName==='kanban') renderKanbanBoard();
     if(pageName==='tagebuch'){
@@ -11227,5 +11248,14 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   })();
 })();
 </script>
+<!-- React-Umbau (docs/adr/0001/0002, Block 3): der Vite-Build von app.html,
+     mit stabilen Dateinamen (vite.config.ts). MUSS nach dem obigen Vanilla-
+     <script> stehen, damit window.__bridge existiert, bevor React mountet
+     -- als type="module" wird es ohnehin erst nach jedem klassischen
+     Inline-Skript ausgeführt (deferred), aber die Reihenfolge im Markup
+     bleibt trotzdem die dokumentierte Garantie, nicht nur ein Zufall.
+     `npm run build` läuft vor jedem Commit, der src/ ändert. -->
+<link rel="stylesheet" href="dist/assets/app.css">
+<script type="module" src="dist/assets/react.js"></script>
 </body>
 </html>

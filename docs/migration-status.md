@@ -20,7 +20,7 @@ Voller Fahrplan: Claude-Erinnerung `project_framework_migration_plan`
 | 1 | Grundgerüst (React/TS/Vite/TanStack Query/RHF+Zod/ESLint-Umstieg) | ✅ erledigt (2026-09-02) | Versionen + Begründung: `docs/setup-notes.md`. Vite-Einstieg `app.html`. Keine Seite migriert. |
 | 2 | Brücke (Routing/Auth/Theming/globale Muster) | ✅ erledigt (2026-09-02) | 4 Stücke: `a9169e6` / `13e7e0e` / `ba43e8c` / `b982dcb`. |
 | — | Fundament-Review-Funde beheben (blinder Opus-Review) | ✅ erledigt (2026-09-03) | `e5e3865` P2/P3/P7 · `b0be43c` P1 (dist/ mitversioniert) · `e483c94` P4/P5/P6 · `fc25158` Konventionen (queryKeys u.a.). Offen für Block 3: der feste `<script>`+`<link>` in index.html; `errorLog` bei org-losen Nutzern. |
-| 3 | Pilot im Wegwerf-Layout (Kandidat: Einstellungen) | offen | testet Block 1–2 |
+| 3 | Pilot im Wegwerf-Layout (Kandidat: Einstellungen) | 🔶 läuft (2026-09-03) | Profil+Kontakt-Chronik live in Produktion; Provision/Kalender/Suche offen — siehe `src/features/einstellungen/README.md` |
 | 4 | App-Rahmen (Sidebar/Vollbreite, Design-Grundlage) | offen | nach dem Pilot, nicht davor (S4) |
 | 5 | Kanban + Kontakte gemeinsam — **Verhalten bit-identisch eingefroren** | offen | gemeinsame Kontakt-Karte entsteht hier; `contacts` serverseitig paginieren |
 | 5b | B2C→B2B-Aktions-Rework | offen | **erste Priorität direkt nach 5** — eigene Änderung, getrennt von der Migration |
@@ -30,7 +30,7 @@ Voller Fahrplan: Claude-Erinnerung `project_framework_migration_plan`
 
 | Bereich | Status | Block | Datum |
 |---------|--------|-------|-------|
-| Einstellungen | Vanilla | 3 (Pilot-Kandidat) | — |
+| Einstellungen | 🔶 teilweise React (Profil, Kontakt-Chronik) | 3 (Pilot-Kandidat) | 2026-09-03 |
 | Kanban | Vanilla | 5 | — |
 | Kontakte | Vanilla | 5 | — |
 | Dungeons | Vanilla | 6 | — |

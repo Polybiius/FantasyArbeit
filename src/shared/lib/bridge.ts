@@ -29,6 +29,16 @@ export interface AppBridge {
    * Gibt eine Abmelde-Funktion zurück.
    */
   onAuthChange(fn: AuthChangeHandler): () => void;
+  /**
+   * Einzige Ausnahme von "nur lesen" (ADR-0002-Nachtrag, Block 3): nach
+   * einer erfolgreichen React-Mutation auf `profiles` wird das im
+   * Vanilla-Code lebende `profile`-Objekt nachgezogen, damit beide
+   * Hälften denselben Stand zeigen, ohne dass React direkt hineinschreibt
+   * -- der Vanilla-Code bleibt der einzige Ort, der das Objekt wirklich
+   * mutiert, React liefert nur den bereits vom Server bestätigten Patch.
+   * Löst KEINE Re-Renders in React aus (das übernimmt TanStack Query).
+   */
+  notifyProfilePatch(patch: Partial<Profile>): void;
 }
 
 declare global {
