@@ -108,6 +108,14 @@ export function Sidebar() {
             onClick={
               item.page === 'tagebuch'
                 ? (e) => {
+                    // Mittelklick/Strg/Cmd/Shift+Klick (neuer Tab/Fenster)
+                    // NICHT abfangen -- sonst würde ausgerechnet dieser
+                    // eine Nav-Eintrag nie einen neuen Tab öffnen können,
+                    // obwohl `href` gesetzt ist. Von einer unabhängigen
+                    // Zweitmeinung gefunden: der Kommentar hier behauptete
+                    // ursprünglich, das sei "kein Verhaltensunterschied zu
+                    // vorher", stimmte aber nur für Mittelklick.
+                    if (e.metaKey || e.ctrlKey || e.shiftKey) return;
                     e.preventDefault();
                     getBridge().navigateToTagebuch();
                   }

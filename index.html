@@ -11313,13 +11313,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     }
   }
 
-  // Abenteuerlog-Klick bewusst als Sonderfall: showPage('tagebuch') würde
-  // sonst blind location.hash='tagebuch' setzen und damit den per
-  // updateCalendarHash() gespeicherten Ansicht+Tag-Hash verwerfen (Bug,
-  // gefunden 2026-08-20 -- eine Reload-Persistenz, die nur bis zum
-  // nächsten Reiter-Wechsel hielt). calViewMode/calFocusDate selbst
-  // bleiben unangetastet (reine JS-Variablen, showPage blendet nur
-  // Seiten ein/aus), deshalb reicht es, den Hash danach neu zu schreiben.
+  // Seit Block 4 (Scharfschalten) ein Kein-Op: .nav-btn existiert nicht
+  // mehr, Sidebar.tsx registriert die Klicks jetzt selbst (inkl. des
+  // Abenteuerlog-Sonderfalls, siehe navigateToTagebuch() weiter oben in
+  // der Bridge-Definition sowie Sidebar.tsx). Bewusst nicht gelöscht,
+  // gleiches Prinzip wie renderEinstellungenPage().
   document.querySelectorAll('.nav-btn').forEach(btn=>{
     btn.addEventListener('click', ()=>{
       if(btn.dataset.page==='tagebuch'){ showPage('tagebuch', false); updateCalendarHash(); }

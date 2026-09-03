@@ -66,8 +66,8 @@ export type NavPageId =
 export type NavVisibility =
   | 'always' // sichtbar außer im Pool-Zustand (POOL_HIDDEN_NAV_PAGES)
   | 'poolOnly' // NUR im Pool-Zustand sichtbar (nur "organisation")
-  | 'admin' // nur profile.role==='admin', unabhängig vom Pool-Zustand
-  | 'guildFounder'; // nur bei mindestens einer gegründeten Gilde
+  | 'admin' // profile.role==='admin' UND nicht im Pool-Zustand
+  | 'guildFounder'; // nur bei mindestens einer gegründeten Gilde, nicht im Pool-Zustand
 
 export interface NavItemDef {
   readonly page: NavPageId;
@@ -102,6 +102,14 @@ export function isNavItemVisible(
   item: NavItemDef,
   flags: { readonly isPool: boolean; readonly isAdmin: boolean; readonly isGuildFounder: boolean },
 ): boolean {
+  // Härtung über die 1:1-Portierung von index.html hinaus (unabhängige
+  // Zweitmeinung, 2026-09-03): Vanillas admin-Zeilen prüften nur
+  // profile.role, unabhängig vom Pool-Zustand -- ein Admin, der (auf
+  // welchem Weg auch immer) in den Pool wechselt, hätte weiterhin
+  // Produkte/Fehlerprotokoll/Notfallzugriff in der Sidebar gesehen.
+  // Heute strukturell unerreichbar (jeder Weg in den Pool erzwingt
+  // role='member'), aber ohne Funktionsverlust zu schließen.
+  if (flags.isPool && (item.visibility === 'admin' || item.visibility === 'guildFounder')) return false;
   switch (item.visibility) {
     case 'poolOnly':
       return flags.isPool;
