@@ -66,14 +66,22 @@ vorher absehbar:**
    Testlauf als echte, ausgelieferte Klasse im Bundle, ebenso `flex`/
    `grid`/`block`/`static`/`inline` aus `style={{display:'flex'}}`-artigen
    Inline-Style-Strings in eigenem React-Code (Tailwinds Scanner ist reine
-   Text-Erkennung, kein CSS-/JS-bewusstes Parsen). **Ohne Präfix wäre das
-   scharf gewesen:** `index.html` hat bereits eine eigene
-   `.grid{grid-template-columns:1fr}`-Regel (mobile Layout-Anpassung) —
-   Tailwinds gleichnamiges `.grid{display:grid}` hätte bei gleicher
-   Spezifität je nach Ladereihenfolge diese Regel in Produktion überschrieben,
-   ein unsichtbarer Layout-Bug auf schmalen Bildschirmen. Das Präfix macht
-   eine Namenskollision mit bestehendem Vanilla-CSS strukturell unmöglich,
-   statt sich auf "kein Vanilla-Name kollidiert zufällig" zu verlassen.
+   Text-Erkennung, kein CSS-/JS-bewusstes Parsen). `index.html` hat
+   bereits eine eigene `.grid{display:grid;grid-template-columns:1.1fr
+   1fr}`-Regel — Tailwinds gleichnamiges `.grid{display:grid}` hätte bei
+   gleicher Spezifität je nach Ladereihenfolge in dieselbe Regel
+   geschrieben. **Präzisierung nach unabhängiger Zweitmeinung
+   (2026-09-03):** Da beide Regeln nur `display:grid` gemeinsam haben
+   (Tailwinds `.grid` setzt sonst nichts), wäre `grid-template-columns`
+   dabei NICHT verloren gegangen — die ursprüngliche Formulierung
+   ("unsichtbarer Layout-Bug") war dramatischer als die tatsächliche
+   Gefahr. Die Vorsichtsmaßnahme bleibt trotzdem richtig: die Zweitmeinung
+   hat alle 442 in `index.html` vorkommenden Klassennamen einzeln gegen
+   Tailwind kompiliert — `.grid` ist die **einzige** Kollision im
+   gesamten Bestand, aber zukünftige Vanilla-Änderungen könnten jederzeit
+   eine zweite erzeugen. Das Präfix macht eine Namenskollision mit
+   bestehendem UND künftigem Vanilla-CSS strukturell unmöglich, statt
+   sich auf "kein Vanilla-Name kollidiert zufällig" zu verlassen.
 
 Einbindung (`src/styles/tailwind.css`):
 
@@ -85,10 +93,32 @@ Einbindung (`src/styles/tailwind.css`):
 @source '../**/*.{ts,tsx}';
 
 @theme {
+  /* Tailwinds eigene Standardpalette (color-red-500 usw.) UND
+     Standard-Radien/-Schatten schließen -- sonst bleibt sie trotz
+     eigenem Mapping zusätzlich erreichbar. */
+  --color-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+
   --color-panel-2: var(--panel-2);
   /* … Rest der bestehenden Tokens, siehe src/styles/tailwind.css */
 }
 ```
+
+**Nachtrag nach unabhängiger Zweitmeinung (2026-09-03):** die erste
+Fassung dieses `@theme`-Blocks bildete nur 13 der 22 Basis-Tokens ab —
+`--danger`/`--success`/`--amber`/`--shadow-rest`/`--shadow-raised`/
+`--radius-pill` fehlten, während Tailwinds komplette eingebaute
+Standardpalette (`tw:bg-red-500`, `tw:shadow-xl`, `tw:rounded-3xl`, ...)
+weiterhin klaglos funktionierte. Das war das genaue Gegenteil des unter
+"Design-System-Drift-Schutz" oben beschriebenen Ziels — eine künftige
+Sitzung hätte zur bequemen Tailwind-Standardfarbe statt zum eigenen
+Token gegriffen, unauffällig im Diff. Fix: die fehlenden sechs Tokens
+ergänzt UND `--color-*`/`--radius-*`/`--shadow-*` vor der eigenen Liste
+auf `initial` gesetzt, damit ausschließlich die neun eigenen Farben, fünf
+Radien und zwei Schatten erreichbar sind. Verifiziert: alle neun eigenen
+Werte generieren korrektes CSS, `tw:bg-red-500`/`tw:rounded-3xl`/
+`tw:shadow-xl` erzeugen danach nichts mehr.
 
 Eine Utility-Klasse im JSX sieht dadurch so aus: `className="tw:flex
 tw:bg-panel-2 tw:rounded-lg"`. Verifiziert: `--tw-color-panel-2:
@@ -131,6 +161,23 @@ Vanilla-CSS, siehe oben.
 IMMER mit `tw:`-Präfix schreiben (`tw:flex`, nicht `flex`) — das Präfix
 ist keine Stilfrage, sondern der einzige Schutz gegen Namenskollisionen
 mit der noch aktiven Vanilla-CSS.
+
+**Kleine Ehrlichkeits-Präzisierung, aus der Zweitmeinung:** sobald
+irgendeine echte Utility-Klasse benutzt wird, schreibt Tailwind zusätzlich
+einen kleinen `@layer properties`-Block, der auf dem Universal-Selektor
+(`*, :before, :after, ::backdrop`) sitzt — er registriert dort aber
+ausschließlich eigene `--tw-*`-Hilfsvariablen (für Transform/Filter-
+Verkettung), keine sichtbaren Stile. Verifiziert: `index.html` benutzt
+keine einzige `--tw-*`-Variable, der Block ist inert. "Strukturell
+unmöglich" (oben) gilt für alle sichtbaren Stile; dieser eine interne
+Block ist die einzige, harmlose Ausnahme von "nichts Ungescoptes".
+
+**`clsx`/`class-variance-authority`/`tailwind-merge`** wurden im selben
+Zug als exakt gepinnte Abhängigkeiten installiert (`package.json`),
+werden aber in diesem Schritt noch nirgends verwendet — sie sind die in
+der shadcn-Doku übliche Werkzeug-Kombination für Komponenten-Varianten
+und kommen erst mit den ersten echten shadcn-Bausteinen in Block 4 zum
+Einsatz, keine vergessene Altlast.
 
 **Bewusst NICHT Preflight** — siehe oben, dauerhafte Einschränkung, nicht
 nur für den Umbau: solange React-Seiten und Vanilla-Seiten im selben
