@@ -51,6 +51,18 @@ export const qk = {
     detail: (id: string) => ['kontakte', 'detail', id] as const,
   },
 
-  // Weitere Bereiche (kanban, kalender, statistik, ...) ergänzen ihre
+  // --- Block 5 (Kanban), erster Baustein ---
+  kanban: {
+    all: () => ['kanban'] as const,
+    /**
+     * Kanban ist strikt die eigene Vertriebspipe (CLAUDE.md "Kanban ist
+     * strikt die eigene Vertriebspipe, kein Gilden-Blick") -- kein
+     * `ListScope` mit Gilden-/Org-Pool-Sicht nötig wie bei `kontakte`,
+     * nur die eigene `owner_id` als Schlüssel-Teil.
+     */
+    board: (ownerId: string) => ['kanban', 'board', ownerId] as const,
+  },
+
+  // Weitere Bereiche (kalender, statistik, ...) ergänzen ihre
   // Einträge in ihrem jeweiligen Migrations-Block nach demselben Muster.
 } as const;
