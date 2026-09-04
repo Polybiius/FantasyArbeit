@@ -1995,11 +1995,11 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
      (Kanban-Ziehen, oder "Termin eintragen" im Kontaktformular) — anders als
      terminLeadModal oben wird hier kein neuer Kontakt angelegt, nur ein
      Kalendertermin. Überspringbar (✕), der Kanban-Wechsel passiert trotzdem. -->
-<div class="loc-modal" id="kanbanTerminModal" style="display:none;">
+<div class="loc-modal" id="kanbanTerminModal" data-testid="kanban-termin-modal" style="display:none;">
   <div class="loc-modal-inner">
     <div class="loc-modal-header">
       <span id="kanbanTerminTitle">Termin eintragen</span>
-      <button id="kanbanTerminClose">✕</button>
+      <button id="kanbanTerminClose" data-testid="kanban-termin-close">✕</button>
     </div>
     <div class="kanban-newlead-form">
       <label class="cdl" style="display:block;">Datum</label>

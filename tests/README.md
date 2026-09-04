@@ -1,7 +1,7 @@
 # Regressions-Suiten
 
 Zwei Playwright-Skripte, die die echte App in einem Headless-Chromium
-durchklicken und ~57 Dinge prüfen (Login/Rollen, XP→Level, Kanban-
+durchklicken und ~61 Dinge prüfen (Login/Rollen, XP→Level, Kanban-
 Spalten, Kanban-Übergänge inkl. RPC-Verträgen, zentrale Navigation
 inkl. Deep-Links, Kalender/Termine, Kontakt-Chronik, Verkauf/Statistik,
 mobiles/Touch-Verhalten).
@@ -69,6 +69,7 @@ Prüf-Logik (z.B. `style.display` → aktive Route) passt sich an.
 | `kanban-extra-action-modal` / `kanban-extra-action-close` | Zusatzaktion-Popup (Bedarfsanalyse/Dauerbrenner) | Ohne Zusatzaktion schließen |
 | `sale-entry-modal` / `sale-entry-category` / `sale-entry-product` / `sale-entry-vertragsbeginn` / `sale-entry-done` | Verkaufs-Popup „Gewonnen" (`recordWonSalesLoop()`) | Kanban-Übergang „-> Gewonnen" |
 | `sale-lost-modal` / `sale-lost-category` / `sale-lost-product` / `sale-lost-confirm` | Verkaufs-Popup „Verloren" (`recordLostSale()`) | Kanban-Übergang „-> Verloren" |
+| `kanban-termin-modal` / `kanban-termin-close` | Termin-Popup (`promptKanbanTermin()`) | Ohne Termin überspringen (Kanban-Übergang „Kundenausbau") |
 | `contact-detail-content` / `contact-detail-notfound` | Kontakt-Seite | Deep-Link vorhanden / Fehlerseite |
 | `contact-detail-title` | Kontakt-Seite | Name des geladenen Kontakts |
 | `contact-detail-chronik` | Kontakt-Seite | zusammengeführte Chronik |

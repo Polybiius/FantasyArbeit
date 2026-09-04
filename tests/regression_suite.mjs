@@ -35,8 +35,11 @@
 //    die "abschluss"-Hauptaktion, wenn ein Produkt eingetragen wird --
 //    NUR der positive Pfad ist hier geprueft, der Revert-Pfad ohne
 //    Produkt (siehe Bugfix-Kommentar im echten Code) ist bewusst noch
-//    NICHT abgedeckt, siehe Kommentar am Testblock selbst. Bewusst
-//    schrittweise -- die uebrigen Uebergaenge (Dauerbrenner/Kundenausbau/
+//    NICHT abgedeckt, siehe Kommentar am Testblock selbst. Vierter
+//    Uebergang ("Kundenausbau", Gewonnen -> Ersttermin vereinbart) deckt
+//    einen leicht falsch zu kodierenden Sonderfall ab: loggt "kundenausbau"
+//    statt "termin_vereinbart" und KEINE Trichter-Marke. Bewusst
+//    schrittweise -- die uebrigen Uebergaenge (Dauerbrenner/
 //    Zweittermin-Pfad) folgen als eigene, spaetere Ausbaustufen.
 //
 // Alle Tests arbeiten mit synthetischen, per page.route() eingeschleusten
@@ -134,6 +137,18 @@ async function openKanbanCardMoveMenu(contactId) {
 async function dragKanbanCardToStage(contactId, stage) {
   await openKanbanCardMoveMenu(contactId);
   await page.locator(`${tid('kanban-move-grid')} [data-movestage="${stage}"]`).click().catch(() => {});
+}
+// Wartet, bis eine Karte die erwartete Spalte zeigt, und liefert den
+// tatsaechlichen data-stage-Wert zurueck (fuer die Fehlermeldung im
+// nachfolgenden record()-Aufruf). Fund einer unabhaengigen Zweitmeinung
+// (2026-09-04, gleiche Runde wie oben): dieselbe 5-Zeilen-Sequenz stand
+// bereits viermal identisch in den Kanban-Uebergangs-Testbloecken.
+async function waitForCardStage(contactId, expectedStage) {
+  await page.waitForFunction(
+    ([id, stage]) => document.querySelector(`[data-testid="kanban-card"][data-contact="${id}"]`)?.dataset.stage === stage,
+    [contactId, expectedStage], { timeout: 5000 },
+  ).catch(() => {});
+  return page.locator(`${tid('kanban-card')}[data-contact="${contactId}"]`).getAttribute('data-stage').catch(() => null);
 }
 
 // ---- Test 2 Vorbereitung: bekannte XP-Summe einschleusen ----
@@ -260,6 +275,15 @@ await page.route('**/rest/v1/rpc/update_contact_locked*', async route => {
   if (body && body.p_id === TRANSITION_CONTACT_ID) {
     lockedUpdateCalls.push(body);
     if (body.p_patch && body.p_patch.kanban_stage) transitionContactStage = body.p_patch.kanban_stage;
+    // Bekannte, akzeptierte Luecke (Fund einer unabhaengigen Zweitmeinung,
+    // 2026-09-04): ein p_patch.status (z.B. 'kunde' nach "Gewonnen") wird
+    // HIER nur protokolliert, aber nie in makeSyntheticContact() zurueck-
+    // gespiegelt -- der isKunde-Zweig in moveKanbanCard() (unterdrueckt
+    // Trichter-Marken bei Bestandskunden) bleibt fuer TRANSITION_CONTACT_ID
+    // deshalb im ganzen Testlauf unerreicht. Aktuell folgenlos (keine
+    // Assertion haengt daran), aber falls ein kuenftiger Testfall genau
+    // dieses isKunde-Verhalten pruefen soll, muss status hier zusaetzlich
+    // gespiegelt werden.
     await fulfillJson(route, { id: TRANSITION_CONTACT_ID, updated_at: new Date().toISOString() });
     return;
   }
@@ -769,11 +793,7 @@ await page.setViewportSize({ width: 390, height: 844 });
   // (sonst wuerde eine dritte, hier nicht erwartete Aktion mitgeloggt).
   await page.waitForSelector(tid('kanban-extra-action-modal'), { state: 'visible', timeout: 5000 }).catch(() => {});
   await page.locator(tid('kanban-extra-action-close')).click().catch(() => {});
-  await page.waitForFunction(
-    (id) => document.querySelector(`[data-testid="kanban-card"][data-contact="${id}"]`)?.dataset.stage === 'angebot_versendet',
-    TRANSITION_CONTACT_ID, { timeout: 5000 },
-  ).catch(() => {});
-  const newStage = await page.locator(`${tid('kanban-card')}[data-contact="${TRANSITION_CONTACT_ID}"]`).getAttribute('data-stage').catch(() => null);
+  const newStage = await waitForCardStage(TRANSITION_CONTACT_ID, 'angebot_versendet');
   record('Kanban-Uebergang "Ersttermin vereinbart" -> "Angebot versendet": Karte landet in der neuen Spalte', newStage === 'angebot_versendet', `Spalte: ${newStage}`);
   record('Kanban-Uebergang: update_contact_locked mit korrektem Patch aufgerufen',
     lockedUpdateCalls.some(c => c.p_id === TRANSITION_CONTACT_ID && c.p_patch && c.p_patch.kanban_stage === 'angebot_versendet'),
@@ -818,11 +838,7 @@ await page.setViewportSize({ width: 390, height: 844 });
   await page.selectOption(tid('sale-lost-category'), 'RegressTestKategorie').catch(() => {});
   await page.selectOption(tid('sale-lost-product'), PRODUCT_ID_SH).catch(() => {});
   await page.locator(tid('sale-lost-confirm')).click().catch(() => {});
-  await page.waitForFunction(
-    (id) => document.querySelector(`[data-testid="kanban-card"][data-contact="${id}"]`)?.dataset.stage === 'verloren',
-    TRANSITION_CONTACT_ID, { timeout: 5000 },
-  ).catch(() => {});
-  const stageAfterLoss = await page.locator(`${tid('kanban-card')}[data-contact="${TRANSITION_CONTACT_ID}"]`).getAttribute('data-stage').catch(() => null);
+  const stageAfterLoss = await waitForCardStage(TRANSITION_CONTACT_ID, 'verloren');
   record('Kanban-Uebergang "-> Verloren": Karte landet in der neuen Spalte', stageAfterLoss === 'verloren', `Spalte: ${stageAfterLoss}`);
   record('Kanban-Uebergang "-> Verloren": KEINE Hauptaktion geloggt ("Verloren ist verloren")',
     loggedActionCalls.length === loggedCallsBeforeLoss, `neu geloggt seit vorher: ${loggedActionCalls.slice(loggedCallsBeforeLoss).join(', ') || '(keine)'}`);
@@ -856,11 +872,7 @@ await page.setViewportSize({ width: 390, height: 844 });
   await page.selectOption(tid('sale-entry-product'), PRODUCT_ID_SH).catch(() => {});
   await page.fill(tid('sale-entry-vertragsbeginn'), ymdHostLocal(new Date())).catch(() => {});
   await page.locator(tid('sale-entry-done')).click().catch(() => {});
-  await page.waitForFunction(
-    (id) => document.querySelector(`[data-testid="kanban-card"][data-contact="${id}"]`)?.dataset.stage === 'gewonnen',
-    TRANSITION_CONTACT_ID, { timeout: 5000 },
-  ).catch(() => {});
-  const stageAfterWin = await page.locator(`${tid('kanban-card')}[data-contact="${TRANSITION_CONTACT_ID}"]`).getAttribute('data-stage').catch(() => null);
+  const stageAfterWin = await waitForCardStage(TRANSITION_CONTACT_ID, 'gewonnen');
   record('Kanban-Uebergang "-> Gewonnen": Karte landet in der neuen Spalte', stageAfterWin === 'gewonnen', `Spalte: ${stageAfterWin}`);
   record('Kanban-Uebergang "-> Gewonnen": sales-Insert mit status=gewonnen + richtigem Produkt abgefangen',
     salesInsertedForTransitionContact.slice(salesCallsBeforeWin).some(s => s.contact_id === TRANSITION_CONTACT_ID && s.status === 'gewonnen' && s.product_id === PRODUCT_ID_SH),
@@ -878,6 +890,38 @@ await page.setViewportSize({ width: 390, height: 844 });
   record('Kanban-Uebergang "-> Gewonnen": weiterer update_contact_locked setzt contacts.status=kunde',
     lockedUpdateCalls.slice(lockedCallsBeforeWin).some(c => c.p_id === TRANSITION_CONTACT_ID && c.p_patch && c.p_patch.status === 'kunde'),
     `Aufrufe insgesamt: ${lockedUpdateCalls.length}`);
+}
+
+// ---- NEU: Uebergang "Kundenausbau" -- ein wichtiger, leicht falsch zu
+// kodierender Sonderfall: Gewonnen/Verloren -> Ersttermin/Angebot/
+// Zweittermin loggt NICHT dieselbe Aktion wie ein frischer Sprung auf die
+// Zielspalte, sondern die eigene Aktion "kundenausbau" (siehe
+// moveKanbanCard()-Reihenfolge: der fromTerminal&&toActive-Zweig wird VOR
+// dem toStage==='ersttermin_vereinbart'-Zweig geprueft). Testkontakt
+// steht nach dem vorigen Test auf "gewonnen" -> Ziel "Ersttermin
+// vereinbart" loest deshalb "kundenausbau" aus, NICHT "termin_vereinbart".
+// Zusaetzlich: KEINE Trichter-Marke (die haengt an fromStage
+// ersttermin_vereinbart/zweittermin, nicht an gewonnen/verloren). Das
+// anschliessende Termin-Popup wird uebersprungen (wie bei Ersttermin
+// ueblich, siehe CLAUDE.md) -- der dabei ausgeloeste sb.from('termine').insert()
+// ist ohnehin bereits app-weit abgefangen (siehe termine-Route oben).
+{
+  const loggedCallsBeforeAusbau = loggedActionCalls.length;
+  const lockedCallsBeforeAusbau = lockedUpdateCalls.length;
+  await dragKanbanCardToStage(TRANSITION_CONTACT_ID, 'ersttermin_vereinbart');
+  await page.waitForSelector(tid('kanban-termin-modal'), { state: 'visible', timeout: 5000 }).catch(() => {});
+  await page.locator(tid('kanban-termin-close')).click().catch(() => {});
+  const stageAfterAusbau = await waitForCardStage(TRANSITION_CONTACT_ID, 'ersttermin_vereinbart');
+  const newLoggedAusbau = loggedActionCalls.slice(loggedCallsBeforeAusbau);
+  record('Kanban-Uebergang "Kundenausbau": Karte landet in der neuen Spalte', stageAfterAusbau === 'ersttermin_vereinbart', `Spalte: ${stageAfterAusbau}`);
+  record('Kanban-Uebergang "Kundenausbau": update_contact_locked mit kanban_stage=ersttermin_vereinbart aufgerufen',
+    lockedUpdateCalls.slice(lockedCallsBeforeAusbau).some(c => c.p_id === TRANSITION_CONTACT_ID && c.p_patch && c.p_patch.kanban_stage === 'ersttermin_vereinbart'),
+    `Aufrufe insgesamt: ${lockedUpdateCalls.length}`);
+  record('Kanban-Uebergang "Kundenausbau": Aktion "kundenausbau" geloggt (NICHT "termin_vereinbart")',
+    newLoggedAusbau.includes('kundenausbau') && !newLoggedAusbau.includes('termin_vereinbart'), `neu geloggt: ${newLoggedAusbau.join(', ') || '(keine)'}`);
+  record('Kanban-Uebergang "Kundenausbau": KEINE Trichter-Marke mitgeloggt (Herkunft war "gewonnen", nicht Ersttermin/Zweittermin)',
+    !newLoggedAusbau.includes('termin_wahrgenommen') && !newLoggedAusbau.includes('zweittermin_wahrgenommen') && !newLoggedAusbau.includes('zweittermin_vereinbart'),
+    `neu geloggt: ${newLoggedAusbau.join(', ') || '(keine)'}`);
 }
 
 // Tag-Reiter: Kalender-/Aufgaben-Spalten stapeln sich mobil (dieselbe
