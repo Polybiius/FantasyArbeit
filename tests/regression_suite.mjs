@@ -29,8 +29,14 @@
 //    vom Ersttermin/Zweittermin aus erreichbar). Zweiter Uebergang (-> Verloren)
 //    deckt den strukturell anderen Fall ab: KEINE Hauptaktion ("Verloren ist
 //    verloren"), dafuer ein eigener sales-Insert (kein RPC) + ein zweiter
-//    update_contact_locked-Aufruf (contacts.status). Bewusst schrittweise --
-//    die uebrigen Uebergaenge (Gewonnen/Dauerbrenner/Kundenausbau/
+//    update_contact_locked-Aufruf (contacts.status). Dritter Uebergang
+//    (-> Gewonnen, ueber moveContactToGewonnenAndRecordSale()) ist die
+//    komplexeste Einzelaktion: Verkaufs-Popup mit Pflichtfeldern, danach
+//    die "abschluss"-Hauptaktion, wenn ein Produkt eingetragen wird --
+//    NUR der positive Pfad ist hier geprueft, der Revert-Pfad ohne
+//    Produkt (siehe Bugfix-Kommentar im echten Code) ist bewusst noch
+//    NICHT abgedeckt, siehe Kommentar am Testblock selbst. Bewusst
+//    schrittweise -- die uebrigen Uebergaenge (Dauerbrenner/Kundenausbau/
 //    Zweittermin-Pfad) folgen als eigene, spaetere Ausbaustufen.
 //
 // Alle Tests arbeiten mit synthetischen, per page.route() eingeschleusten
@@ -107,6 +113,27 @@ async function gotoHash(hash, waitFor, { timeout = 8000 } = {}) {
   } else {
     await page.waitForTimeout(400); // Redirect-/Ablehnungs-Fall: kurzer Ausklang
   }
+}
+
+// Oeffnet das Kanban-Verschieben-Menue einer Karte ueber den mobilen
+// Touch-Knopf (braucht den mobilen Viewport, siehe Kanban-Uebergangs-
+// Testbloecke weiter unten). Fund einer unabhaengigen Zweitmeinung
+// (2026-09-04): diese Sequenz stand bereits dreimal fast identisch im
+// Code, bevor sie hier extrahiert wurde -- jeder weitere Kanban-Uebergang
+// haette sie ein weiteres Mal kopiert.
+async function openKanbanCardMoveMenu(contactId) {
+  const moveBtn = page.locator(`${tid('kanban-card')}[data-contact="${contactId}"] ${tid('kanban-move-btn')}`);
+  await moveBtn.click().catch(() => {});
+  await page.waitForSelector(tid('kanban-move-modal'), { state: 'visible', timeout: 4000 }).catch(() => {});
+}
+// Oeffnet das Menue UND waehlt direkt die Zielspalte -- deckt den
+// eigentlichen "Kartenzug" ab, den alle Kanban-Uebergangs-Testbloecke
+// brauchen. Baut auf openKanbanCardMoveMenu() auf statt sie zu duplizieren
+// (zweiter Fund derselben Zweitmeinungsrunde: die erste Extraktion wurde
+// nicht konsequent an allen vier Stellen angewendet).
+async function dragKanbanCardToStage(contactId, stage) {
+  await openKanbanCardMoveMenu(contactId);
+  await page.locator(`${tid('kanban-move-grid')} [data-movestage="${stage}"]`).click().catch(() => {});
 }
 
 // ---- Test 2 Vorbereitung: bekannte XP-Summe einschleusen ----
@@ -706,9 +733,7 @@ await page.waitForFunction(
   record('Verschieben-Knopf (Touch-Alternative) nur mobil sichtbar', desktopMoveBtnDisplay === 'none' && mobileMoveBtnDisplay !== 'none', `desktop: ${desktopMoveBtnDisplay}, mobil: ${mobileMoveBtnDisplay}`);
 
   const firstRow = KANBAN_TEST_ROWS[0];
-  const moveBtn = page.locator(`${tid('kanban-card')}[data-contact="${firstRow.id}"] ${tid('kanban-move-btn')}`);
-  await moveBtn.click({ trial: false }).catch(() => {});
-  await page.waitForSelector(`${tid('kanban-move-modal')}`, { state: 'visible', timeout: 4000 }).catch(() => {});
+  await openKanbanCardMoveMenu(firstRow.id);
   const menuVisible = await page.locator(tid('kanban-move-modal')).evaluate(el => el.style.display !== 'none').catch(() => false);
   const optionCount = await page.locator(`${tid('kanban-move-grid')} [data-movestage]`).count().catch(() => 0);
   record('Antippen des Verschieben-Knopfs oeffnet das Zielspalten-Menue', menuVisible);
@@ -739,14 +764,11 @@ await page.waitForFunction(
 // aktuell bereits der Fall ist.
 await page.setViewportSize({ width: 390, height: 844 });
 {
-  const moveBtn = page.locator(`${tid('kanban-card')}[data-contact="${TRANSITION_CONTACT_ID}"] ${tid('kanban-move-btn')}`);
-  await moveBtn.click().catch(() => {});
-  await page.waitForSelector(tid('kanban-move-modal'), { state: 'visible', timeout: 4000 }).catch(() => {});
-  await page.locator(`${tid('kanban-move-grid')} [data-movestage="angebot_versendet"]`).click().catch(() => {});
+  await dragKanbanCardToStage(TRANSITION_CONTACT_ID, 'angebot_versendet');
   // Bedarfsanalyse-Zusatzpopup erscheint danach -- ohne Zusatzaktion schliessen
   // (sonst wuerde eine dritte, hier nicht erwartete Aktion mitgeloggt).
-  await page.waitForSelector('#kanbanExtraActionModal', { state: 'visible', timeout: 5000 }).catch(() => {});
-  await page.locator('#kanbanExtraActionClose').click().catch(() => {});
+  await page.waitForSelector(tid('kanban-extra-action-modal'), { state: 'visible', timeout: 5000 }).catch(() => {});
+  await page.locator(tid('kanban-extra-action-close')).click().catch(() => {});
   await page.waitForFunction(
     (id) => document.querySelector(`[data-testid="kanban-card"][data-contact="${id}"]`)?.dataset.stage === 'angebot_versendet',
     TRANSITION_CONTACT_ID, { timeout: 5000 },
@@ -768,12 +790,9 @@ await page.setViewportSize({ width: 390, height: 844 });
   let sawAlert = null;
   page.once('dialog', async d => { sawAlert = d.message(); await d.accept(); });
   const firstRow = KANBAN_TEST_ROWS[0]; // neuer_lead
-  const moveBtn2 = page.locator(`${tid('kanban-card')}[data-contact="${firstRow.id}"] ${tid('kanban-move-btn')}`);
-  await moveBtn2.click().catch(() => {});
-  await page.waitForSelector(tid('kanban-move-modal'), { state: 'visible', timeout: 4000 }).catch(() => {});
   const lockedCallsBefore = lockedUpdateCalls.length;
   const loggedCallsBefore = loggedActionCalls.length;
-  await page.locator(`${tid('kanban-move-grid')} [data-movestage="nicht_erschienen"]`).click().catch(() => {});
+  await dragKanbanCardToStage(firstRow.id, 'nicht_erschienen');
   await page.waitForTimeout(600); // Zeit fuer alert()+Abbruch, kein Zustand zum Abwarten
   const stageAfter = await page.locator(`${tid('kanban-card')}[data-contact="${firstRow.id}"]`).getAttribute('data-stage').catch(() => null);
   record('Kanban-Schutz: "Nicht erschienen" von "neuer_lead" aus wird abgelehnt (Alert, keine RPC, keine Aenderung)',
@@ -792,14 +811,13 @@ await page.setViewportSize({ width: 390, height: 844 });
 // erreichbar (nur "Nicht erschienen" hat eine Herkunfts-Beschraenkung).
 {
   const loggedCallsBeforeLoss = loggedActionCalls.length;
-  const moveBtn3 = page.locator(`${tid('kanban-card')}[data-contact="${TRANSITION_CONTACT_ID}"] ${tid('kanban-move-btn')}`);
-  await moveBtn3.click().catch(() => {});
-  await page.waitForSelector(tid('kanban-move-modal'), { state: 'visible', timeout: 4000 }).catch(() => {});
-  await page.locator(`${tid('kanban-move-grid')} [data-movestage="verloren"]`).click().catch(() => {});
-  await page.waitForSelector('#saleLostModal', { state: 'visible', timeout: 5000 }).catch(() => {});
-  await page.selectOption('#saleLostCategory', 'RegressTestKategorie').catch(() => {});
-  await page.selectOption('#saleLostProdukt', PRODUCT_ID_SH).catch(() => {});
-  await page.locator('#saleLostConfirmBtn').click().catch(() => {});
+  const salesCallsBeforeLoss = salesInsertedForTransitionContact.length;
+  const lockedCallsBeforeLoss = lockedUpdateCalls.length;
+  await dragKanbanCardToStage(TRANSITION_CONTACT_ID, 'verloren');
+  await page.waitForSelector(tid('sale-lost-modal'), { state: 'visible', timeout: 5000 }).catch(() => {});
+  await page.selectOption(tid('sale-lost-category'), 'RegressTestKategorie').catch(() => {});
+  await page.selectOption(tid('sale-lost-product'), PRODUCT_ID_SH).catch(() => {});
+  await page.locator(tid('sale-lost-confirm')).click().catch(() => {});
   await page.waitForFunction(
     (id) => document.querySelector(`[data-testid="kanban-card"][data-contact="${id}"]`)?.dataset.stage === 'verloren',
     TRANSITION_CONTACT_ID, { timeout: 5000 },
@@ -809,10 +827,56 @@ await page.setViewportSize({ width: 390, height: 844 });
   record('Kanban-Uebergang "-> Verloren": KEINE Hauptaktion geloggt ("Verloren ist verloren")',
     loggedActionCalls.length === loggedCallsBeforeLoss, `neu geloggt seit vorher: ${loggedActionCalls.slice(loggedCallsBeforeLoss).join(', ') || '(keine)'}`);
   record('Kanban-Uebergang "-> Verloren": sales-Insert mit status=verloren + richtigem Produkt abgefangen',
-    salesInsertedForTransitionContact.some(s => s.contact_id === TRANSITION_CONTACT_ID && s.status === 'verloren' && s.product_id === PRODUCT_ID_SH),
+    salesInsertedForTransitionContact.slice(salesCallsBeforeLoss).some(s => s.contact_id === TRANSITION_CONTACT_ID && s.status === 'verloren' && s.product_id === PRODUCT_ID_SH),
     `Inserts: ${salesInsertedForTransitionContact.length}`);
   record('Kanban-Uebergang "-> Verloren": zweiter update_contact_locked setzt contacts.status=verloren',
-    lockedUpdateCalls.some(c => c.p_id === TRANSITION_CONTACT_ID && c.p_patch && c.p_patch.status === 'verloren'),
+    lockedUpdateCalls.slice(lockedCallsBeforeLoss).some(c => c.p_id === TRANSITION_CONTACT_ID && c.p_patch && c.p_patch.status === 'verloren'),
+    `Aufrufe insgesamt: ${lockedUpdateCalls.length}`);
+}
+
+// ---- NEU: Uebergang "-> Gewonnen" -- die komplexeste Aktion
+// (moveContactToGewonnenAndRecordSale()): eigener Verkaufs-Popup mit
+// Produkt+Vertragsbeginn-Pflichtfeldern (kein RPC, direkter sales-Insert
+// wie bei "Verloren"), danach zusaetzlich die "abschluss"-Hauptaktion.
+// Testkontakt steht nach dem vorigen Test auf "verloren" -- von dort aus
+// ist "Gewonnen" ohne Einschraenkung erreichbar (reales Szenario: ein
+// verloren geglaubter Kontakt kommt doch noch zustande).
+// Bewusst nur der positive Pfad (immer mit Produkt) -- der Revert-Pfad
+// ohne Produkt (siehe Bugfix-Kommentar bei moveContactToGewonnenAndRecordSale()
+// im echten Code: ohne Produkt wuerde die Spalte wieder zurueckgesetzt,
+// kein "abschluss" geloggt) ist NICHT Teil dieses Tests, siehe Kommentar
+// bei der jeweiligen Assertion unten.
+{
+  const loggedCallsBeforeWin = loggedActionCalls.length;
+  const salesCallsBeforeWin = salesInsertedForTransitionContact.length;
+  const lockedCallsBeforeWin = lockedUpdateCalls.length;
+  await dragKanbanCardToStage(TRANSITION_CONTACT_ID, 'gewonnen');
+  await page.waitForSelector(tid('sale-entry-modal'), { state: 'visible', timeout: 5000 }).catch(() => {});
+  await page.selectOption(tid('sale-entry-category'), 'RegressTestKategorie').catch(() => {});
+  await page.selectOption(tid('sale-entry-product'), PRODUCT_ID_SH).catch(() => {});
+  await page.fill(tid('sale-entry-vertragsbeginn'), ymdHostLocal(new Date())).catch(() => {});
+  await page.locator(tid('sale-entry-done')).click().catch(() => {});
+  await page.waitForFunction(
+    (id) => document.querySelector(`[data-testid="kanban-card"][data-contact="${id}"]`)?.dataset.stage === 'gewonnen',
+    TRANSITION_CONTACT_ID, { timeout: 5000 },
+  ).catch(() => {});
+  const stageAfterWin = await page.locator(`${tid('kanban-card')}[data-contact="${TRANSITION_CONTACT_ID}"]`).getAttribute('data-stage').catch(() => null);
+  record('Kanban-Uebergang "-> Gewonnen": Karte landet in der neuen Spalte', stageAfterWin === 'gewonnen', `Spalte: ${stageAfterWin}`);
+  record('Kanban-Uebergang "-> Gewonnen": sales-Insert mit status=gewonnen + richtigem Produkt abgefangen',
+    salesInsertedForTransitionContact.slice(salesCallsBeforeWin).some(s => s.contact_id === TRANSITION_CONTACT_ID && s.status === 'gewonnen' && s.product_id === PRODUCT_ID_SH),
+    `Inserts insgesamt: ${salesInsertedForTransitionContact.length}`);
+  // Bewusst nur der positive Pfad: hier wird IMMER ein Produkt eingetragen.
+  // Der Revert-Pfad (Popup ohne Produkt geschlossen -> kein "abschluss",
+  // kanban_stage wird zurueckgesetzt, siehe Bugfix-Kommentar bei
+  // moveContactToGewonnenAndRecordSale() im echten Code) ist NICHT
+  // Teil dieses Tests -- Fund einer unabhaengigen Zweitmeinung
+  // (2026-09-04): die vorige Formulierung "nur weil ein Produkt
+  // eingetragen wurde" klang wie eine Pruefung des Revert-Verhaltens,
+  // war es aber nicht. Folgt ggf. als eigener, spaeterer Testfall.
+  record('Kanban-Uebergang "-> Gewonnen": Hauptaktion "abschluss" geloggt, wenn ein Produkt eingetragen wird',
+    loggedActionCalls.slice(loggedCallsBeforeWin).includes('abschluss'), `neu geloggt: ${loggedActionCalls.slice(loggedCallsBeforeWin).join(', ') || '(keine)'}`);
+  record('Kanban-Uebergang "-> Gewonnen": weiterer update_contact_locked setzt contacts.status=kunde',
+    lockedUpdateCalls.slice(lockedCallsBeforeWin).some(c => c.p_id === TRANSITION_CONTACT_ID && c.p_patch && c.p_patch.status === 'kunde'),
     `Aufrufe insgesamt: ${lockedUpdateCalls.length}`);
 }
 

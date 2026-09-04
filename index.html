@@ -1867,19 +1867,19 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
   </div>
 </div>
 
-<div class="loc-modal" id="saleEntryModal" style="display:none;">
+<div class="loc-modal" id="saleEntryModal" data-testid="sale-entry-modal" style="display:none;">
   <div class="loc-modal-inner">
     <div class="loc-modal-header">
       <span>Verkauf eintragen für <span id="saleEntryContactName"></span></span>
       <button id="saleEntryClose">✕</button>
     </div>
     <div class="kanban-newlead-form">
-      <select id="saleEntryCategory"></select>
-      <select id="saleEntryProdukt"></select>
+      <select id="saleEntryCategory" data-testid="sale-entry-category"></select>
+      <select id="saleEntryProdukt" data-testid="sale-entry-product"></select>
       <input type="text" id="saleEntryVertragsnummer" placeholder="Vertragsnummer (optional)" maxlength="60">
       <input type="number" id="saleEntryBeitrag" placeholder="Laufender Beitrag (€)" step="0.01" min="0">
       <label class="cdl" style="display:block;margin-top:4px;">Vertragsbeginn</label>
-      <input type="date" id="saleEntryVertragsbeginn">
+      <input type="date" id="saleEntryVertragsbeginn" data-testid="sale-entry-vertragsbeginn">
       <div class="empty-page-hint" id="saleEntryBwsPreview" style="display:none;"></div>
       <button class="cal-nav-btn" id="saleEntryAddBtn">+ Produkt hinzufügen</button>
       <div class="empty-page-hint" id="saleEntryStatus"></div>
@@ -1887,30 +1887,30 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
       <label class="cdl" style="display:block;margin-top:4px;">Wiedervorlage (optional) – wann meldest du dich wieder?</label>
       <input type="date" id="saleEntryWiedervorlage">
     </div>
-    <button class="cal-nav-btn" id="saleEntryDoneBtn" style="width:100%;margin-top:8px;">Fertig</button>
+    <button class="cal-nav-btn" id="saleEntryDoneBtn" data-testid="sale-entry-done" style="width:100%;margin-top:8px;">Fertig</button>
   </div>
 </div>
 
-<div class="loc-modal" id="saleLostModal" style="display:none;">
+<div class="loc-modal" id="saleLostModal" data-testid="sale-lost-modal" style="display:none;">
   <div class="loc-modal-inner">
     <div class="loc-modal-header">
       <span>Welches Produkt war im Gespräch für <span id="saleLostContactName"></span>?</span>
       <button id="saleLostClose">✕</button>
     </div>
     <div class="kanban-newlead-form">
-      <select id="saleLostCategory"></select>
-      <select id="saleLostProdukt"></select>
+      <select id="saleLostCategory" data-testid="sale-lost-category"></select>
+      <select id="saleLostProdukt" data-testid="sale-lost-product"></select>
       <div class="empty-page-hint" id="saleLostStatus"></div>
     </div>
-    <button class="cal-nav-btn" id="saleLostConfirmBtn" style="width:100%;margin-top:8px;">Als verloren eintragen</button>
+    <button class="cal-nav-btn" id="saleLostConfirmBtn" data-testid="sale-lost-confirm" style="width:100%;margin-top:8px;">Als verloren eintragen</button>
   </div>
 </div>
 
-<div class="loc-modal" id="kanbanExtraActionModal" style="display:none;">
+<div class="loc-modal" id="kanbanExtraActionModal" data-testid="kanban-extra-action-modal" style="display:none;">
   <div class="loc-modal-inner">
     <div class="loc-modal-header">
       <span id="kanbanExtraActionTitle">Zusätzlich loggen?</span>
-      <button id="kanbanExtraActionClose">✕</button>
+      <button id="kanbanExtraActionClose" data-testid="kanban-extra-action-close">✕</button>
     </div>
     <div class="action-btns" id="kanbanExtraActionGrid"></div>
   </div>
