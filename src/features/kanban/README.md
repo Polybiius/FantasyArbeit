@@ -62,52 +62,73 @@ geschützten Karten aus angenommenen Termin-Einladungen
 (`.kanban-card-shared` im Vanilla-Original) — eigener Datenpfad
 (`termin_invitations`), reine Lese-Ergänzung für später.
 
-## `KanbanBoard.tsx`
+## `KanbanBoard.tsx` + `kanbanMutations.ts` — echter Schreibpfad
 
 `dnd-kit`-Board (ADR-0008), rendert `KANBAN_STAGES` als Spalten mit der
 gemeinsamen `ContactCard` (`shared/domain/contactCard/`). Ziehen prüft
 jeden Zug live gegen `decideKanbanTransition()` — ein laut
 Zustandsmaschine verbotener Zug (z.B. "Nicht erschienen" vom "Neuer
 Lead" aus) wird abgelehnt und als Meldung angezeigt, bevor überhaupt
-etwas passiert.
+etwas passiert. Ein erlaubter Zug wird ECHT gespeichert
+(`useMoveKanbanCardMutation()`, `kanbanMutations.ts`):
 
-**Bewusst noch KEIN Schreibzugriff — ausführliche Begründung im
-Datei-Kopfkommentar von `KanbanBoard.tsx`.** Kurzfassung: ein echter
-Kartenzug würde XP/Energie ändern (`log_action_for_self`), aber die
-Brücke (`docs/adr/0002`) hat aktuell keinen Weg, den Vanilla-
-Header/die Vanilla-Quest-Prüfung danach zur Neuberechnung zu bewegen
-(`useCharacterStats()` liest nur, was Vanillas eigener `render()`-Lauf
-zuletzt berechnet hat). Ein React-Kartenzug, der `action_log` direkt
-beschreibt, würde die XP-/Energie-Anzeige bis zum nächsten Vanilla-
-Render veraltet stehen lassen — ein echter, sichtbarer Bug. Erlaubte
-Züge verschieben die Karte deshalb vorerst nur LOKAL (React-`useState`,
-sichtbare "Vorschau, noch nicht gespeichert"-Kennzeichnung im Board),
-ohne `contacts` zu beschreiben.
+1. `update_contact_locked` setzt `kanban_stage` (sperr-geprüft).
+2. Der Board-Cache wird SOFORT (synchron, nicht erst nach einem
+   Refetch) auf den bestätigten Serverstand gezogen.
+3. `log_action_for_self` bucht Hauptaktion + Trichter-Marken — JEDE
+   Buchung wird einzeln sofort per `getBridge().notifyActionLogged()`
+   an Vanilla gemeldet (dritte Bridge-Ausnahme, `docs/adr/0002`):
+   Vanilla reiht die Zeile in seinen `log`-Puffer ein, prüft Quests neu
+   und rendert — damit bleibt der XP-/Energie-Header synchron, ohne
+   dass React die Punkte-/Quest-Logik selbst nachbaut.
 
-**Weil ohne Persistieren keine echten Energie-/Trichter-Daten aus
-`action_log` geladen werden**, läuft die Zug-Prüfung mit einem bewusst
-durchlässigen Kontext (unbegrenzte Energie, keine Trichter-Duplikate)
-— sie greift trotzdem für die einzige rein herkunftsbezogene Regel
-("Nicht erschienen" nur vom Ersttermin/Zweittermin aus), die von
-Live-Daten unabhängig ist. Sobald der echte Schreibpfad kommt, muss
-dieser Platzhalter-Kontext durch echte Werte ersetzt werden.
+**Zwei echte Bugs einer unabhängigen Zweitmeinung** (vor dem ersten
+Commit dieses Schreibpfads gefunden und behoben, siehe Git-Historie):
+ein zu spätes/gebündeltes `notifyActionLogged()` hätte bei einem
+Teilfehler (z.B. die zweite von zwei Buchungen schlägt fehl) bereits
+erfolgreich gebuchte Punkte bis zum nächsten Vanilla-Render unsichtbar
+gelassen; ein reines `invalidateQueries()` ohne sofortige
+Cache-Korrektur hätte ein schnelles zweites Ziehen derselben Karte mit
+einem veralteten `updated_at` in einen falschen Selbst-Konflikt laufen
+lassen (CLAUDE.md, "Konflikt-Schutz bei gleichzeitiger Bearbeitung",
+verlangt genau deshalb das sofortige Nachziehen). Ein dritter Fund
+(`kanbanFunnel.ts`): die Trichter-Marken-Abfrage fehlte der
+`user_id`-Filter, den Vanillas eigenes `log`-Array immer hat — bei
+einem im laufenden Jahr umverteilten Kontakt (Gilden-Pool,
+Mitarbeiter-Offboarding) hätte das eine bereits vom Vorbesitzer
+geloggte Marke fälschlich für den neuen Besitzer mitgezählt.
+
+**Bewusst NICHT Teil dieses Bausteins:**
+- **"Gewonnen"/"Verloren"** — brauchen ein Verkaufs-Popup (Produkt/
+  Menge bzw. Kündigung erfassen), das noch nicht existiert. Ein Zug
+  dorthin wird von `kanbanMutations.ts` klar abgelehnt statt einen
+  unvollständigen Verkauf zu erzeugen.
+- Popup-Komponenten für die vier `KanbanPopup`-Werte (Bedarfsanalyse-
+  Nachfrage, Termin-Eintragung) — aktuell werden diese Zusatzabfragen
+  beim Zug übersprungen (entspricht dem in Vanilla ohnehin
+  überspringbaren Pfad, kein Verhaltensbruch, nur noch nicht als
+  eigene Nachfrage gebaut).
+- Geteilte, schreibgeschützte Karten aus Termin-Einladungen (siehe
+  `kanbanApi.ts` oben).
+- **Noch NICHT in `App.tsx` verdrahtet** — kein `<Route path="kanban">`,
+  also für Produktion weiterhin unerreichbar. Bewusst so belassen
+  (Kanban ist der vom Nutzer explizit als "langsam und vorsichtig"
+  markierte Bereich, siehe `feedback_caution_signal_suspends_autopush`
+  in Claudes Erinnerung) — das Scharfschalten (Route eintragen,
+  Vanilla-Seite verstecken) ist ein eigener, noch nicht gegangener
+  Schritt, ebenso ein echter End-to-End-Test gegen die laufende App
+  (bisher nur Typecheck/Lint/Vitest/Build + Zweitmeinungs-Review, keine
+  Playwright-Prüfung mit echtem Login).
 
 ## Noch offen (nächste Schritte in Block 5)
 
-1. **Die Bridge-Lücke klären** (siehe oben) — vermutlich eine kleine,
-   neue Ausnahme analog zu `notifyProfilePatch` (`docs/adr/0002`), die
-   Vanilla nach einem React-Kartenzug zu einem Re-Sync von
-   Stats/Quests bewegt. Eigene Entscheidung, noch nicht getroffen.
-2. Danach: der echte Schreibpfad selbst (`update_contact_locked` für
-   `kanban_stage`, `log_action_for_self` für Hauptaktion+Trichter-
-   Marken, in dieser Reihenfolge — siehe Kommentar in
-   `moveKanbanCard()`, `index.html`) für die Übergänge OHNE Popup.
-3. Popup-Komponenten für die vier `KanbanPopup`-Werte + die beiden
-   Verkaufs-Popups (Gewonnen/Verloren, inkl. `resolveWonOutcome`/
-   `resolveLostOutcome`).
-4. Geteilte, schreibgeschützte Karten aus Termin-Einladungen (siehe
+1. Popup-Komponenten (siehe oben) + der eigentliche Verkaufs-Schreibpfad
+   für "Gewonnen"/"Verloren".
+2. Route in `App.tsx` + Vanilla-Kanban-Seite ausblenden (das eigentliche
+   Scharfschalten) — erst nach echtem End-to-End-Test.
+3. Geteilte, schreibgeschützte Karten aus Termin-Einladungen (siehe
    `kanbanApi.ts` oben).
-5. `contacts`-Volltextsuche/-Paginierung (ADR-0010) und Realtime
+4. `contacts`-Volltextsuche/-Paginierung (ADR-0010) und Realtime
    (ADR-0009) betreffen vor allem die künftige Kontakt-Tabelle, nicht
    das Kanban-Board selbst (dessen Datenmenge ist strukturell gedeckelt
    — persönlich, keine Massenliste).

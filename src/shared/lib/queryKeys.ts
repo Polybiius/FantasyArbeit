@@ -61,6 +61,8 @@ export const qk = {
      * nur die eigene `owner_id` als Schlüssel-Teil.
      */
     board: (ownerId: string) => ['kanban', 'board', ownerId] as const,
+    /** Energiekosten je Aktion aus dem Regelwerk — ändert sich selten, per `queryClient.fetchQuery` gecacht statt bei jedem Kartenzug neu geladen. */
+    actionCosts: (orgId: string) => ['kanban', 'actionCosts', orgId] as const,
   },
 
   // Weitere Bereiche (kalender, statistik, ...) ergänzen ihre

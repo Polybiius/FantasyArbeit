@@ -2311,6 +2311,23 @@ Was ist morgen der wichtigste konkrete Schritt?"></textarea>
     // ruft diese Funktion -- alle anderen Nav-Einträge brauchen das nicht
     // (einziger Sonderfall im alten Klick-Handler).
     navigateToTagebuch(){ showPage('tagebuch', false); updateCalendarHash(); },
+    // Dritte Ausnahme von "nur lesen" (Block 5, Kanban-Schreibpfad,
+    // ADR-0002-Nachtrag): React ruft für einen Kartenzug dieselben
+    // SECURITY-DEFINER-RPCs auf wie Vanilla selbst
+    // (log_action_for_self/grant_quest_bonus_to_self) -- die
+    // zurückgelieferten Zeilen werden hier NICHT neu interpretiert,
+    // sondern exakt so behandelt, wie logAction()/flushKanbanActionPost()
+    // es nach ihren eigenen RPC-Aufrufen sowieso tun (Zeile ~4497): in den
+    // geteilten log-Puffer einreihen (computeTotals()/energyUsedToday()
+    // lesen ausschließlich aus diesem Array, nie erneut vom Server),
+    // Quests prüfen, neu rendern. Kein zweiter Rechenweg -- reiner Aufruf
+    // derselben drei bestehenden Schritte von außen.
+    async notifyActionLogged(rows){
+      rows.forEach(row=>{ if(row) log.push(row); });
+      await checkAndAwardRecurringQuests();
+      await checkAndAwardQuestTreeAndEpics();
+      render();
+    },
   });
   // Hält die modul-lokale session-Variable frisch (u.a. bei TOKEN_REFRESHED,
   // wo der alte Code sie bisher nie nachzog) und benachrichtigt React.

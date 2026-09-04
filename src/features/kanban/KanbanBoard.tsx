@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 import {
   DndContext,
   KeyboardSensor,
@@ -14,39 +14,29 @@ import { CSS } from '@dnd-kit/utilities';
 import { ContactCard } from '@/shared/domain/contactCard/ContactCard';
 
 import { KANBAN_STAGE_META } from './kanbanLabels';
-import { useKanbanBoardQuery, type KanbanBoardColumns, type KanbanContact } from './kanbanApi';
-import { decideKanbanTransition, KANBAN_STAGES, type KanbanStage } from './kanbanTransitions';
+import { useKanbanBoardQuery, type KanbanContact } from './kanbanApi';
+import { useMoveKanbanCardMutation } from './kanbanMutations';
+import { KANBAN_STAGES, type KanbanStage } from './kanbanTransitions';
 
 /**
- * VORSCHAU-STAND (Block 5, erster UI-Baustein) — bewusst noch KEIN
- * Schreibzugriff. Ziehen prüft den Zug gegen die echte Zustandsmaschine
- * (`decideKanbanTransition`, docs/adr/0007) und verschiebt die Karte nur
- * LOKAL (React-State, kein `contacts`-Update, kein `log_action_for_self`).
+ * Echter Schreibpfad seit diesem Baustein (Block 5) — siehe
+ * `kanbanMutations.ts` für den vollen Ablauf (Sperr-geprüfte
+ * Spaltenänderung, dann `log_action_for_self` für Hauptaktion+
+ * Trichter-Marken, dann `notifyActionLogged()` an die Brücke, damit
+ * Vanillas XP-/Energie-Anzeige synchron bleibt — `docs/adr/0002`).
  *
- * Grund für den bewussten Stopp genau hier: ein echter Schreibvorgang
- * würde XP/Energie ändern, aber die Brücke (docs/adr/0002) hat aktuell
- * KEINEN Weg, den Vanilla-Header danach zur Neuberechnung zu bewegen --
- * `useCharacterStats()` liest nur, was Vanillas eigener `render()`-Lauf
- * zuletzt berechnet hat (`onStatsChange` feuert ausschließlich NACH
- * einem Vanilla-`render()`). Ein React-Kartenzug, der `action_log`
- * direkt beschreibt, würde die Anzeige also bis zum nächsten Vanilla-
- * Render (z.B. Seitenwechsel) veraltet stehen lassen -- ein echter,
- * sichtbarer Bug. Bevor der eigentliche Schreibpfad drankommt, muss das
- * geklärt sein (vermutlich eine neue, kleine Bridge-Ausnahme analog zu
- * `notifyProfilePatch`) -- absichtlich noch nicht selbst entschieden.
+ * Bewusst KEIN optimistisches lokales Verschieben (Projekt-Konvention,
+ * siehe `queryClient.ts`: naive optimistische Updates würden der
+ * serverseitigen Sperrlogik vorgreifen) — die Karte springt erst nach
+ * bestätigtem Server-Erfolg in die neue Spalte (`onSuccess` invalidiert
+ * die Board-Abfrage). Während des Speicherns ist das Board per
+ * `aria-busy` markiert, ein zweiter Zug wird ignoriert statt eine
+ * parallele Mutation zu starten.
  *
- * Wegen der fehlenden Energie-/Trichter-Daten (noch kein `action_log`
- * geladen) läuft die Zug-Prüfung mit einem bewusst DURCHLÄSSIGEN Kontext
- * (unbegrenzte Energie, keine Trichter-Duplikate) -- sie greift trotzdem
- * für die einzige rein herkunftsbezogene Regel ("Nicht erschienen" nur
- * vom Ersttermin/Zweittermin aus), die von Live-Daten unabhängig ist.
+ * **Noch nicht Teil dieses Bausteins:** "Gewonnen"/"Verloren" (brauchen
+ * ein Verkaufs-Popup, siehe `kanbanMutations.ts`-Kommentar) und die
+ * geteilten, schreibgeschützten Karten aus Termin-Einladungen.
  */
-const PREVIEW_TRANSITION_CONTEXT_BASE = {
-  energyRemaining: Number.POSITIVE_INFINITY,
-  actionEnergyCost: () => 0,
-  hasFunnelMarkerThisYear: () => false,
-};
-
 function DroppableColumn({
   stage,
   count,
@@ -76,19 +66,11 @@ function DroppableColumn({
   );
 }
 
-/**
- * `currentStage` ist die ANGEZEIGTE Spalte (der äußere Schleifen-Index in
- * `KanbanBoard`, der über `displayColumns` iteriert) -- bewusst NICHT
- * `contact.kanban_stage` (das serverseitige, noch unveränderte Feld).
- * Fund einer unabhängigen Zweitmeinung: nach einer ersten, rein lokalen
- * Verschiebung (siehe `localOverride`) bliebe `contact.kanban_stage`
- * stehen, ein zweiter Zug derselben Karte würde dann fälschlich gegen
- * ihre ursprüngliche statt ihre gerade sichtbare Spalte geprüft.
- */
-function DraggableCard({ contact, currentStage }: { contact: KanbanContact; currentStage: KanbanStage }) {
+function DraggableCard({ contact, disabled }: { contact: KanbanContact; disabled: boolean }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: contact.id,
-    data: { stage: currentStage },
+    data: { stage: contact.kanban_stage },
+    disabled,
   });
   return (
     <ContactCard
@@ -113,31 +95,19 @@ function DraggableCard({ contact, currentStage }: { contact: KanbanContact; curr
 
 export function KanbanBoard() {
   const { data: columns, isLoading, error } = useKanbanBoardQuery();
-  // Rein lokale Vorschau-Verschiebung, siehe Dateikopf-Kommentar --
-  // überschreibt `columns` nur für die Anzeige, kein Persistieren.
-  const [localOverride, setLocalOverride] = useState<Record<string, KanbanStage>>({});
-  const [rejection, setRejection] = useState<string | null>(null);
+  const moveMutation = useMoveKanbanCardMutation();
 
   function handleDragStart() {
-    setRejection(null);
+    moveMutation.reset();
   }
 
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
-    if (!over) return;
-    const fromStage = (active.data.current?.stage as KanbanStage | undefined) ?? null;
+    if (!over || moveMutation.isPending) return;
+    const contact = findContact(columns, String(active.id));
     const toStage = over.id as KanbanStage;
-    if (!fromStage || fromStage === toStage) return;
-
-    const plan = decideKanbanTransition(fromStage, toStage, {
-      ...PREVIEW_TRANSITION_CONTEXT_BASE,
-      isKunde: findContact(columns, String(active.id))?.status === 'kunde',
-    });
-    if (!plan.allowed) {
-      setRejection(plan.rejectionReason);
-      return;
-    }
-    setLocalOverride((prev) => ({ ...prev, [String(active.id)]: toStage }));
+    if (!contact || contact.kanban_stage === toStage) return;
+    moveMutation.mutate({ contact, toStage });
   }
 
   const sensors = useSensors(
@@ -152,24 +122,19 @@ export function KanbanBoard() {
     return <div className="tw:text-sm tw:text-danger">Kanban-Board konnte nicht geladen werden.</div>;
   }
 
-  const displayColumns = applyLocalOverride(columns, localOverride);
-
   return (
-    <div className="tw:flex tw:flex-col tw:gap-3">
-      {rejection && (
+    <div className="tw:flex tw:flex-col tw:gap-3" aria-busy={moveMutation.isPending}>
+      {moveMutation.error && (
         <div className="tw:rounded-sm tw:border tw:border-danger tw:bg-danger/10 tw:px-3 tw:py-2 tw:text-xs tw:text-danger">
-          {rejection}
+          {moveMutation.error.message}
         </div>
       )}
-      <div className="tw:rounded-sm tw:border tw:border-arcane tw:bg-arcane-glow/10 tw:px-3 tw:py-2 tw:text-xs tw:text-muted">
-        Vorschau — Ziehen wird geprüft, aber noch nicht gespeichert (nächster Bauschritt).
-      </div>
       <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
         <div className="tw:flex tw:gap-3 tw:overflow-x-auto tw:pb-2">
           {KANBAN_STAGES.map((stage) => (
-            <DroppableColumn key={stage} stage={stage} count={displayColumns[stage].length}>
-              {displayColumns[stage].map((contact) => (
-                <DraggableCard key={contact.id} contact={contact} currentStage={stage} />
+            <DroppableColumn key={stage} stage={stage} count={columns[stage].length}>
+              {columns[stage].map((contact) => (
+                <DraggableCard key={contact.id} contact={contact} disabled={moveMutation.isPending} />
               ))}
             </DroppableColumn>
           ))}
@@ -179,27 +144,11 @@ export function KanbanBoard() {
   );
 }
 
-function findContact(columns: KanbanBoardColumns | undefined, id: string): KanbanContact | undefined {
+function findContact(columns: ReturnType<typeof useKanbanBoardQuery>['data'], id: string): KanbanContact | undefined {
   if (!columns) return undefined;
   for (const stage of KANBAN_STAGES) {
     const found = columns[stage].find((c) => c.id === id);
     if (found) return found;
   }
   return undefined;
-}
-
-function applyLocalOverride(
-  columns: KanbanBoardColumns,
-  overrides: Record<string, KanbanStage>,
-): KanbanBoardColumns {
-  if (Object.keys(overrides).length === 0) return columns;
-  const next = {} as KanbanBoardColumns;
-  for (const stage of KANBAN_STAGES) next[stage] = [];
-  for (const stage of KANBAN_STAGES) {
-    for (const contact of columns[stage]) {
-      const overriddenStage = overrides[contact.id] ?? stage;
-      next[overriddenStage].push(contact);
-    }
-  }
-  return next;
 }

@@ -4,6 +4,8 @@ import type { Database } from '@/shared/types/supabase';
 
 export type AppSupabaseClient = SupabaseClient<Database>;
 export type Profile = Database['public']['Tables']['profiles']['Row'];
+/** Rückgabeform von `log_action_for_self`/`grant_quest_bonus_to_self` — siehe `notifyActionLogged`. */
+export type ActionLogRow = Database['public']['Functions']['log_action_for_self']['Returns'];
 
 export type AuthChangeHandler = (event: string, session: Session | null) => void;
 
@@ -86,6 +88,22 @@ export interface AppBridge {
    * Alle anderen Seiten navigieren über normale `<a href="#seite">`.
    */
   navigateToTagebuch(): void;
+  /**
+   * Dritte Ausnahme von "nur lesen" (Block 5, Kanban-Schreibpfad).
+   * React ruft für eine Kanban-Aktion dieselben `SECURITY DEFINER`-RPCs
+   * auf wie Vanilla selbst (`log_action_for_self`/
+   * `grant_quest_bonus_to_self`) — die zurückgelieferten Zeilen werden
+   * NICHT von React interpretiert (keine zweite XP-/Quest-Berechnung,
+   * Doppelpflege-Risiko), sondern hier eingereicht. Vanilla reiht sie in
+   * seinen eigenen `log`-Puffer ein, prüft Quests und rendert neu —
+   * exakt dieselben drei Schritte, die `logAction()`/
+   * `flushKanbanActionPost()` nach ihren eigenen RPC-Aufrufen sowieso
+   * ausführen. Löst danach `onStatsChange` aus wie jeder normale
+   * Vanilla-Render-Lauf. Reihenfolge egal, `null`-Einträge werden
+   * ignoriert (Aufrufer kann z.B. eine bewusst ausgelassene, optionale
+   * Aktion einfach mit `null` an derselben Stelle mitgeben).
+   */
+  notifyActionLogged(rows: ReadonlyArray<ActionLogRow | null>): Promise<void>;
   /**
    * Aktueller Level-/XP-/Energie-Snapshot, oder `null` vor dem ersten
    * `render()`-Lauf (z.B. während des Logins). Zusammen mit
