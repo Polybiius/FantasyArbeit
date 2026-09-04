@@ -251,6 +251,26 @@ await page.route('**/rest/v1/rpc/log_action_for_self*', async route => {
   await route.continue();
 });
 
+// ---- NEU (Fund einer unabhaengigen Zweitmeinung zum Kanban-Uebergangs-Test
+// oben): moveKanbanCard() laesst nach der Hauptaktion IMMER auch
+// checkAndAwardRecurringQuests()/checkAndAwardQuestTreeAndEpics() laufen
+// (flushKanbanActionPost()) -- die pushen bei erfuellter Quest-Bedingung
+// echte grant_quest_bonus_to_self()/grant_item_to_self()-RPCs. Der neue
+// Kanban-Uebergangs-Test oben ist der ERSTE Test in dieser Datei, der einen
+// Kartenzug bis zum Ende (statt nur bis zum Oeffnen des Verschieben-Menues)
+// durchspielt -- ohne diese beiden Routen koennten die frisch eingeschleusten
+// 'pitch'/'termin_wahrgenommen'-Eintraege eine echte Tages-/Wochenquest
+// erfuellen und am echten Testkonto einen echten Bonus/ein echtes Item
+// verbuchen. Beide global (nicht nur fuer den Transition-Kontakt) abgefangen,
+// da jede Quest kontaktunabhaengig ausgewertet wird -- betrifft potenziell
+// auch andere Kanban-Zuege in kuenftigen Testerweiterungen.
+await page.route('**/rest/v1/rpc/grant_quest_bonus_to_self*', async route => {
+  await fulfillJson(route, null); // App prueft nur "if(data)" -- null heisst schlicht "nichts geloggt"
+});
+await page.route('**/rest/v1/rpc/grant_item_to_self*', async route => {
+  await fulfillJson(route, null); // grantItem() prueft nur { error } -- kein Fehler heisst Erfolg
+});
+
 // ---- NEU: Produktkatalog um ein synthetisches "fest"-Produkt ergaenzen ----
 // provision_mode:'fest' braucht keinen individuellen persoenlichen Satz
 // (anders als LV/KV/pma) -- einfachster Fall fuer eine deterministische
@@ -696,6 +716,13 @@ await page.waitForFunction(
 // Schutzmechanismus (ungueltige Herkunft fuer "Nicht erschienen") -- weitere
 // Uebergaenge (Gewonnen/Verloren/Dauerbrenner/Kundenausbau) folgen als
 // eigener, spaeterer Schritt, nicht alle auf einmal.
+//
+// Braucht explizit den mobilen Viewport (.kc-move-btn ist bei >=760px
+// display:none, siehe CSS) -- bisher implizit vom vorherigen Testblock
+// geerbt (Fund einer unabhaengigen Zweitmeinung: fragil, falls dieser Block
+// je umsortiert wird). Deshalb hier selbst nochmal gesetzt, auch wenn es
+// aktuell bereits der Fall ist.
+await page.setViewportSize({ width: 390, height: 844 });
 {
   const moveBtn = page.locator(`${tid('kanban-card')}[data-contact="${TRANSITION_CONTACT_ID}"] ${tid('kanban-move-btn')}`);
   await moveBtn.click().catch(() => {});
