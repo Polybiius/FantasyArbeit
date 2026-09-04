@@ -18,6 +18,18 @@
 //    bei 760px, gestapeltes Tagesansicht-Raster) -- reine CSS-/Erreichbarkeits-
 //    Pruefung mit demselben Konto, siehe regression_suite_member.mjs fuer den
 //    separaten Rollen-Test (Nicht-Admin) mit einem zweiten Testkonto.
+// 9) Kanban-Uebergangs-Vertrag (seit 2026-09-04, Vorbereitung Block 5 der
+//    React-Migration -- Verhalten von moveKanbanCard() als Messlatte
+//    festschreiben, BEVOR der Bereich umgebaut wird): ein echter Kartenzug
+//    (Ersttermin vereinbart -> Angebot versendet, inkl. der abgeleiteten
+//    Trichter-Marke "termin_wahrgenommen") wird komplett durchgespielt und
+//    gegen die zwei dabei ausgeloesten RPCs (update_contact_locked/
+//    log_action_for_self, beide fuer diesen einen Testkontakt abgefangen)
+//    geprueft, plus der wichtigste Schutzmechanismus ("Nicht erschienen" nur
+//    vom Ersttermin/Zweittermin aus erreichbar). Bewusst nur dieser eine
+//    Uebergang + ein Schutzmechanismus in diesem ersten Schritt -- die
+//    uebrigen Uebergaenge (Gewonnen/Verloren/Dauerbrenner/Kundenausbau/
+//    Zweittermin-Pfad) folgen als eigene, spaetere Ausbaustufen.
 //
 // Alle Tests arbeiten mit synthetischen, per page.route() eingeschleusten
 // Daten -- NICHTS wird an der echten Datenbank geschrieben oder veraendert
@@ -188,14 +200,55 @@ function makeSyntheticContact(id, vorname, nachname, stage) {
     notes: null, guild_id: null, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
   };
 }
+
+// ---- NEU (Kanban-Uebergangs-Vertrag, siehe CLAUDE.md/Block-5-Vorbereitung):
+// ein eigener Testkontakt, an dem ein ECHTER Kartenzug bis zum Ende
+// durchgespielt wird -- vorher wurde ein Zug bewusst nur geoeffnet/
+// geschlossen, nie abgeschlossen (siehe Kommentar bei den bestehenden
+// Mobil-Tests weiter unten), weil die zwei dabei ausgeloesten RPCs
+// (update_contact_locked/log_action_for_self) unabgefangen am echten
+// Testkonto haengen wuerden. Ab hier: beide RPCs fuer GENAU diesen
+// Testkontakt abgefangen+protokolliert, jeder andere Aufruf (z.B. ein
+// echtes Login-Rendern) laeuft unveraendert echt durch.
+const TRANSITION_CONTACT_ID = 'aaaaaaaa-5555-4555-8555-555555555555';
+let transitionContactStage = 'ersttermin_vereinbart';
+const lockedUpdateCalls = [];
+const loggedActionCalls = [];
+let fakeLogSeq = 0;
 await page.route('**/rest/v1/contacts*', async route => {
   const response = await route.fetch();
   const body = await response.json();
   if (Array.isArray(body)) {
     KANBAN_TEST_ROWS.forEach(r => body.push(makeSyntheticContact(r.id, 'Regress', r.stage, r.stage)));
     body.push(makeSyntheticContact(CHRONIK_CONTACT_ID, 'Regress', 'Chronikkontakt', null));
+    body.push(makeSyntheticContact(TRANSITION_CONTACT_ID, 'Regress', 'Uebergangskontakt', transitionContactStage));
   }
   await route.fulfill({ response, json: body });
+});
+await page.route('**/rest/v1/rpc/update_contact_locked*', async route => {
+  const body = route.request().postDataJSON();
+  if (body && body.p_id === TRANSITION_CONTACT_ID) {
+    lockedUpdateCalls.push(body);
+    if (body.p_patch && body.p_patch.kanban_stage) transitionContactStage = body.p_patch.kanban_stage;
+    await fulfillJson(route, { id: TRANSITION_CONTACT_ID, updated_at: new Date().toISOString() });
+    return;
+  }
+  await route.continue();
+});
+await page.route('**/rest/v1/rpc/log_action_for_self*', async route => {
+  const body = route.request().postDataJSON();
+  if (body && body.p_contact_id === TRANSITION_CONTACT_ID) {
+    fakeLogSeq++;
+    loggedActionCalls.push(body.p_action_key);
+    await fulfillJson(route, {
+      id: 'zzz-transition-' + fakeLogSeq, user_id: uid, org_id: oid, action_key: body.p_action_key,
+      label: body.p_action_key, xp: 0, energy: 0, skill: null, skill2: null,
+      context: body.p_context || null, location_id: body.p_location_id || null,
+      contact_id: body.p_contact_id, meta: body.p_meta || null, created_at: new Date().toISOString(),
+    });
+    return;
+  }
+  await route.continue();
 });
 
 // ---- NEU: Produktkatalog um ein synthetisches "fest"-Produkt ergaenzen ----
@@ -632,6 +685,59 @@ await page.waitForFunction(
   ).catch(() => {});
   const menuClosedAgain = await page.locator(tid('kanban-move-modal')).evaluate(el => el.style.display === 'none').catch(() => false);
   record('Verschieben-Menue laesst sich ohne Aktion wieder schliessen', menuClosedAgain);
+}
+
+// ---- NEU (Kanban-Uebergangs-Vertrag, erster Ausschnitt vor Block 5): ein
+// echter Kartenzug wird jetzt bis zum Ende durchgespielt (moveKanbanCard()),
+// gegen die oben abgefangenen RPCs geprueft. Deckt exakt die Stelle ab, an
+// der frueher (siehe Kommentar oben) bewusst nur geoeffnet/geschlossen
+// wurde. Bewusst nur EIN Uebergang in diesem ersten Schritt (Ersttermin ->
+// Angebot versendet, inkl. der abgeleiteten Trichter-Marke) + der wichtigste
+// Schutzmechanismus (ungueltige Herkunft fuer "Nicht erschienen") -- weitere
+// Uebergaenge (Gewonnen/Verloren/Dauerbrenner/Kundenausbau) folgen als
+// eigener, spaeterer Schritt, nicht alle auf einmal.
+{
+  const moveBtn = page.locator(`${tid('kanban-card')}[data-contact="${TRANSITION_CONTACT_ID}"] ${tid('kanban-move-btn')}`);
+  await moveBtn.click().catch(() => {});
+  await page.waitForSelector(tid('kanban-move-modal'), { state: 'visible', timeout: 4000 }).catch(() => {});
+  await page.locator(`${tid('kanban-move-grid')} [data-movestage="angebot_versendet"]`).click().catch(() => {});
+  // Bedarfsanalyse-Zusatzpopup erscheint danach -- ohne Zusatzaktion schliessen
+  // (sonst wuerde eine dritte, hier nicht erwartete Aktion mitgeloggt).
+  await page.waitForSelector('#kanbanExtraActionModal', { state: 'visible', timeout: 5000 }).catch(() => {});
+  await page.locator('#kanbanExtraActionClose').click().catch(() => {});
+  await page.waitForFunction(
+    (id) => document.querySelector(`[data-testid="kanban-card"][data-contact="${id}"]`)?.dataset.stage === 'angebot_versendet',
+    TRANSITION_CONTACT_ID, { timeout: 5000 },
+  ).catch(() => {});
+  const newStage = await page.locator(`${tid('kanban-card')}[data-contact="${TRANSITION_CONTACT_ID}"]`).getAttribute('data-stage').catch(() => null);
+  record('Kanban-Uebergang "Ersttermin vereinbart" -> "Angebot versendet": Karte landet in der neuen Spalte', newStage === 'angebot_versendet', `Spalte: ${newStage}`);
+  record('Kanban-Uebergang: update_contact_locked mit korrektem Patch aufgerufen',
+    lockedUpdateCalls.some(c => c.p_id === TRANSITION_CONTACT_ID && c.p_patch && c.p_patch.kanban_stage === 'angebot_versendet'),
+    `Aufrufe: ${lockedUpdateCalls.length}`);
+  record('Kanban-Uebergang: Hauptaktion "pitch" geloggt', loggedActionCalls.includes('pitch'), `geloggt: ${loggedActionCalls.join(', ')}`);
+  record('Kanban-Uebergang: Trichter-Marke "termin_wahrgenommen" automatisch mitgeloggt (Ersttermin gilt als wahrgenommen)',
+    loggedActionCalls.includes('termin_wahrgenommen'), `geloggt: ${loggedActionCalls.join(', ')}`);
+}
+
+// ---- NEU: Schutzmechanismus -- "Nicht erschienen" ist nur vom Ersttermin
+// oder Zweittermin aus erreichbar (moveKanbanCard()-Guard). Von "neuer_lead"
+// aus muss der Zug abgelehnt werden: Alert, keine RPC, keine Spaltenaenderung.
+{
+  let sawAlert = null;
+  page.once('dialog', async d => { sawAlert = d.message(); await d.accept(); });
+  const firstRow = KANBAN_TEST_ROWS[0]; // neuer_lead
+  const moveBtn2 = page.locator(`${tid('kanban-card')}[data-contact="${firstRow.id}"] ${tid('kanban-move-btn')}`);
+  await moveBtn2.click().catch(() => {});
+  await page.waitForSelector(tid('kanban-move-modal'), { state: 'visible', timeout: 4000 }).catch(() => {});
+  const lockedCallsBefore = lockedUpdateCalls.length;
+  const loggedCallsBefore = loggedActionCalls.length;
+  await page.locator(`${tid('kanban-move-grid')} [data-movestage="nicht_erschienen"]`).click().catch(() => {});
+  await page.waitForTimeout(600); // Zeit fuer alert()+Abbruch, kein Zustand zum Abwarten
+  const stageAfter = await page.locator(`${tid('kanban-card')}[data-contact="${firstRow.id}"]`).getAttribute('data-stage').catch(() => null);
+  record('Kanban-Schutz: "Nicht erschienen" von "neuer_lead" aus wird abgelehnt (Alert, keine RPC, keine Aenderung)',
+    !!sawAlert && sawAlert.includes('Nicht erschienen') && stageAfter === 'neuer_lead'
+    && lockedUpdateCalls.length === lockedCallsBefore && loggedActionCalls.length === loggedCallsBefore,
+    `Alert: ${sawAlert}, Spalte danach: ${stageAfter}`);
 }
 
 // Tag-Reiter: Kalender-/Aufgaben-Spalten stapeln sich mobil (dieselbe

@@ -1,9 +1,10 @@
 # Regressions-Suiten
 
 Zwei Playwright-Skripte, die die echte App in einem Headless-Chromium
-durchklicken und ~44 Dinge prüfen (Login/Rollen, XP→Level, Kanban-
-Spalten, zentrale Navigation inkl. Deep-Links, Kalender/Termine,
-Kontakt-Chronik, Verkauf/Statistik, mobiles/Touch-Verhalten).
+durchklicken und ~49 Dinge prüfen (Login/Rollen, XP→Level, Kanban-
+Spalten, Kanban-Übergänge inkl. RPC-Verträgen, zentrale Navigation
+inkl. Deep-Links, Kalender/Termine, Kontakt-Chronik, Verkauf/Statistik,
+mobiles/Touch-Verhalten).
 
 **Es wird nichts an der echten Datenbank geschrieben.** Alle Testdaten
 werden per `page.route()` in die REST-Antworten eingeschleust; der
