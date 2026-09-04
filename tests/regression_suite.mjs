@@ -44,8 +44,13 @@
 //    "-> Gewonnen"-Test bereits echter Kunde, deshalb bleiben trotz
 //    Herkunft "ersttermin_vereinbart" ALLE Trichter-Markierungen aus
 //    (Bestandskunden-Betreuung zaehlt nicht als Erfolgsmessung, siehe
-//    CLAUDE.md). Bewusst schrittweise -- Dauerbrenner folgt als eigene,
-//    spaetere Ausbaustufe.
+//    CLAUDE.md). Sechster und letzter der acht regulaeren Uebergaenge
+//    (-> Dauerbrenner): kein Zwang, eine der vier optionalen
+//    Zusatzaktionen ("Empfehlung erhalten") wird geloggt, keine
+//    automatische Hauptaktion. Damit sind alle acht Kanban-Spalten-
+//    Uebergaenge + der wichtigste Schutzmechanismus vertraglich
+//    festgeschrieben -- bewusst NICHT abgedeckt bleibt der Revert-Pfad
+//    bei "Gewonnen" ohne Produkt, siehe Kommentar dort.
 //
 // Alle Tests arbeiten mit synthetischen, per page.route() eingeschleusten
 // Daten -- NICHTS wird an der echten Datenbank geschrieben oder veraendert
@@ -963,6 +968,35 @@ await page.setViewportSize({ width: 390, height: 844 });
     !newLoggedZweit.includes('zweittermin_vereinbart'), `neu geloggt: ${newLoggedZweit.join(', ') || '(keine)'}`);
   record('Kanban-Uebergang "-> Zweittermin": KEINE "termin_wahrgenommen"-Marke (isKunde-Schutz, nicht nur Jahres-Duplikatschutz)',
     !newLoggedZweit.includes('termin_wahrgenommen'), `neu geloggt: ${newLoggedZweit.join(', ') || '(keine)'}`);
+}
+
+// ---- NEU: Uebergang "-> Dauerbrenner" -- letzter der acht regulaeren
+// Kanban-Uebergaenge. Kein Zwang: Popup mit vier optionalen Zusatzaktionen
+// (Bedarfsanalyse/Pitch/Termin wahrgenommen/Empfehlung) oder einfach
+// schliessen (siehe CLAUDE.md). Testkontakt steht nach dem vorigen Test
+// auf "zweittermin" -- von dort aus ist "Dauerbrenner" ohne Einschraenkung
+// erreichbar. Diesmal bewusst eine der vier Optionen gewaehlt
+// ("Empfehlung erhalten") statt nur geschlossen -- die reine
+// Schliessen-ohne-Aktion-Variante desselben Modal-Typs ist bereits an
+// anderer Stelle abgedeckt (Angebot versendet/Zweittermin schliessen ihn
+// oben immer ohne Auswahl).
+{
+  const loggedCallsBeforeDauer = loggedActionCalls.length;
+  const lockedCallsBeforeDauer = lockedUpdateCalls.length;
+  await dragKanbanCardToStage(TRANSITION_CONTACT_ID, 'dauerbrenner');
+  await page.waitForSelector(tid('kanban-extra-action-modal'), { state: 'visible', timeout: 5000 }).catch(() => {});
+  await page.locator(`${tid('kanban-extra-action-modal')} [data-extra="empfehlung"]`).click().catch(() => {});
+  const stageAfterDauer = await waitForCardStage(TRANSITION_CONTACT_ID, 'dauerbrenner');
+  const newLoggedDauer = loggedActionCalls.slice(loggedCallsBeforeDauer);
+  record('Kanban-Uebergang "-> Dauerbrenner": Karte landet in der neuen Spalte', stageAfterDauer === 'dauerbrenner', `Spalte: ${stageAfterDauer}`);
+  record('Kanban-Uebergang "-> Dauerbrenner": update_contact_locked mit kanban_stage=dauerbrenner aufgerufen',
+    lockedUpdateCalls.slice(lockedCallsBeforeDauer).some(c => c.p_id === TRANSITION_CONTACT_ID && c.p_patch && c.p_patch.kanban_stage === 'dauerbrenner'),
+    `Aufrufe insgesamt: ${lockedUpdateCalls.length}`);
+  record('Kanban-Uebergang "-> Dauerbrenner": KEINE automatische Hauptaktion (kein Zwang, siehe CLAUDE.md)',
+    !newLoggedDauer.includes('pitch') && !newLoggedDauer.includes('termin_vereinbart') && !newLoggedDauer.includes('kundenausbau'),
+    `neu geloggt: ${newLoggedDauer.join(', ') || '(keine)'}`);
+  record('Kanban-Uebergang "-> Dauerbrenner": gewaehlte Zusatzaktion "empfehlung" wird geloggt',
+    newLoggedDauer.includes('empfehlung'), `neu geloggt: ${newLoggedDauer.join(', ') || '(keine)'}`);
 }
 
 // Tag-Reiter: Kalender-/Aufgaben-Spalten stapeln sich mobil (dieselbe
