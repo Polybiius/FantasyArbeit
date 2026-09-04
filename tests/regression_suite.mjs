@@ -49,8 +49,10 @@
 //    Zusatzaktionen ("Empfehlung erhalten") wird geloggt, keine
 //    automatische Hauptaktion. Damit sind alle acht Kanban-Spalten-
 //    Uebergaenge + der wichtigste Schutzmechanismus vertraglich
-//    festgeschrieben -- bewusst NICHT abgedeckt bleibt der Revert-Pfad
-//    bei "Gewonnen" ohne Produkt, siehe Kommentar dort.
+//    festgeschrieben. Siebter Testblock schliesst die zuvor bewusst
+//    offen gelassene Luecke: der Revert-Pfad bei "-> Gewonnen" OHNE
+//    Produkt (Popup wird geschlossen, ohne etwas einzutragen) -- auf
+//    Nutzeranstoss ergaenzt, kein hypothetischer Fall.
 //
 // Alle Tests arbeiten mit synthetischen, per page.route() eingeschleusten
 // Daten -- NICHTS wird an der echten Datenbank geschrieben oder veraendert
@@ -997,6 +999,46 @@ await page.setViewportSize({ width: 390, height: 844 });
     `neu geloggt: ${newLoggedDauer.join(', ') || '(keine)'}`);
   record('Kanban-Uebergang "-> Dauerbrenner": gewaehlte Zusatzaktion "empfehlung" wird geloggt',
     newLoggedDauer.includes('empfehlung'), `neu geloggt: ${newLoggedDauer.join(', ') || '(keine)'}`);
+}
+
+// ---- NEU: Revert-Pfad bei "-> Gewonnen" OHNE Produkt -- die bewusst
+// offen gelassene Luecke von oben, auf Nutzeranstoss geschlossen (kein
+// hypothetischer Fall, kommt im echten Betrieb vor). moveContactToGewonnen
+// AndRecordSale() setzt die Spalte zuerst optimistisch auf "gewonnen",
+// macht das aber wieder rueckgaengig, wenn das Verkaufs-Popup OHNE
+// Produkt geschlossen wird (Bugfix-Kommentar im echten Code: sonst
+// bliebe die Karte faelschlich in "Gewonnen" haengen, ohne echten
+// Vertrag, und es gaebe faelschlich "abschluss"-XP). Testkontakt steht
+// nach dem vorigen Test auf "dauerbrenner". Wichtig: der erste
+// update_contact_locked-Aufruf (kanban_stage='gewonnen') wird explizit
+// mitgeprueft -- sonst waere ein versehentlicher Abbruch VOR dem
+// eigentlichen Verkaufs-Popup (z.B. durch eine leere Energie-Pruefung)
+// nicht von einem echten Revert zu unterscheiden, beide wuerden aeusserlich
+// gleich aussehen (Karte bleibt/landet wieder auf "dauerbrenner").
+{
+  const loggedCallsBeforeRevert = loggedActionCalls.length;
+  const salesCallsBeforeRevert = salesInsertedForTransitionContact.length;
+  const lockedCallsBeforeRevert = lockedUpdateCalls.length;
+  await dragKanbanCardToStage(TRANSITION_CONTACT_ID, 'gewonnen');
+  await page.waitForSelector(tid('sale-entry-modal'), { state: 'visible', timeout: 5000 }).catch(() => {});
+  // Bewusst OHNE Produkt/Vertragsbeginn ausfuellen -- direkt schliessen.
+  await page.locator(tid('sale-entry-close')).click().catch(() => {});
+  const stageAfterRevert = await waitForCardStage(TRANSITION_CONTACT_ID, 'dauerbrenner');
+  const lockedSinceRevert = lockedUpdateCalls.slice(lockedCallsBeforeRevert);
+  const newLoggedRevert = loggedActionCalls.slice(loggedCallsBeforeRevert);
+  record('Revert-Pfad "-> Gewonnen" ohne Produkt: Karte wurde erst wirklich auf "gewonnen" gesetzt (echter Revert, kein Energie-Abbruch davor)',
+    lockedSinceRevert.some(c => c.p_id === TRANSITION_CONTACT_ID && c.p_patch && c.p_patch.kanban_stage === 'gewonnen'),
+    `Aufrufe seither: ${lockedSinceRevert.length}`);
+  record('Revert-Pfad "-> Gewonnen" ohne Produkt: Karte landet wieder auf der Ausgangsspalte "dauerbrenner"',
+    stageAfterRevert === 'dauerbrenner', `Spalte: ${stageAfterRevert}`);
+  record('Revert-Pfad "-> Gewonnen" ohne Produkt: zweiter update_contact_locked setzt kanban_stage zurueck auf "dauerbrenner"',
+    lockedSinceRevert.some(c => c.p_id === TRANSITION_CONTACT_ID && c.p_patch && c.p_patch.kanban_stage === 'dauerbrenner'),
+    `Aufrufe seither: ${lockedSinceRevert.length}`);
+  record('Revert-Pfad "-> Gewonnen" ohne Produkt: KEIN sales-Insert abgesetzt',
+    salesInsertedForTransitionContact.length === salesCallsBeforeRevert,
+    `Inserts seither: ${salesInsertedForTransitionContact.length - salesCallsBeforeRevert}`);
+  record('Revert-Pfad "-> Gewonnen" ohne Produkt: KEINE "abschluss"-Aktion geloggt',
+    !newLoggedRevert.includes('abschluss'), `neu geloggt: ${newLoggedRevert.join(', ') || '(keine)'}`);
 }
 
 // Tag-Reiter: Kalender-/Aufgaben-Spalten stapeln sich mobil (dieselbe
