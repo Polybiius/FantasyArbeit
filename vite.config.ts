@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
@@ -37,5 +38,13 @@ export default defineConfig({
         assetFileNames: 'assets/[name][extname]',
       },
     },
+  },
+  // Vitest fuer reine, DB-lose Rechenfunktionen (Fahrplan/CLAUDE.md) --
+  // laeuft im Node-Environment (kein DOM noetig, die Funktionen sind
+  // bewusst framework-frei, siehe docs/adr/0007). Getrennt von der
+  // Playwright-Regressions-Suite (tests/, Browser-basiert, echte Seite).
+  test: {
+    environment: 'node',
+    include: ['src/**/*.test.ts'],
   },
 });

@@ -10,6 +10,8 @@
     "typecheck": "tsc -b",
     "gen:types": "supabase gen types typescript --linked > src/shared/types/supabase.ts",
     "lint": "eslint .",
+    "test:unit": "vitest run",
+    "test:unit:watch": "vitest",
     "test": "node tests/run-regression.mjs",
     "test:admin": "node tests/run-regression.mjs admin",
     "test:member": "node tests/run-regression.mjs member"
@@ -47,6 +49,7 @@
     "typescript": "5.9.3",
     "typescript-eslint": "8.69.0",
     "vite": "8.2.2",
+    "vitest": "5.0.0",
     "wrangler": "^4.128.0"
   },
   "dependencies": {
