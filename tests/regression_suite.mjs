@@ -38,9 +38,14 @@
 //    NICHT abgedeckt, siehe Kommentar am Testblock selbst. Vierter
 //    Uebergang ("Kundenausbau", Gewonnen -> Ersttermin vereinbart) deckt
 //    einen leicht falsch zu kodierenden Sonderfall ab: loggt "kundenausbau"
-//    statt "termin_vereinbart" und KEINE Trichter-Marke. Bewusst
-//    schrittweise -- die uebrigen Uebergaenge (Dauerbrenner/
-//    Zweittermin-Pfad) folgen als eigene, spaetere Ausbaustufen.
+//    statt "termin_vereinbart" und KEINE Trichter-Marke. Fuenfter
+//    Uebergang (-> Zweittermin) teilt sich "pitch" mit Angebot versendet
+//    UND prueft den isKunde-Schutz: der Testkontakt ist seit dem
+//    "-> Gewonnen"-Test bereits echter Kunde, deshalb bleiben trotz
+//    Herkunft "ersttermin_vereinbart" ALLE Trichter-Markierungen aus
+//    (Bestandskunden-Betreuung zaehlt nicht als Erfolgsmessung, siehe
+//    CLAUDE.md). Bewusst schrittweise -- Dauerbrenner folgt als eigene,
+//    spaetere Ausbaustufe.
 //
 // Alle Tests arbeiten mit synthetischen, per page.route() eingeschleusten
 // Daten -- NICHTS wird an der echten Datenbank geschrieben oder veraendert
@@ -922,6 +927,42 @@ await page.setViewportSize({ width: 390, height: 844 });
   record('Kanban-Uebergang "Kundenausbau": KEINE Trichter-Marke mitgeloggt (Herkunft war "gewonnen", nicht Ersttermin/Zweittermin)',
     !newLoggedAusbau.includes('termin_wahrgenommen') && !newLoggedAusbau.includes('zweittermin_wahrgenommen') && !newLoggedAusbau.includes('zweittermin_vereinbart'),
     `neu geloggt: ${newLoggedAusbau.join(', ') || '(keine)'}`);
+}
+
+// ---- NEU: Uebergang "-> Zweittermin" -- teilt sich die Hauptaktion
+// "pitch" mit "Angebot versendet". Testkontakt steht nach dem vorigen Test
+// wieder auf "ersttermin_vereinbart", ABER: er wurde im "-> Gewonnen"-Test
+// weiter oben bereits als echter Kunde markiert (contact.status='kunde',
+// im Speicher gehalten, kein Reset zwischen den Testbloecken -- genau wie
+// im echten Programm, wo ein Kontakt nicht "entkundet" wird). Das macht
+// diesen Uebergang zu einem guten, bisher unabsichtlich unerprobten Test
+// des isKunde-Schutzes (siehe CLAUDE.md Akquise-Trichter-Abschnitt):
+// "ist der Kontakt schon Kunde, wird KEINE der drei Trichter-Markierungen
+// geloggt -- der 3./4. Termin eines Bestandskunden ist reine Betreuung,
+// keine Erfolgsmessung." Erste Testfassung erwartete faelschlich, dass
+// "zweittermin_vereinbart" trotzdem feuert -- per echtem Testlauf (nicht
+// erst per Zweitmeinung) als falsche Annahme entlarvt, hier korrigiert.
+// Zwei Popups danach (Bedarfsanalyse + Zweittermin-Termin), beide
+// uebersprungen.
+{
+  const loggedCallsBeforeZweit = loggedActionCalls.length;
+  const lockedCallsBeforeZweit = lockedUpdateCalls.length;
+  await dragKanbanCardToStage(TRANSITION_CONTACT_ID, 'zweittermin');
+  await page.waitForSelector(tid('kanban-extra-action-modal'), { state: 'visible', timeout: 5000 }).catch(() => {});
+  await page.locator(tid('kanban-extra-action-close')).click().catch(() => {});
+  await page.waitForSelector(tid('kanban-termin-modal'), { state: 'visible', timeout: 5000 }).catch(() => {});
+  await page.locator(tid('kanban-termin-close')).click().catch(() => {});
+  const stageAfterZweit = await waitForCardStage(TRANSITION_CONTACT_ID, 'zweittermin');
+  const newLoggedZweit = loggedActionCalls.slice(loggedCallsBeforeZweit);
+  record('Kanban-Uebergang "-> Zweittermin": Karte landet in der neuen Spalte', stageAfterZweit === 'zweittermin', `Spalte: ${stageAfterZweit}`);
+  record('Kanban-Uebergang "-> Zweittermin": update_contact_locked mit kanban_stage=zweittermin aufgerufen',
+    lockedUpdateCalls.slice(lockedCallsBeforeZweit).some(c => c.p_id === TRANSITION_CONTACT_ID && c.p_patch && c.p_patch.kanban_stage === 'zweittermin'),
+    `Aufrufe insgesamt: ${lockedUpdateCalls.length}`);
+  record('Kanban-Uebergang "-> Zweittermin": Hauptaktion "pitch" geloggt', newLoggedZweit.includes('pitch'), `neu geloggt: ${newLoggedZweit.join(', ') || '(keine)'}`);
+  record('Kanban-Uebergang "-> Zweittermin": KEINE Trichter-Marke "zweittermin_vereinbart" (Kontakt ist bereits Kunde -- isKunde-Schutz)',
+    !newLoggedZweit.includes('zweittermin_vereinbart'), `neu geloggt: ${newLoggedZweit.join(', ') || '(keine)'}`);
+  record('Kanban-Uebergang "-> Zweittermin": KEINE "termin_wahrgenommen"-Marke (isKunde-Schutz, nicht nur Jahres-Duplikatschutz)',
+    !newLoggedZweit.includes('termin_wahrgenommen'), `neu geloggt: ${newLoggedZweit.join(', ') || '(keine)'}`);
 }
 
 // Tag-Reiter: Kalender-/Aufgaben-Spalten stapeln sich mobil (dieselbe
