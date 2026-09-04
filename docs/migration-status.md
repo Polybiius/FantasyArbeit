@@ -53,6 +53,19 @@ eintragen.
 |-------|---------|---------|-----------------------|
 | — | — | — | — |
 
+## Bekannte Design-Schulden aus Wegwerf-Layouts
+
+Bereiche, deren React-Fassung technisch fertig ist, aber die alte
+Kachel-/Modal-Optik bewusst NICHT nachgebaut wurde (Pilot-Prinzip:
+Infrastruktur zuerst testen, Optik erst in einer eigenen Design-Runde).
+Nutzer-Rückmeldung (2026-09-04): Einstellungen sieht dadurch spürbar
+schlichter aus als vorher — akzeptiert, bewusst auf später verschoben,
+kein akuter Fix.
+
+| Bereich | Was fehlt gegenüber Vanilla | Wann nachziehen |
+|---------|------------------------------|------------------|
+| Einstellungen | Icon-Kacheln als Startseite + Klick-öffnet-Modal-Muster (jetzt: alle Felder flach untereinander) | Eigene Design-Politur-Runde, nicht vor Block 5 |
+
 ## "Fertig"-Definition
 
 Die Migration gilt als abgeschlossen, wenn: alle Bereiche oben auf
