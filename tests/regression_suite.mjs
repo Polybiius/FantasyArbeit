@@ -26,9 +26,11 @@
 //    gegen die zwei dabei ausgeloesten RPCs (update_contact_locked/
 //    log_action_for_self, beide fuer diesen einen Testkontakt abgefangen)
 //    geprueft, plus der wichtigste Schutzmechanismus ("Nicht erschienen" nur
-//    vom Ersttermin/Zweittermin aus erreichbar). Bewusst nur dieser eine
-//    Uebergang + ein Schutzmechanismus in diesem ersten Schritt -- die
-//    uebrigen Uebergaenge (Gewonnen/Verloren/Dauerbrenner/Kundenausbau/
+//    vom Ersttermin/Zweittermin aus erreichbar). Zweiter Uebergang (-> Verloren)
+//    deckt den strukturell anderen Fall ab: KEINE Hauptaktion ("Verloren ist
+//    verloren"), dafuer ein eigener sales-Insert (kein RPC) + ein zweiter
+//    update_contact_locked-Aufruf (contacts.status). Bewusst schrittweise --
+//    die uebrigen Uebergaenge (Gewonnen/Dauerbrenner/Kundenausbau/
 //    Zweittermin-Pfad) folgen als eigene, spaetere Ausbaustufen.
 //
 // Alle Tests arbeiten mit synthetischen, per page.route() eingeschleusten
@@ -215,6 +217,7 @@ let transitionContactStage = 'ersttermin_vereinbart';
 const lockedUpdateCalls = [];
 const loggedActionCalls = [];
 let fakeLogSeq = 0;
+const salesInsertedForTransitionContact = [];
 await page.route('**/rest/v1/contacts*', async route => {
   const response = await route.fetch();
   const body = await response.json();
@@ -308,6 +311,18 @@ const SALE_ID_STAT_B = 'cccccccc-0003-4003-8003-000000000003';
 let statYear = null; // erst nach Login bekannt (host-lokales "heute" reicht)
 await page.route('**/rest/v1/sales*', async route => {
   const url = route.request().url();
+  // NEU (Kanban-Uebergangs-Vertrag): "Verloren" loest einen echten
+  // sales-Insert aus (recordLostSale(), kein RPC) -- fuer den
+  // Transition-Testkontakt abfangen statt am echten Konto zu schreiben.
+  if (route.request().method() === 'POST') {
+    let insertBody = null;
+    try { insertBody = route.request().postDataJSON(); } catch { /* insertBody bleibt null */ }
+    if (insertBody && insertBody.contact_id === TRANSITION_CONTACT_ID) {
+      salesInsertedForTransitionContact.push(insertBody);
+      await fulfillJson(route, [], 201);
+      return;
+    }
+  }
   if (url.includes('contact_id=eq.' + CHRONIK_CONTACT_ID)) {
     const response = await route.fetch();
     const body = await response.json();
@@ -765,6 +780,40 @@ await page.setViewportSize({ width: 390, height: 844 });
     !!sawAlert && sawAlert.includes('Nicht erschienen') && stageAfter === 'neuer_lead'
     && lockedUpdateCalls.length === lockedCallsBefore && loggedActionCalls.length === loggedCallsBefore,
     `Alert: ${sawAlert}, Spalte danach: ${stageAfter}`);
+}
+
+// ---- NEU: Uebergang "-> Verloren" -- strukturell anders als "Angebot
+// versendet": KEINE Hauptaktion (mainActionKey bleibt null, "Verloren ist
+// verloren", siehe CLAUDE.md), dafuer ein eigenes Verkaufs-Popup
+// (recordLostSale(), direkter sales-Insert statt RPC) + ein zweiter
+// update_contact_locked-Aufruf fuer contacts.status='verloren'. Der
+// Transition-Testkontakt steht nach dem vorigen Test bereits auf
+// "angebot_versendet" -- von dort aus ist "Verloren" ohne Einschraenkung
+// erreichbar (nur "Nicht erschienen" hat eine Herkunfts-Beschraenkung).
+{
+  const loggedCallsBeforeLoss = loggedActionCalls.length;
+  const moveBtn3 = page.locator(`${tid('kanban-card')}[data-contact="${TRANSITION_CONTACT_ID}"] ${tid('kanban-move-btn')}`);
+  await moveBtn3.click().catch(() => {});
+  await page.waitForSelector(tid('kanban-move-modal'), { state: 'visible', timeout: 4000 }).catch(() => {});
+  await page.locator(`${tid('kanban-move-grid')} [data-movestage="verloren"]`).click().catch(() => {});
+  await page.waitForSelector('#saleLostModal', { state: 'visible', timeout: 5000 }).catch(() => {});
+  await page.selectOption('#saleLostCategory', 'RegressTestKategorie').catch(() => {});
+  await page.selectOption('#saleLostProdukt', PRODUCT_ID_SH).catch(() => {});
+  await page.locator('#saleLostConfirmBtn').click().catch(() => {});
+  await page.waitForFunction(
+    (id) => document.querySelector(`[data-testid="kanban-card"][data-contact="${id}"]`)?.dataset.stage === 'verloren',
+    TRANSITION_CONTACT_ID, { timeout: 5000 },
+  ).catch(() => {});
+  const stageAfterLoss = await page.locator(`${tid('kanban-card')}[data-contact="${TRANSITION_CONTACT_ID}"]`).getAttribute('data-stage').catch(() => null);
+  record('Kanban-Uebergang "-> Verloren": Karte landet in der neuen Spalte', stageAfterLoss === 'verloren', `Spalte: ${stageAfterLoss}`);
+  record('Kanban-Uebergang "-> Verloren": KEINE Hauptaktion geloggt ("Verloren ist verloren")',
+    loggedActionCalls.length === loggedCallsBeforeLoss, `neu geloggt seit vorher: ${loggedActionCalls.slice(loggedCallsBeforeLoss).join(', ') || '(keine)'}`);
+  record('Kanban-Uebergang "-> Verloren": sales-Insert mit status=verloren + richtigem Produkt abgefangen',
+    salesInsertedForTransitionContact.some(s => s.contact_id === TRANSITION_CONTACT_ID && s.status === 'verloren' && s.product_id === PRODUCT_ID_SH),
+    `Inserts: ${salesInsertedForTransitionContact.length}`);
+  record('Kanban-Uebergang "-> Verloren": zweiter update_contact_locked setzt contacts.status=verloren',
+    lockedUpdateCalls.some(c => c.p_id === TRANSITION_CONTACT_ID && c.p_patch && c.p_patch.status === 'verloren'),
+    `Aufrufe insgesamt: ${lockedUpdateCalls.length}`);
 }
 
 // Tag-Reiter: Kalender-/Aufgaben-Spalten stapeln sich mobil (dieselbe
