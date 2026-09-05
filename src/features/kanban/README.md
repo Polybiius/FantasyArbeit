@@ -23,11 +23,13 @@ sofort zu loggende Trichter-Marken, Popups, und ob es sich um einen der
 beiden Sonderfälle ("gewonnen"/"verloren") handelt, deren Ausgang von
 einem Popup abhängt.
 
-**`resolveWonOutcome`/`resolveLostOutcome`** lösen genau diese beiden
-Sonderfälle auf, sobald der tatsächliche Popup-Ausgang bekannt ist
-(wurde ein Produkt eingetragen oder nicht) — siehe die Asymmetrie im
+**`resolveWonFunnelMarkers`/`resolveLostOutcome`** lösen genau diese
+beiden Sonderfälle auf, sobald der tatsächliche Popup-Ausgang bekannt
+ist (wurde ein Produkt eingetragen oder nicht) — siehe die Asymmetrie im
 Datei-Kopfkommentar: "Gewonnen" macht die Spaltenänderung bei fehlendem
-Produkt rückgängig (Revert-Pfad), "Verloren" nicht.
+Produkt rückgängig (Revert-Pfad, seit 2026-09-05 direkt in
+`kanbanMutations.ts`, nicht mehr in dieser Funktion selbst), "Verloren"
+nicht.
 
 ## Testabdeckung
 
@@ -112,7 +114,7 @@ ihre Vanilla-Vorbilder; `useKanbanSalePopups.tsx` hält das jeweils
 offene Popup und liefert `kanbanMutations.ts` zwei
 `requestWonSale()`/`requestLostSale()`-Einstiegspunkte, auf die
 `useMoveKanbanCardMutation()` wartet, bevor sie mit
-`resolveWonOutcome()`/`resolveLostOutcome()` (`kanbanTransitions.ts`)
+`resolveWonFunnelMarkers()`/`resolveLostOutcome()` (`kanbanTransitions.ts`)
 weiterrechnet.
 
 **Bewusste Abweichungen von Vanilla, beide dokumentiert an der

@@ -41,6 +41,13 @@ export function KanbanExtraActionModal({ contact, options, onResolve }: KanbanEx
   const profile = getBridge().getProfile();
   const { data: actionCosts, isLoading: costsLoading } = useOrgActionCostsQuery(profile?.org_id ?? undefined);
   const stats = useCharacterStats();
+  // `stats === null` ist laut `useCharacterStats()`-Docstring ein
+  // Lade-Zustand ("noch kein Vanilla-render() gelaufen"), keine echte
+  // "0 Energie" -- Fund einer unabhängigen Zweitmeinung (2026-09-05,
+  // dieselbe Fund-Klasse wie `costsLoading` unten): ohne diesen Guard
+  // erscheinen Options-Buttons direkt nach Login/Reload fälschlich
+  // energie-gesperrt.
+  const statsLoading = stats == null;
   const energyRemaining = stats?.energyRemaining ?? 0;
   const { busy, run } = useBusyGuard();
   const [status, setStatus] = useState('');
@@ -78,7 +85,8 @@ export function KanbanExtraActionModal({ contact, options, onResolve }: KanbanEx
       <div className="tw:grid tw:grid-cols-1 tw:gap-2 tw:sm:grid-cols-2">
         {options.map((option) => {
           const cost = actionCosts?.[option.key];
-          const disabled = busy || costsLoading || (cost != null && cost.energy > 0 && cost.energy > energyRemaining);
+          const disabled =
+            busy || costsLoading || statsLoading || (cost != null && cost.energy > 0 && cost.energy > energyRemaining);
           return (
             <button
               key={option.key}

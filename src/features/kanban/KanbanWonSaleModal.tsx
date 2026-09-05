@@ -67,7 +67,23 @@ export function KanbanWonSaleModal({ contact, onResolve }: KanbanWonSaleModalPro
   // ist der Override (auch als Leerstring) dauerhaft gesetzt und gewinnt.
   const [wiedervorlageOverride, setWiedervorlageOverride] = useState<string | null>(null);
   const suggestedWiedervorlage = computeRecontactDate(selectedProduct, vertragsbeginn);
-  const wiedervorlage = wiedervorlageOverride ?? suggestedWiedervorlage ?? '';
+  // Fund einer unabhängigen Zweitmeinung (2026-09-05): `addProduct()`
+  // leert `vertragsbeginn` nach jedem erfolgreichen Produkt-Insert
+  // (siehe unten) -- eine reine Ableitung aus `vertragsbeginn` würde die
+  // gerade erst berechnete Empfehlung dadurch sofort wieder verschwinden
+  // lassen, sobald ein zweites Produkt hinzugefügt wird. `lastSuggestion`
+  // merkt sich den zuletzt berechneten, nicht-leeren Vorschlag, damit er
+  // stehen bleibt, bis der Nutzer ihn selbst überschreibt oder ein neuer
+  // (Produkt+Vertragsbeginn)-Vorschlag entsteht.
+  const [lastSuggestion, setLastSuggestion] = useState<string | null>(null);
+  // Anpassung während des Renderns statt in einem Effekt (React-
+  // empfohlenes Muster für "vom Prop abgeleiteten Zustand" -- bricht
+  // nach einem zusätzlichen Render von selbst ab, sobald `lastSuggestion`
+  // den neuen Wert trägt).
+  if (suggestedWiedervorlage && suggestedWiedervorlage !== lastSuggestion) {
+    setLastSuggestion(suggestedWiedervorlage);
+  }
+  const wiedervorlage = wiedervorlageOverride ?? lastSuggestion ?? '';
 
   const bwsPreview =
     selectedProduct?.provision_mode === 'individuell_lv' && beitrag

@@ -4,6 +4,7 @@ import { getBridge } from '@/shared/lib/bridge';
 import { lockedUpdate } from '@/shared/lib/lockedUpdate';
 import { qk } from '@/shared/lib/queryKeys';
 import { resolveTimeZone } from '@/shared/lib/timezone';
+import type { Json } from '@/shared/types/supabase';
 
 import { contactDisplayName } from '@/shared/domain/contactCard/contactDisplay';
 import { logAndNotify } from './kanbanActionLog';
@@ -178,49 +179,56 @@ export function useMoveKanbanCardMutation(salePopups: KanbanSalePopups, extraPop
 
         // Wiedervorlage wird UNABHÄNGIG vom Verkaufs-Ausgang geschrieben
         // (auch im Revert-Pfad unten) -- 1:1 zu `recordWonSalesLoop()` im
-        // echten Code. Fund einer unabhängigen Zweitmeinung (2026-09-05,
-        // Punkt 1 in kanban/README.md): das Popup selbst kennt zu diesem
-        // Zeitpunkt nur das `updated_at` von VOR dem Stage-Set auf
-        // "gewonnen" -- ein `lockedUpdate()` von dort aus würde fälschlich
-        // als Konflikt abgelehnt. Deshalb hier, mit dem bereits frischen
-        // `staged.updated_at`.
-        let currentUpdatedAt = staged.updated_at;
-        if (result.wiedervorlage) {
-          await syncWiedervorlageTask(orgId, profile.id, contact.id, contactDisplayName(contact), result.wiedervorlage);
-          const wvUpdated = await lockedUpdate(
-            'update_contact_locked',
-            { p_id: contact.id, p_expected_updated_at: currentUpdatedAt, p_patch: { naechster_kontakt: result.wiedervorlage } },
-            conflictSubject,
-          );
-          if (wvUpdated) {
-            currentUpdatedAt = wvUpdated.updated_at;
-            patchContactFieldsInCache(queryClient, profile.id, contact.id, 'gewonnen', { updated_at: wvUpdated.updated_at });
-          }
-          // Konflikt hier ist non-kritisch (wie Vanillas `logSilentError`
-          // bei der Wiedervorlage-Aufgabe) -- `notifyConflict()` feuert
-          // bereits innerhalb von `lockedUpdate()`, der Rest des Ablaufs
-          // läuft mit dem zuletzt bekannten `currentUpdatedAt` weiter.
-        }
-
+        // echten Code. Fund zweier unabhängiger Zweitmeinungen
+        // (2026-09-05): (a) `naechster_kontakt` wird MIT der jeweils
+        // nächsten ohnehin fälligen Spalten-/Status-Änderung in EINEM
+        // `lockedUpdate()`-Aufruf kombiniert statt in einem eigenen --
+        // `update_contact_locked` akzeptiert beliebige Kombinationen
+        // seiner erlaubten Felder gleichzeitig, ein zweiter, unabhängiger
+        // Schreibvorgang war unnötig UND riskant: ein Konflikt darin hätte
+        // (b) den danach folgenden Schreibvorgang mit dem GLEICHEN,
+        // bereits veralteten `updated_at` erneut scheitern lassen (zwei
+        // Konflikt-Meldungen für eine einzige Kollision) UND (c) eine
+        // `tasks`-Wiedervorlage-Zeile hätte entstehen können, obwohl das
+        // zugehörige `contacts.naechster_kontakt` gar nicht gespeichert
+        // wurde -- `syncWiedervorlageTask()` läuft deshalb jetzt NACH dem
+        // kombinierten Schreibvorgang, nur bei dessen Erfolg (1:1 zu
+        // Vanillas Reihenfolge).
         if (!result.saleRecorded) {
           // Kein Produkt eingetragen -- Spalte zurücknehmen (Revert-Pfad,
           // siehe Modul-Kommentar an `resolveWonFunnelMarkers()`).
+          const revertPatch: Record<string, Json> = { kanban_stage: fromStage };
+          if (result.wiedervorlage) revertPatch.naechster_kontakt = result.wiedervorlage;
           const reverted = await lockedUpdate(
             'update_contact_locked',
-            { p_id: contact.id, p_expected_updated_at: currentUpdatedAt, p_patch: { kanban_stage: fromStage } },
+            { p_id: contact.id, p_expected_updated_at: staged.updated_at, p_patch: revertPatch },
             conflictSubject,
           );
           if (!reverted) return { conflict: true };
           moveContactInCache(queryClient, profile.id, contact.id, 'gewonnen', fromStage, { updated_at: reverted.updated_at });
+          if (result.wiedervorlage) {
+            await syncWiedervorlageTask(orgId, profile.id, contact.id, contactDisplayName(contact), result.wiedervorlage);
+          }
           return { moved: true };
         }
 
-        await logAndNotify(contact, 'abschluss');
-
+        // Status-Update VOR der "abschluss"-XP-Buchung (Fund einer
+        // unabhängigen Zweitmeinung, 2026-09-05 -- kehrt die vorherige
+        // Reihenfolge um): Vanillas `recordWinOrLoss()` setzt
+        // `contacts.status` ebenfalls VOR dem XP-Log, damit ein
+        // fehlschlagender `log_action_for_self`-Aufruf (Netzwerk-Hänger
+        // o.ä.) danach nicht die wichtigere CRM-Tatsache verhindert --
+        // sonst stünde die Karte in "Gewonnen" mit bereits eingetragenem
+        // Verkauf, aber `contacts.status` bliebe auf dem alten Wert
+        // stehen, ohne normalen Weg, das über die UI zu wiederholen (die
+        // Karte lässt sich nicht "erneut" auf eine bereits erreichte
+        // Spalte ziehen).
+        const wonPatch: Record<string, Json> = { status: 'kunde' };
+        if (result.wiedervorlage) wonPatch.naechster_kontakt = result.wiedervorlage;
         let statusUpdateConflicted = false;
         const statusUpdated = await lockedUpdate(
           'update_contact_locked',
-          { p_id: contact.id, p_expected_updated_at: currentUpdatedAt, p_patch: { status: 'kunde' } },
+          { p_id: contact.id, p_expected_updated_at: staged.updated_at, p_patch: wonPatch },
           conflictSubject,
         );
         if (statusUpdated) {
@@ -228,9 +236,14 @@ export function useMoveKanbanCardMutation(salePopups: KanbanSalePopups, extraPop
             updated_at: statusUpdated.updated_at,
             status: 'kunde',
           });
+          if (result.wiedervorlage) {
+            await syncWiedervorlageTask(orgId, profile.id, contact.id, contactDisplayName(contact), result.wiedervorlage);
+          }
         } else {
           statusUpdateConflicted = true;
         }
+
+        await logAndNotify(contact, 'abschluss');
 
         // Trichter-Marken MÜSSEN auch im Konfliktfall noch geloggt werden
         // (siehe `resolveWonFunnelMarkers()`-Dokumentation) -- deshalb erst
