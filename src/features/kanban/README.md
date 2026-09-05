@@ -186,11 +186,13 @@ scharfgeschaltet, kein Risiko für die echte Anwendung.**
    "gewonnen" — mit dem dort bereits frischen `staged.updated_at`.
    Läuft, wie per Vanilla-Vergleich verlangt, UNABHÄNGIG von
    `saleRecorded` (auch im Revert-Fall).
-2. **Behoben:** `KanbanExtraActionModal.pick()` fängt einen
-   fehlschlagenden `logAndNotify()`-Aufruf jetzt ab, zeigt einen
-   sichtbaren Status-Text (gleiches Muster wie die Verkaufs-/Termin-
-   Popups) statt das Popup einfach zu schließen, und loggt per
-   `logSilentError`.
+2. **Behoben, 2026-09-05 (Zwischenstand seitdem überholt, siehe
+   "Resilienz-Entscheidung" unten):** `KanbanExtraActionModal.pick()`
+   fing einen fehlschlagenden `logAndNotify()`-Aufruf zunächst ab und
+   zeigte einen sichtbaren Status-Text statt das Popup einfach zu
+   schließen. Mit der Resilienz-Entscheidung wirft `logAndNotify()`
+   nicht mehr — dieser Catch/Status-Text wurde deshalb wieder entfernt,
+   `pick()` schließt jetzt wie Vanillas `offerExtraAction()` immer.
 3. **Behoben:** `KanbanExtraActionModal` sperrt die Options-Buttons jetzt
    zusätzlich, solange `useOrgActionCostsQuery()` noch lädt
    (`costsLoading`).
@@ -238,6 +240,53 @@ scharfgeschaltet, kein Risiko für die echte Anwendung.**
     `moveContactInCache()` (zwischen Spalten) und
     `patchContactFieldsInCache()` (Felder in derselben Spalte, z.B. der
     Status-/Wiedervorlage-Nachzug).
+
+## Resilienz-Entscheidung: XP-/Trichter-Buchung darf den Kartenzug nicht blockieren (2026-09-05)
+
+Löst die zuvor offene Architektur-Frage (Runde-2-Zweitmeinung hatte sie
+aufgeworfen, siehe Git-Historie): im Normalfall-/Verloren-Zweig von
+`kanbanMutations.ts` brach ein fehlschlagender `log_action_for_self`-
+Aufruf zuvor die GANZE Mutation ab (überspringt Folge-Popups/Status-
+Writes) — Vanillas `moveKanbanCard()` loggt den Fehler nur
+(`reportError()`) und macht unbedingt weiter. Nutzer-Entscheidung nach
+Gespräch: Priorität ist Gesamtsystem/CRM vor Gamification-Ebene — "wenn
+hier und da XP liegen bleiben... mund abwischen weiter", ausdrücklicher
+Vergleich mit einem seltenen Item-Drop-Bug in einem Spiel. Vanilla-
+Verhalten übernommen, zwei Bausteine:
+
+1. **`shared/lib/retry.ts` (`withRetry()`)** — 3 Versuche insgesamt mit
+   exponentiellem Backoff (500ms/1000ms), gezielt um den einzelnen
+   `log_action_for_self`-RPC-Aufruf in `logKanbanAction()` gelegt, NICHT
+   als globaler TanStack-Query-`mutations.retry` (der würde die
+   komplette, mehrschrittige Mutation von vorn laufen lassen — bereits
+   erledigte Schreibschritte, erneut geöffnete Popups). Sicher gegen
+   Doppelbuchung, weil `log_action_for_self` serverseitig ein
+   5-Sekunden-Dedup-Fenster hat (CLAUDE.md "Idempotenz-Härtung").
+2. **`logKanbanAction()` wirft nicht mehr.** Bleibt der Fehlschlag nach
+   den Wiederholungsversuchen bestehen (echter Ausfall, nicht nur ein
+   Netzwerk-Wackler), meldet `reportError()` (neu in
+   `shared/lib/errorLog.ts`, Entsprechung zu Vanillas `reportError()` —
+   Alert + Fehlerprotokoll) sichtbar, aber die Funktion gibt `null`
+   zurück statt zu werfen. `logAndNotify()` gibt diesen `null`-Fall
+   durch. `kanbanMutations.ts` brauchte dafür KEINE Anpassung — jeder
+   `await logAndNotify(...)`-Aufruf dort läuft bereits unconditioniert
+   weiter, das Werfen war der einzige Abbruch-Mechanismus.
+   `KanbanExtraActionModal.pick()` wurde dadurch sogar einfacher (siehe
+   Fund 2 oben, jetzt überholt).
+
+**Bewusst NICHT geändert:** ein echter Sperr-Konflikt
+(`lockedUpdate()`/`notifyConflict()`) bleibt ein harter Abbruch mit
+sichtbarer Meldung — das ist kein Netzwerk-Wackler, sondern eine echte,
+für den Nutzer relevante Kollision (zwei Personen haben gleichzeitig
+denselben Kontakt bearbeitet). Ebenso unverändert: scheitert der
+NACHGELAGERTE Status-Update bei "Gewonnen"/"Verloren" an einem echten
+Fehler, bricht `lockedUpdate()` weiterhin die Mutation ab (siehe
+Modul-Kommentar an `useMoveKanbanCardMutation()`) — das ist eine echte
+CRM-Schreiboperation (Kontaktstatus), keine Gamification-Buchung, und
+damit ein anderer Fall als die hier entschiedene Frage.
+
+Tests: `shared/lib/retry.test.ts` (4 Prüfungen). Typecheck/Lint/
+Vitest(37)/Build grün.
 
 ## Noch offen (nächste Schritte in Block 5)
 

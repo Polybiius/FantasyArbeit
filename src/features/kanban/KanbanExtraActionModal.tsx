@@ -1,8 +1,4 @@
-import { useState } from 'react';
-
 import { getBridge } from '@/shared/lib/bridge';
-import { logSilentError } from '@/shared/lib/errorLog';
-import { toError } from '@/shared/lib/toError';
 import { useBusyGuard } from '@/shared/hooks/useBusyGuard';
 import { useCharacterStats } from '@/shared/hooks/useCharacterStats';
 import { Modal } from '@/shared/ui/Modal';
@@ -50,27 +46,19 @@ export function KanbanExtraActionModal({ contact, options, onResolve }: KanbanEx
   const statsLoading = stats == null;
   const energyRemaining = stats?.energyRemaining ?? 0;
   const { busy, run } = useBusyGuard();
-  const [status, setStatus] = useState('');
 
+  /**
+   * 1:1 zu Vanillas Button-Handler in `offerExtraAction()`: geloggt wird
+   * versucht, das Popup schließt sich danach IMMER (`finish()` dort läuft
+   * ohne den Rückgabewert von `logKanbanAction()` zu prüfen). Seit der
+   * Resilienz-Entscheidung 2026-09-05 (siehe `kanbanActionLog.ts`) meldet
+   * `logAndNotify()` einen bleibenden Fehlschlag selbst sichtbar (Alert +
+   * Fehlerprotokoll) und wirft nicht mehr — ein eigener Catch/Status-Text
+   * hier wäre nur noch totes Verhalten.
+   */
   async function pick(key: KanbanExtraActionOption['key']) {
-    const ok = await run(async () => {
-      try {
-        await logAndNotify(contact, key);
-        return true;
-      } catch (err) {
-        // Fund einer unabhängigen Zweitmeinung: ein fehlschlagender
-        // `logAndNotify()` schloss das Popup vorher trotzdem (via
-        // `finally`), der Fehler wurde zu einer unbehandelten Promise-
-        // Ablehnung ohne sichtbaren Hinweis. Vanilla zeigt hier einen
-        // Alert + schreibt ins Fehlerprotokoll -- hier: sichtbarer
-        // Status-Text (gleiches Muster wie die Verkaufs-/Termin-Popups)
-        // + `logSilentError`, Popup bleibt offen statt zu schließen.
-        logSilentError('Zusatzaktion loggen', err);
-        setStatus(toError(err).message);
-        return false;
-      }
-    });
-    if (ok) onResolve();
+    await run(() => logAndNotify(contact, key));
+    onResolve();
   }
 
   return (
@@ -105,7 +93,6 @@ export function KanbanExtraActionModal({ contact, options, onResolve }: KanbanEx
           );
         })}
       </div>
-      {status && <div className="tw:mt-2 tw:text-xs tw:text-danger">{status}</div>}
     </Modal>
   );
 }

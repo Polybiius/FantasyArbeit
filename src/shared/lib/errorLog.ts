@@ -35,6 +35,22 @@ export function logSilentError(context: string, error: unknown): void {
   logToErrorLog(context, toMessage(error));
 }
 
+/**
+ * Entspricht `reportError()` (ohne `statusEl`-Variante) im Vanilla-Code:
+ * Konsole + Fehlerprotokoll + sichtbarer `alert()`. Für Fehler, die trotz
+ * Wiederholungsversuchen bestehen bleiben, den begonnenen Vorgang aber
+ * NICHT abbrechen sollen — siehe
+ * `src/features/kanban/kanbanActionLog.ts` (Entscheidung 2026-09-05: eine
+ * fehlschlagende XP-/Trichter-Buchung meldet sich sichtbar, blockiert
+ * aber die wichtigere CRM-Schreiboperation nicht).
+ */
+export function reportError(context: string, error: unknown): void {
+  console.error(context, error);
+  const message = toMessage(error);
+  logToErrorLog(context, message);
+  window.alert(`Fehler: ${message}`);
+}
+
 function toMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === 'string') return error;
