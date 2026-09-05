@@ -17,25 +17,28 @@ import { KANBAN_STAGE_META } from './kanbanLabels';
 import { useKanbanBoardQuery, type KanbanContact } from './kanbanApi';
 import { useMoveKanbanCardMutation } from './kanbanMutations';
 import { KANBAN_STAGES, type KanbanStage } from './kanbanTransitions';
+import { useKanbanExtraPopups } from './useKanbanExtraPopups';
+import { useKanbanSalePopups } from './useKanbanSalePopups';
 
 /**
- * Echter Schreibpfad seit diesem Baustein (Block 5) — siehe
- * `kanbanMutations.ts` für den vollen Ablauf (Sperr-geprüfte
- * Spaltenänderung, dann `log_action_for_self` für Hauptaktion+
- * Trichter-Marken, dann `notifyActionLogged()` an die Brücke, damit
- * Vanillas XP-/Energie-Anzeige synchron bleibt — `docs/adr/0002`).
+ * Echter Schreibpfad seit Block 5 — siehe `kanbanMutations.ts` für den
+ * vollen Ablauf (Sperr-geprüfte Spaltenänderung, dann `log_action_for_self`
+ * für Hauptaktion+Trichter-Marken, dann `notifyActionLogged()` an die
+ * Brücke, damit Vanillas XP-/Energie-Anzeige synchron bleibt —
+ * `docs/adr/0002`). "Gewonnen"/"Verloren" (Verkaufs-Popups) und die
+ * überspringbaren Bedarfsanalyse-/Termin-/Dauerbrenner-Zusatzabfragen
+ * sind ebenfalls Teil des Schreibpfads, siehe `useKanbanSalePopups.tsx`/
+ * `useKanbanExtraPopups.tsx`.
  *
  * Bewusst KEIN optimistisches lokales Verschieben (Projekt-Konvention,
  * siehe `queryClient.ts`: naive optimistische Updates würden der
  * serverseitigen Sperrlogik vorgreifen) — die Karte springt erst nach
- * bestätigtem Server-Erfolg in die neue Spalte (`onSuccess` invalidiert
- * die Board-Abfrage). Während des Speicherns ist das Board per
- * `aria-busy` markiert, ein zweiter Zug wird ignoriert statt eine
- * parallele Mutation zu starten.
+ * bestätigtem Server-Erfolg in die neue Spalte. Während des Speicherns
+ * (inkl. offener Popups) ist das Board per `aria-busy` markiert, ein
+ * zweiter Zug wird ignoriert statt eine parallele Mutation zu starten.
  *
- * **Noch nicht Teil dieses Bausteins:** "Gewonnen"/"Verloren" (brauchen
- * ein Verkaufs-Popup, siehe `kanbanMutations.ts`-Kommentar) und die
- * geteilten, schreibgeschützten Karten aus Termin-Einladungen.
+ * **Noch nicht Teil dieses Bausteins:** die geteilten, schreibgeschützten
+ * Karten aus Termin-Einladungen.
  */
 function DroppableColumn({
   stage,
@@ -95,7 +98,9 @@ function DraggableCard({ contact, disabled }: { contact: KanbanContact; disabled
 
 export function KanbanBoard() {
   const { data: columns, isLoading, error } = useKanbanBoardQuery();
-  const moveMutation = useMoveKanbanCardMutation();
+  const { popups: salePopups, modal: salePopupModal } = useKanbanSalePopups();
+  const { popups: extraPopups, modal: extraPopupModal } = useKanbanExtraPopups();
+  const moveMutation = useMoveKanbanCardMutation(salePopups, extraPopups);
 
   function handleDragStart() {
     moveMutation.reset();
@@ -140,6 +145,8 @@ export function KanbanBoard() {
           ))}
         </div>
       </DndContext>
+      {salePopupModal}
+      {extraPopupModal}
     </div>
   );
 }

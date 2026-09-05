@@ -3,7 +3,7 @@ import {
   KANBAN_STAGES,
   decideKanbanTransition,
   resolveLostOutcome,
-  resolveWonOutcome,
+  resolveWonFunnelMarkers,
   type KanbanTransitionContext,
 } from './kanbanTransitions';
 
@@ -180,35 +180,23 @@ describe('decideKanbanTransition — Energie-Budget', () => {
   });
 });
 
-describe('resolveWonOutcome', () => {
-  it('setzt im Normalfall (Status-Update gelingt): Spalte gewonnen, abschluss, Kunde — aber KEINE Trichter-Marke', () => {
+describe('resolveWonFunnelMarkers', () => {
+  it('unterdrückt die Marken im Normalfall (Status-Update gelingt)', () => {
     // Fund einer unabhängigen Zweitmeinung: im echten Code wird
     // contacts.status VOR der Trichter-Prüfung auf 'kunde' gesetzt — ein
     // Erstabschluss unterdrückt dadurch praktisch immer seine eigene Marke.
-    expect(resolveWonOutcome('ersttermin_vereinbart', true, ['termin_wahrgenommen'])).toEqual({
-      finalStage: 'gewonnen',
-      mainAction: 'abschluss',
-      funnelMarkers: [],
-      setStatusKunde: true,
-    });
+    expect(resolveWonFunnelMarkers(false, ['termin_wahrgenommen'])).toEqual([]);
   });
 
   it('löst die versprochenen Marken nur im seltenen Randfall ein, dass der Status-Schreibvorgang selbst kollidiert', () => {
-    expect(resolveWonOutcome('ersttermin_vereinbart', true, ['termin_wahrgenommen'], true)).toEqual({
-      finalStage: 'gewonnen',
-      mainAction: 'abschluss',
-      funnelMarkers: ['termin_wahrgenommen'],
-      setStatusKunde: false,
-    });
+    expect(resolveWonFunnelMarkers(true, ['termin_wahrgenommen'])).toEqual(['termin_wahrgenommen']);
   });
 
-  it('macht bei Abbruch ohne Produkt die Spalte rückgängig (Revert-Pfad)', () => {
-    expect(resolveWonOutcome('dauerbrenner', false, ['termin_wahrgenommen'])).toEqual({
-      finalStage: 'dauerbrenner',
-      mainAction: null,
-      funnelMarkers: [],
-      setStatusKunde: false,
-    });
+  it('liefert eine neue Kopie des Arrays (keine geteilte Referenz mit `funnelMarkersIfWon`)', () => {
+    const source = ['termin_wahrgenommen'] as const;
+    const result = resolveWonFunnelMarkers(true, source);
+    expect(result).not.toBe(source);
+    expect(result).toEqual(source);
   });
 });
 

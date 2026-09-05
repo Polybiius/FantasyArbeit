@@ -1,6 +1,8 @@
+import { useQuery } from '@tanstack/react-query';
 import { z } from 'zod';
 
 import { sb } from '@/shared/lib/bridge';
+import { qk } from '@/shared/lib/queryKeys';
 
 /**
  * Laufzeit-Vertrag für GENAU den Teil von `rule_configs.config`, den der
@@ -34,4 +36,19 @@ export async function fetchOrgActionCosts(orgId: string): Promise<KanbanActionCo
   if (error) throw error;
   if (!data) throw new Error('Kein Regelwerk für diese Organisation gefunden.');
   return ruleConfigActionsSchema.parse(data.config).actions;
+}
+
+/**
+ * Reaktive Fassung von `fetchOrgActionCosts()` für UI-Code (z.B.
+ * `KanbanExtraActionModal.tsx`, das XP/Energie je Zusatzaktion anzeigt)
+ * — **gleicher Query-Key** wie `useMoveKanbanCardMutation()`s
+ * `queryClient.fetchQuery()`-Aufruf, teilt sich also denselben Cache.
+ */
+export function useOrgActionCostsQuery(orgId: string | undefined) {
+  return useQuery({
+    queryKey: qk.kanban.actionCosts(orgId ?? ''),
+    queryFn: () => fetchOrgActionCosts(orgId!),
+    enabled: orgId != null,
+    staleTime: 5 * 60_000,
+  });
 }

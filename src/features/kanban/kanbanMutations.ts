@@ -1,20 +1,21 @@
 import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 
-import { getBridge, sb, type ActionLogRow } from '@/shared/lib/bridge';
+import { getBridge } from '@/shared/lib/bridge';
 import { lockedUpdate } from '@/shared/lib/lockedUpdate';
 import { qk } from '@/shared/lib/queryKeys';
 import { resolveTimeZone } from '@/shared/lib/timezone';
 
 import { contactDisplayName } from '@/shared/domain/contactCard/contactDisplay';
+import { logAndNotify } from './kanbanActionLog';
 import type { KanbanBoardColumns, KanbanContact } from './kanbanApi';
+import type { KanbanExtraPopups } from './useKanbanExtraPopups';
+import type { KanbanSalePopups } from './useKanbanSalePopups';
 import { buildHasFunnelMarkerThisYear, fetchFunnelMarkerRows } from './kanbanFunnel';
+import { BEDARFSANALYSE_EXTRA_OPTIONS, DAUERBRENNER_EXTRA_OPTIONS } from './kanbanLabels';
 import { fetchOrgActionCosts } from './kanbanRuleConfig';
-import {
-  decideKanbanTransition,
-  type KanbanFunnelMarker,
-  type KanbanMainAction,
-  type KanbanStage,
-} from './kanbanTransitions';
+import { syncWiedervorlageTask } from './kanbanSaleWrite';
+import { attachKanalToLoggedAction } from './kanbanTerminWrite';
+import { decideKanbanTransition, resolveLostOutcome, resolveWonFunnelMarkers, type KanbanStage } from './kanbanTransitions';
 
 export interface MoveKanbanCardInput {
   contact: KanbanContact;
@@ -23,32 +24,25 @@ export interface MoveKanbanCardInput {
 
 export type MoveKanbanCardResult = { moved: true } | { conflict: true };
 
-async function logKanbanAction(
-  contact: KanbanContact,
-  actionKey: KanbanMainAction | KanbanFunnelMarker,
-): Promise<ActionLogRow> {
-  const { data, error } = await sb().rpc('log_action_for_self', {
-    p_action_key: actionKey,
-    p_context: contactDisplayName(contact),
-    p_location_id: contact.location_id ?? undefined,
-    p_contact_id: contact.id,
-  });
-  if (error) throw error;
-  return data;
-}
-
 /**
- * Zieht die Karte im Cache SOFORT auf den bereits vom Server bestätigten
- * Stand (nicht erst nach einem Refetch) — schließt zwei von einer
- * unabhängigen Zweitmeinung gefundene Zeitfenster in einem Rutsch:
- * (a) bliebe das Board bis zum nächsten Refetch in der alten Spalte
- * stehen, obwohl `kanban_stage` in der DB schon geändert ist, sähe ein
- * sofortiges zweites Ziehen derselben Karte einen falschen Ausgangspunkt;
- * (b) ohne das frische `updated_at` im Cache würde ein sofortiger
- * zweiter Zug mit dem VERALTETEN `updated_at` gegen `update_contact_
- * locked` laufen und fälschlich als Konflikt ("jemand anders hat das
- * geändert") abgelehnt — CLAUDE.md verlangt genau deshalb explizit,
- * dass jede Schreibstelle das lokale Objekt nach Erfolg nachzieht.
+ * Verschiebt eine Karte ZWISCHEN zwei Spalten im Cache, sofort auf den
+ * bereits vom Server bestätigten Stand (nicht erst nach einem Refetch) —
+ * schließt zwei von einer unabhängigen Zweitmeinung gefundene Zeitfenster
+ * in einem Rutsch: (a) bliebe das Board bis zum nächsten Refetch in der
+ * alten Spalte stehen, obwohl `kanban_stage` in der DB schon geändert
+ * ist, sähe ein sofortiges zweites Ziehen derselben Karte einen falschen
+ * Ausgangspunkt; (b) ohne das frische `updated_at` im Cache würde ein
+ * sofortiger zweiter Zug mit dem VERALTETEN `updated_at` gegen
+ * `update_contact_locked` laufen und fälschlich als Konflikt
+ * ("jemand anders hat das geändert") abgelehnt — CLAUDE.md verlangt genau
+ * deshalb explizit, dass jede Schreibstelle das lokale Objekt nach Erfolg
+ * nachzieht.
+ *
+ * Getrennt von `patchContactFieldsInCache()` (Fund einer unabhängigen
+ * Zweitmeinung, 2026-09-05: eine einzige Funktion für "Karte zwischen
+ * Spalten verschieben" UND "Felder in derselben Spalte patchen" über
+ * einen `fromStage===toStage`-Trick war unnötig unklar) — diese Funktion
+ * verschiebt IMMER zwischen unterschiedlichen Spalten.
  */
 function moveContactInCache(
   queryClient: QueryClient,
@@ -56,18 +50,40 @@ function moveContactInCache(
   contactId: string,
   fromStage: KanbanStage,
   toStage: KanbanStage,
-  updatedAt: string,
+  patch: Partial<KanbanContact>,
 ) {
   queryClient.setQueryData<KanbanBoardColumns>(qk.kanban.board(ownerId), (old) => {
     if (!old) return old;
     const found = old[fromStage].find((c) => c.id === contactId);
     if (!found) return old;
-    const moved: KanbanContact = { ...found, kanban_stage: toStage, updated_at: updatedAt };
+    const updated: KanbanContact = { ...found, ...patch, kanban_stage: toStage };
     return {
       ...old,
       [fromStage]: old[fromStage].filter((c) => c.id !== contactId),
-      [toStage]: [...old[toStage], moved],
+      [toStage]: [...old[toStage], updated],
     };
+  });
+}
+
+/**
+ * Patcht Felder einer Karte, OHNE sie zwischen Spalten zu verschieben
+ * (z.B. der reine Status-/Wiedervorlage-Nachzug nach "Gewonnen"/
+ * "Verloren", wo die Spalte bereits feststeht). Siehe `moveContactInCache()`
+ * für die Begründung der Aufteilung.
+ */
+function patchContactFieldsInCache(
+  queryClient: QueryClient,
+  ownerId: string,
+  contactId: string,
+  stage: KanbanStage,
+  patch: Partial<KanbanContact>,
+) {
+  queryClient.setQueryData<KanbanBoardColumns>(qk.kanban.board(ownerId), (old) => {
+    if (!old) return old;
+    const found = old[stage].find((c) => c.id === contactId);
+    if (!found) return old;
+    const updated: KanbanContact = { ...found, ...patch };
+    return { ...old, [stage]: old[stage].map((c) => (c.id === contactId ? updated : c)) };
   });
 }
 
@@ -85,40 +101,53 @@ function moveContactInCache(
  * gebuchten Punkte trotzdem sofort in Vanillas Anzeige sichtbar, statt
  * bis zum nächsten Vanilla-Render verloren/verzögert zu wirken.
  *
- * **Bewusst NICHT Teil dieser Funktion: "Gewonnen"/"Verloren".** Beide
- * brauchen ein Verkaufs-Popup (Produkt/Menge erfassen bzw. Kündigung),
- * das noch nicht gebaut ist — `decideKanbanTransition()` liefert dafür
- * `specialFlow`, aber `resolveWonOutcome()`/`resolveLostOutcome()`
- * lassen sich erst NACH einem bekannten Popup-Ausgang aufrufen. Ein Zug
- * auf diese beiden Spalten wird hier deshalb klar abgelehnt statt einen
- * unvollständigen Verkauf zu erzeugen (siehe README).
+ * **"Gewonnen"/"Verloren" (dieser Baustein):** `salePopups` (siehe
+ * `useKanbanSalePopups.tsx`) öffnet das jeweilige Verkaufs-Popup und
+ * liefert erst zurück, wenn der Nutzer geantwortet hat — `resolveWonFunnelMarkers()`/
+ * `resolveLostOutcome()` (`kanbanTransitions.ts`) entscheiden danach,
+ * was das für Spalte/Status/Trichter-Marken bedeutet, 1:1 zu
+ * `moveContactToGewonnenAndRecordSale()`/`recordWinOrLoss()` im echten
+ * Code. **Bewusste Vereinfachung gegenüber Vanilla:** scheitert der
+ * NACHGELAGERTE Status-Update (`contacts.status` → 'kunde'/'verloren')
+ * an einem echten Fehler (nicht an einem Sperr-Konflikt — der wird über
+ * `statusUpdateConflicted`/`{conflict:true}` korrekt behandelt), wirft
+ * `lockedUpdate()` und bricht die Mutation ab, während Vanilla dort nur
+ * `logSilentError()` loggt und trotzdem `true` zurückgibt. Realer Fehler
+ * an dieser Stelle (Kontakt existiert/RLS greift bereits) ist ein sehr
+ * seltener Randfall; der `onSettled`-Refetch unten zieht den echten
+ * Serverstand in jedem Fall nach.
+ *
+ * **Zusatz-Popups (Bedarfsanalyse/Termin), dieser Baustein:**
+ * `extraPopups` (siehe `useKanbanExtraPopups.tsx`) hängt am Ende des
+ * Normalfalls dieselbe Sequenz wie in `moveKanbanCard()` an — alle
+ * überspringbar, ändern nie, OB die Karte verschoben wurde (die Spalte
+ * steht zu diesem Zeitpunkt schon fest). Bewusst NUR im Normalfall, nicht
+ * bei "Gewonnen"/"Verloren" (1:1 zu Vanilla — dort gibt es keine
+ * Bedarfsanalyse-/Termin-Nachfrage). Iteriert seit einer unabhängigen
+ * Zweitmeinung (2026-09-05) über `plan.popups` statt über eine zweite,
+ * unabhängig gepflegte `if`-Kette derselben Entscheidung.
  */
-export function useMoveKanbanCardMutation() {
+export function useMoveKanbanCardMutation(salePopups: KanbanSalePopups, extraPopups: KanbanExtraPopups) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationKey: ['kanban', 'move'],
     mutationFn: async ({ contact, toStage }: MoveKanbanCardInput): Promise<MoveKanbanCardResult> => {
       const fromStage = contact.kanban_stage;
 
-      if (toStage === 'gewonnen' || toStage === 'verloren') {
-        throw new Error(
-          `„${toStage === 'gewonnen' ? 'Gewonnen' : 'Verloren'}“ braucht ein Verkaufs-Popup — das kommt in einem eigenen, ` +
-            'späteren Bauschritt (siehe src/features/kanban/README.md).',
-        );
-      }
-
       const profile = getBridge().getProfile();
       if (!profile) throw new Error('Keine Session — Kanban-Zug kann nicht gespeichert werden.');
       if (!profile.org_id) throw new Error('Keine Organisation — Kanban ist nur für Organisationsmitglieder verfügbar.');
+      const orgId = profile.org_id;
       const timeZone = resolveTimeZone(profile.timezone);
+      const conflictSubject = `Kontakt „${contactDisplayName(contact)}“`;
 
       const [actionCosts, funnelRows] = await Promise.all([
         // Regelwerk ändert sich selten -- gecacht statt bei jedem
         // Kartenzug neu vom Server geladen (Fund einer unabhängigen
         // Zweitmeinung: Effizienz).
         queryClient.fetchQuery({
-          queryKey: qk.kanban.actionCosts(profile.org_id),
-          queryFn: () => fetchOrgActionCosts(profile.org_id!),
+          queryKey: qk.kanban.actionCosts(orgId),
+          queryFn: () => fetchOrgActionCosts(orgId),
           staleTime: 5 * 60_000,
         }),
         fetchFunnelMarkerRows(contact.id, profile.id),
@@ -135,22 +164,153 @@ export function useMoveKanbanCardMutation() {
         throw new Error(plan.rejectionReason ?? 'Dieser Zug ist nicht erlaubt.');
       }
 
+      // ---- Sonderfall "Gewonnen" ----------------------------------------
+      if (plan.specialFlow === 'gewonnen') {
+        const staged = await lockedUpdate(
+          'update_contact_locked',
+          { p_id: contact.id, p_expected_updated_at: contact.updated_at, p_patch: { kanban_stage: 'gewonnen' } },
+          conflictSubject,
+        );
+        if (!staged) return { conflict: true };
+        moveContactInCache(queryClient, profile.id, contact.id, fromStage, 'gewonnen', { updated_at: staged.updated_at });
+
+        const result = await salePopups.requestWonSale(contact);
+
+        // Wiedervorlage wird UNABHÄNGIG vom Verkaufs-Ausgang geschrieben
+        // (auch im Revert-Pfad unten) -- 1:1 zu `recordWonSalesLoop()` im
+        // echten Code. Fund einer unabhängigen Zweitmeinung (2026-09-05,
+        // Punkt 1 in kanban/README.md): das Popup selbst kennt zu diesem
+        // Zeitpunkt nur das `updated_at` von VOR dem Stage-Set auf
+        // "gewonnen" -- ein `lockedUpdate()` von dort aus würde fälschlich
+        // als Konflikt abgelehnt. Deshalb hier, mit dem bereits frischen
+        // `staged.updated_at`.
+        let currentUpdatedAt = staged.updated_at;
+        if (result.wiedervorlage) {
+          await syncWiedervorlageTask(orgId, profile.id, contact.id, contactDisplayName(contact), result.wiedervorlage);
+          const wvUpdated = await lockedUpdate(
+            'update_contact_locked',
+            { p_id: contact.id, p_expected_updated_at: currentUpdatedAt, p_patch: { naechster_kontakt: result.wiedervorlage } },
+            conflictSubject,
+          );
+          if (wvUpdated) {
+            currentUpdatedAt = wvUpdated.updated_at;
+            patchContactFieldsInCache(queryClient, profile.id, contact.id, 'gewonnen', { updated_at: wvUpdated.updated_at });
+          }
+          // Konflikt hier ist non-kritisch (wie Vanillas `logSilentError`
+          // bei der Wiedervorlage-Aufgabe) -- `notifyConflict()` feuert
+          // bereits innerhalb von `lockedUpdate()`, der Rest des Ablaufs
+          // läuft mit dem zuletzt bekannten `currentUpdatedAt` weiter.
+        }
+
+        if (!result.saleRecorded) {
+          // Kein Produkt eingetragen -- Spalte zurücknehmen (Revert-Pfad,
+          // siehe Modul-Kommentar an `resolveWonFunnelMarkers()`).
+          const reverted = await lockedUpdate(
+            'update_contact_locked',
+            { p_id: contact.id, p_expected_updated_at: currentUpdatedAt, p_patch: { kanban_stage: fromStage } },
+            conflictSubject,
+          );
+          if (!reverted) return { conflict: true };
+          moveContactInCache(queryClient, profile.id, contact.id, 'gewonnen', fromStage, { updated_at: reverted.updated_at });
+          return { moved: true };
+        }
+
+        await logAndNotify(contact, 'abschluss');
+
+        let statusUpdateConflicted = false;
+        const statusUpdated = await lockedUpdate(
+          'update_contact_locked',
+          { p_id: contact.id, p_expected_updated_at: currentUpdatedAt, p_patch: { status: 'kunde' } },
+          conflictSubject,
+        );
+        if (statusUpdated) {
+          patchContactFieldsInCache(queryClient, profile.id, contact.id, 'gewonnen', {
+            updated_at: statusUpdated.updated_at,
+            status: 'kunde',
+          });
+        } else {
+          statusUpdateConflicted = true;
+        }
+
+        // Trichter-Marken MÜSSEN auch im Konfliktfall noch geloggt werden
+        // (siehe `resolveWonFunnelMarkers()`-Dokumentation) -- deshalb erst
+        // danach `{conflict:true}` zurückgeben (Fund einer unabhängigen
+        // Zweitmeinung, 2026-09-05: vorher wurde der Konflikt hier
+        // verschluckt, die Mutation gab immer `{moved:true}` zurück).
+        for (const marker of resolveWonFunnelMarkers(statusUpdateConflicted, plan.funnelMarkersIfWon)) {
+          await logAndNotify(contact, marker);
+        }
+        return statusUpdateConflicted ? { conflict: true } : { moved: true };
+      }
+
+      // ---- Sonderfall "Verloren" -----------------------------------------
+      if (plan.specialFlow === 'verloren') {
+        const updated = await lockedUpdate(
+          'update_contact_locked',
+          { p_id: contact.id, p_expected_updated_at: contact.updated_at, p_patch: { kanban_stage: 'verloren' } },
+          conflictSubject,
+        );
+        if (!updated) return { conflict: true };
+        moveContactInCache(queryClient, profile.id, contact.id, fromStage, 'verloren', { updated_at: updated.updated_at });
+
+        // Trichter-Marken werden SOFORT gebucht, unabhängig vom
+        // Popup-Ausgang (1:1 zu `decideKanbanTransition()`s `funnelMarkers`
+        // bei `specialFlow==='verloren'`).
+        for (const marker of plan.funnelMarkers) {
+          await logAndNotify(contact, marker);
+        }
+
+        const saleRecorded = await salePopups.requestLostSale(contact);
+        const outcome = resolveLostOutcome(saleRecorded);
+        if (outcome.setStatusVerloren) {
+          const statusUpdated = await lockedUpdate(
+            'update_contact_locked',
+            { p_id: contact.id, p_expected_updated_at: updated.updated_at, p_patch: { status: 'verloren' } },
+            conflictSubject,
+          );
+          if (!statusUpdated) return { conflict: true };
+          patchContactFieldsInCache(queryClient, profile.id, contact.id, 'verloren', {
+            updated_at: statusUpdated.updated_at,
+            status: 'verloren',
+          });
+        }
+        return { moved: true };
+      }
+
+      // ---- Normalfall (alle übrigen Übergänge) ----------------------------
       const updated = await lockedUpdate(
         'update_contact_locked',
         { p_id: contact.id, p_expected_updated_at: contact.updated_at, p_patch: { kanban_stage: toStage } },
-        `Kontakt „${contactDisplayName(contact)}“`,
+        conflictSubject,
       );
       if (!updated) return { conflict: true };
 
-      moveContactInCache(queryClient, profile.id, contact.id, fromStage, toStage, updated.updated_at);
+      moveContactInCache(queryClient, profile.id, contact.id, fromStage, toStage, { updated_at: updated.updated_at });
 
+      let mainActionRow: { id: string } | null = null;
       if (plan.mainAction) {
-        const row = await logKanbanAction(contact, plan.mainAction);
-        await getBridge().notifyActionLogged([row]);
+        mainActionRow = await logAndNotify(contact, plan.mainAction);
       }
       for (const marker of plan.funnelMarkers) {
-        const row = await logKanbanAction(contact, marker);
-        await getBridge().notifyActionLogged([row]);
+        await logAndNotify(contact, marker);
+      }
+
+      // ---- Zusatz-Popups (überspringbar, 1:1 zu `moveKanbanCard()`) --------
+      for (const popup of plan.popups) {
+        if (popup === 'bedarfsanalyse-optional') {
+          await extraPopups.offerExtraAction(contact, BEDARFSANALYSE_EXTRA_OPTIONS);
+        } else if (popup === 'termin-ersttermin') {
+          // Der Kanal war beim `logAndNotify()` oben noch nicht bekannt (kommt
+          // erst aus diesem Popup) -- deshalb hier an der bereits geloggten
+          // "Termin vereinbart"-Aktion nachgetragen, 1:1 zu
+          // `attachKanalToLoggedAction(ok, usedKanal)` im echten Code.
+          const usedKanal = await extraPopups.promptTermin(contact, 'Ersttermin');
+          await attachKanalToLoggedAction(mainActionRow?.id, usedKanal);
+        } else if (popup === 'termin-zweittermin') {
+          await extraPopups.promptTermin(contact, 'Zweittermin');
+        } else if (popup === 'dauerbrenner-optional') {
+          await extraPopups.offerExtraAction(contact, DAUERBRENNER_EXTRA_OPTIONS);
+        }
       }
 
       return { moved: true };

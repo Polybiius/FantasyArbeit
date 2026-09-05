@@ -13,9 +13,12 @@
  * dem echten Code übernommen (keine Vereinfachung/Bereinigung an dieser
  * Stelle — Block 5 friert das Verhalten bit-identisch ein):
  * - "Gewonnen": die Spalte wird nur bei einem WIRKLICH eingetragenen
- *   Produkt final gesetzt (`resolveWonOutcome`); wird das Verkaufs-Popup
- *   ohne Produkt geschlossen, springt die Karte auf die Herkunftsspalte
- *   zurück ("Revert-Pfad" — siehe Bugfix-Kommentar im echten Code).
+ *   Produkt final gesetzt; wird das Verkaufs-Popup ohne Produkt
+ *   geschlossen, springt die Karte auf die Herkunftsspalte zurück
+ *   ("Revert-Pfad" — siehe Bugfix-Kommentar im echten Code). Dieser
+ *   Zweig wird direkt in `kanbanMutations.ts` behandelt, VOR dem Aufruf
+ *   von `resolveWonFunnelMarkers()` unten (Fund einer unabhängigen
+ *   Zweitmeinung, 2026-09-05).
  * - "Verloren": die Spalte wird SOFORT und UNBEDINGT gesetzt (kein
  *   Revert) — nur ob `contacts.status` auf 'verloren' gesetzt wird, hängt
  *   vom Popup-Ausgang ab (`resolveLostOutcome`). Ebenso werden abgeleitete
@@ -24,7 +27,7 @@
  * - "Gewonnen": bei WIRKLICH eingetragenem Produkt wird `contacts.status`
  *   im echten Code VOR der Trichter-Prüfung auf 'kunde' gesetzt — ein
  *   Erstabschluss unterdrückt dadurch praktisch immer seine eigene Marke
- *   (`resolveWonOutcome`, Parameter `statusUpdateConflicted` deckt den
+ *   (`resolveWonFunnelMarkers`, Parameter `statusUpdateConflicted` deckt den
  *   seltenen Gegenfall ab, in dem genau dieser Status-Schreibvorgang
  *   fehlschlägt/kollidiert).
  */
@@ -57,6 +60,9 @@ export type KanbanFunnelMarker =
   | 'zweittermin_wahrgenommen'
   | 'zweittermin_vereinbart';
 
+/** Optionale Zusatzaktionen aus `offerExtraAction()` (Bedarfsanalyse-Nachfrage bei Angebot/Zweittermin, vier Optionen bei Dauerbrenner) — freiwillig, nie Voraussetzung für den Kartenzug selbst. */
+export type KanbanExtraAction = 'bedarfsanalyse' | 'pitch' | 'termin_wahrgenommen' | 'empfehlung';
+
 /** Popups, die nach einem Zug erscheinen können — alle bis auf die beiden Verkaufs-Popups überspringbar. */
 export type KanbanPopup =
   | 'bedarfsanalyse-optional'
@@ -84,7 +90,7 @@ export interface KanbanTransitionPlan {
   mainAction: KanbanMainAction | null;
   /** Sofort geloggte Marken — bei "Verloren" unabhängig vom Popup-Ausgang, bei allen anderen Zielspalten außer "Gewonnen" die einzige Quelle. */
   funnelMarkers: KanbanFunnelMarker[];
-  /** NUR bei `specialFlow === 'gewonnen'` befüllt — Kandidaten, kein Versprechen: `resolveWonOutcome()` löst sie NUR im seltenen Konfliktfall ein (siehe dortige Dokumentation), im Normalfall eines Erstabschlusses bleiben sie stumm. */
+  /** NUR bei `specialFlow === 'gewonnen'` befüllt — Kandidaten, kein Versprechen: `resolveWonFunnelMarkers()` löst sie NUR im seltenen Konfliktfall ein (siehe dortige Dokumentation), im Normalfall eines Erstabschlusses bleiben sie stumm. */
   funnelMarkersIfWon: KanbanFunnelMarker[];
   popups: KanbanPopup[];
   specialFlow: KanbanSpecialFlow;
@@ -109,7 +115,7 @@ function rejected(reason: string): KanbanTransitionPlan {
 /**
  * Entscheidet, was ein Kartenzug von `fromStage` nach `toStage` auslöst.
  * Deckt NICHT den Popup-Ausgang bei "Gewonnen"/"Verloren" ab — dafür
- * `resolveWonOutcome()`/`resolveLostOutcome()` NACH Bekanntwerden des
+ * `resolveWonFunnelMarkers()`/`resolveLostOutcome()` NACH Bekanntwerden des
  * tatsächlichen Ausgangs aufrufen.
  */
 export function decideKanbanTransition(
@@ -144,7 +150,7 @@ export function decideKanbanTransition(
   }
   // neuer_lead, dauerbrenner: keine Hauptaktion. "gewonnen"/"verloren" als
   // Ziel bekommen hier absichtlich KEINE Hauptaktion zugewiesen — "abschluss"
-  // hängt bei "gewonnen" vom Popup-Ausgang ab (siehe resolveWonOutcome),
+  // hängt bei "gewonnen" vom Popup-Ausgang ab (siehe resolveWonFunnelMarkers),
   // "verloren" hat gar keine eigene Hauptaktion ("Verloren ist verloren").
 
   // ">0"-Klausel bewusst wie im echten Code (Fund einer unabhängigen
@@ -238,17 +244,17 @@ export function decideKanbanTransition(
   };
 }
 
-export interface KanbanWonOutcome {
-  /** "gewonnen" bei echtem Verkauf, sonst die Herkunftsspalte (Revert). */
-  finalStage: KanbanStage;
-  mainAction: 'abschluss' | null;
-  funnelMarkers: KanbanFunnelMarker[];
-  setStatusKunde: boolean;
-}
-
 /**
- * Löst den "Gewonnen"-Sonderfall nach bekanntem Popup-Ausgang auf.
- * `funnelMarkersIfWon` kommt unverändert aus `decideKanbanTransition()`.
+ * Liefert die Trichter-Marken, die nach einem WIRKLICH abgeschlossenen
+ * Verkauf ("Gewonnen") zu loggen sind. `funnelMarkersIfWon` kommt
+ * unverändert aus `decideKanbanTransition()`.
+ *
+ * **Kein `saleRecorded`-Parameter mehr** (Fund einer unabhängigen
+ * Zweitmeinung, 2026-09-05): die Vorfassung `resolveWonOutcome()` hatte
+ * dafür einen eigenen Revert-Zweig, der beim tatsächlichen Aufrufer
+ * (`kanbanMutations.ts`) nie erreicht wurde — der Revert-Pfad bei
+ * fehlendem Produkt wird dort bereits VOR diesem Aufruf selbst behandelt
+ * (eigener `lockedUpdate()`-Aufruf mit der Herkunftsspalte).
  *
  * `statusUpdateConflicted` (Fund einer unabhängigen Zweitmeinung,
  * 2026-09-04): im echten Code (`recordWinOrLoss()`) wird `contacts.status`
@@ -260,23 +266,12 @@ export interface KanbanWonOutcome {
  * einer gleichzeitigen Änderung kollidiert (Sperr-Konflikt) — dann bleibt
  * `contact.status` auf dem alten Wert stehen, und die ursprünglich in
  * `funnelMarkersIfWon` versprochenen Marken lösen tatsächlich aus.
- * Default `false`, da das der weit überwiegende Normalfall ist.
  */
-export function resolveWonOutcome(
-  fromStage: KanbanStage,
-  saleRecorded: boolean,
+export function resolveWonFunnelMarkers(
+  statusUpdateConflicted: boolean,
   funnelMarkersIfWon: readonly KanbanFunnelMarker[],
-  statusUpdateConflicted = false,
-): KanbanWonOutcome {
-  if (!saleRecorded) {
-    return { finalStage: fromStage, mainAction: null, funnelMarkers: [], setStatusKunde: false };
-  }
-  return {
-    finalStage: 'gewonnen',
-    mainAction: 'abschluss',
-    funnelMarkers: statusUpdateConflicted ? [...funnelMarkersIfWon] : [],
-    setStatusKunde: !statusUpdateConflicted,
-  };
+): KanbanFunnelMarker[] {
+  return statusUpdateConflicted ? [...funnelMarkersIfWon] : [];
 }
 
 export interface KanbanLostOutcome {

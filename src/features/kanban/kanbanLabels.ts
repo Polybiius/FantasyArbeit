@@ -1,4 +1,4 @@
-import type { KanbanStage } from './kanbanTransitions';
+import type { KanbanExtraAction, KanbanStage } from './kanbanTransitions';
 
 /**
  * 1:1-Portierung von `KANBAN_STAGE_META` aus `index.html` — Icon+Label
@@ -17,3 +17,20 @@ export const KANBAN_STAGE_META: Record<KanbanStage, { icon: string; label: strin
   verloren: { icon: '❌', label: 'Verloren' },
   dauerbrenner: { icon: '🔥', label: 'Dauerbrenner' },
 };
+
+export interface KanbanExtraActionOption {
+  key: KanbanExtraAction;
+  label: string;
+}
+
+/** 1:1-Portierung der beiden `offerExtraAction()`-Aufrufe aus `moveKanbanCard()` (`index.html`). */
+export const BEDARFSANALYSE_EXTRA_OPTIONS: readonly KanbanExtraActionOption[] = [
+  { key: 'bedarfsanalyse', label: 'Bedarfsanalyse geführt' },
+];
+
+export const DAUERBRENNER_EXTRA_OPTIONS: readonly KanbanExtraActionOption[] = [
+  { key: 'bedarfsanalyse', label: 'Bedarfsanalyse geführt' },
+  { key: 'pitch', label: 'Angebot/Pitch abgegeben' },
+  { key: 'termin_wahrgenommen', label: 'Termin wahrgenommen' },
+  { key: 'empfehlung', label: 'Empfehlung erhalten' },
+];

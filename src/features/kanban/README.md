@@ -98,16 +98,41 @@ einem im laufenden Jahr umverteilten Kontakt (Gilden-Pool,
 Mitarbeiter-Offboarding) hätte das eine bereits vom Vorbesitzer
 geloggte Marke fälschlich für den neuen Besitzer mitgezählt.
 
+## `kanbanProducts.ts` + `kanbanSaleWrite.ts` + Verkaufs-Popups — "Gewonnen"/"Verloren"
+
+**Echter Schreibpfad für die beiden Sonderfälle, seit diesem Baustein.**
+`kanbanProducts.ts` portiert den Produktkatalog-Zugriff
+(`populateCategorySelect()`/`populateProductSelect()`/
+`computeRecontactDate()`), `kanbanSaleWrite.ts` die eigentlichen
+`sales`-Inserts + `syncWiedervorlageTask()`. `KanbanWonSaleModal.tsx`
+(1:1 zu `recordWonSalesLoop()` — Produkt-Schleife, BWS-Live-Vorschau,
+Nachfass-Empfehlung, Wiedervorlage) und `KanbanLostSaleModal.tsx` (1:1
+zu `recordLostSale()` — nur Kategorie+Produkt) sind promise-basiert wie
+ihre Vanilla-Vorbilder; `useKanbanSalePopups.tsx` hält das jeweils
+offene Popup und liefert `kanbanMutations.ts` zwei
+`requestWonSale()`/`requestLostSale()`-Einstiegspunkte, auf die
+`useMoveKanbanCardMutation()` wartet, bevor sie mit
+`resolveWonOutcome()`/`resolveLostOutcome()` (`kanbanTransitions.ts`)
+weiterrechnet.
+
+**Bewusste Abweichungen von Vanilla, beide dokumentiert an der
+jeweiligen Stelle:**
+- Ein Klick auf den abgedunkelten Hintergrund löst bei
+  `KanbanWonSaleModal` denselben `finish()`-Pfad wie "✕" aus. Vanillas
+  globaler Backdrop-Klick-Handler schließt `.loc-modal` dagegen nur
+  optisch, OHNE die wartende Promise aufzulösen — für eine TanStack-
+  Mutation wäre das ein für immer hängendes, das ganze Board
+  sperrendes `aria-busy`, deshalb bewusst korrigiert (siehe Kommentar
+  in `KanbanWonSaleModal.tsx`).
+- Scheitert der NACHGELAGERTE Status-Update (`contacts.status` →
+  'kunde'/'verloren') an einem echten Fehler (nicht an einem
+  Sperr-Konflikt, der korrekt behandelt wird), wirft `lockedUpdate()`
+  und bricht die Mutation ab — Vanilla loggt dort nur `logSilentError()`
+  und macht trotzdem weiter. Sehr seltener Randfall, der `onSettled`-
+  Refetch zieht den echten Serverstand in jedem Fall nach (siehe
+  Kommentar in `kanbanMutations.ts`).
+
 **Bewusst NICHT Teil dieses Bausteins:**
-- **"Gewonnen"/"Verloren"** — brauchen ein Verkaufs-Popup (Produkt/
-  Menge bzw. Kündigung erfassen), das noch nicht existiert. Ein Zug
-  dorthin wird von `kanbanMutations.ts` klar abgelehnt statt einen
-  unvollständigen Verkauf zu erzeugen.
-- Popup-Komponenten für die vier `KanbanPopup`-Werte (Bedarfsanalyse-
-  Nachfrage, Termin-Eintragung) — aktuell werden diese Zusatzabfragen
-  beim Zug übersprungen (entspricht dem in Vanilla ohnehin
-  überspringbaren Pfad, kein Verhaltensbruch, nur noch nicht als
-  eigene Nachfrage gebaut).
 - Geteilte, schreibgeschützte Karten aus Termin-Einladungen (siehe
   `kanbanApi.ts` oben).
 - **Noch NICHT in `App.tsx` verdrahtet** — kein `<Route path="kanban">`,
@@ -117,13 +142,105 @@ geloggte Marke fälschlich für den neuen Besitzer mitgezählt.
   in Claudes Erinnerung) — das Scharfschalten (Route eintragen,
   Vanilla-Seite verstecken) ist ein eigener, noch nicht gegangener
   Schritt, ebenso ein echter End-to-End-Test gegen die laufende App
-  (bisher nur Typecheck/Lint/Vitest/Build + Zweitmeinungs-Review, keine
-  Playwright-Prüfung mit echtem Login).
+  (bisher nur Typecheck/Lint/Vitest/Build, keine Playwright-Prüfung mit
+  echtem Login).
+
+## `KanbanExtraActionModal.tsx` + `KanbanTerminModal.tsx` + `kanbanTerminWrite.ts` — Bedarfsanalyse/Termin/Dauerbrenner
+
+Die drei zuvor übersprungenen, aber überspringbaren Zusatzabfragen aus
+`moveKanbanCard()` sind seit diesem Baustein ebenfalls gebaut:
+`KanbanExtraActionModal.tsx` (1:1 zu `offerExtraAction()` — Bedarfsanalyse
+bei Angebot/Zweittermin, vier Optionen bei Dauerbrenner, mit
+XP/Energie-Anzeige aus dem Regelwerk) und `KanbanTerminModal.tsx` (1:1
+zu `promptKanbanTermin()` — Datum/Start/Ende/Kanal, legt bei Ersttermin/
+Zweittermin einen echten Kalendertermin an). `kanbanTerminWrite.ts`
+portiert `computeTerminRange()`/den `termine`-Insert/
+`attachKanalToLoggedAction()`; `zonedTimeToUtc()`/`fullPartsInTZ()`
+wanderten dafür nach `shared/lib/timezone.ts` (mit eigenen Vitest-Tests,
+inkl. Sommer-/Winterzeit-Fall). `logKanbanAction`/`logAndNotify` wurden
+aus `kanbanMutations.ts` nach `kanbanActionLog.ts` gezogen, damit das
+Zusatzaktions-Popup dieselbe Funktion nutzt statt einer zweiten Kopie.
+`useKanbanExtraPopups.tsx` ist die Entsprechung zu
+`useKanbanSalePopups.tsx` für diese beiden Popup-Arten.
+
+## Funde einer unabhängigen Zweitmeinung (8 Finder-Agenten, 2026-09-05) — 11 von 12 behoben
+
+Nach dem Bau der Zusatz-Popups oben wurde eine breite Zweitmeinungsrunde
+eingeholt (8 parallele Agenten, je eigene Linse — Korrektheit/Effizienz/
+Wiederverwendung/Vereinfachung/CLAUDE.md-Konventionen/entferntes
+Verhalten/Cross-File/Zeile-für-Zeile). Alle 12 Funde noch am selben Tag
+behoben bis auf Fund 7 (siehe unten, wartet strukturell auf die
+Bridge-Erweiterung beim Scharfschalten). **Weiterhin ungepusht/nicht
+scharfgeschaltet, kein Risiko für die echte Anwendung.**
+
+1. **Echter Datenintegritäts-Bug, behoben:** `KanbanWonSaleModal` schrieb
+   bei gesetzter Wiedervorlage nur die `tasks`-Zeile
+   (`syncWiedervorlageTask()`), nicht `contacts.naechster_kontakt` —
+   Vanillas `recordWonSalesLoop()` schreibt beides. Fix wie geplant:
+   `KanbanWonSaleModalProps.onResolve` liefert jetzt
+   `{saleRecorded, wiedervorlage}` (`WonSaleResult`), der eigentliche
+   `naechster_kontakt`-Schreibvorgang (inkl. `syncWiedervorlageTask()`)
+   sitzt jetzt in `kanbanMutations.ts`, direkt nach dem Stage-Set auf
+   "gewonnen" — mit dem dort bereits frischen `staged.updated_at`.
+   Läuft, wie per Vanilla-Vergleich verlangt, UNABHÄNGIG von
+   `saleRecorded` (auch im Revert-Fall).
+2. **Behoben:** `KanbanExtraActionModal.pick()` fängt einen
+   fehlschlagenden `logAndNotify()`-Aufruf jetzt ab, zeigt einen
+   sichtbaren Status-Text (gleiches Muster wie die Verkaufs-/Termin-
+   Popups) statt das Popup einfach zu schließen, und loggt per
+   `logSilentError`.
+3. **Behoben:** `KanbanExtraActionModal` sperrt die Options-Buttons jetzt
+   zusätzlich, solange `useOrgActionCostsQuery()` noch lädt
+   (`costsLoading`).
+4. **Behoben:** `resolveWonOutcome()` → `resolveWonFunnelMarkers(
+   statusUpdateConflicted, funnelMarkersIfWon)` — der tote
+   `!saleRecorded`-Zweig ist weg, der Revert-Pfad wird jetzt ausschließlich
+   in `kanbanMutations.ts` behandelt. `kanbanTransitions.test.ts`
+   entsprechend angepasst.
+5. **Behoben:** `kanbanMutations.ts` iteriert jetzt über `plan.popups`
+   statt über eine zweite, unabhängig gepflegte `if`-Kette.
+6. **Behoben:** die drei betroffenen `lockedUpdate()`-Folgeaufrufe
+   (Revert bei "Gewonnen" ohne Produkt, Status-Update bei "Gewonnen"/
+   "Verloren") geben jetzt korrekt `{conflict:true}` zurück statt
+   `{moved:true}`. Beim Status-Update auf "Gewonnen" werden die per
+   `resolveWonFunnelMarkers()` fälligen Trichter-Marken dabei weiterhin
+   ZUERST geloggt (der eigentliche Zweck von `statusUpdateConflicted`),
+   erst danach wird der Konflikt gemeldet.
+7. **Noch offen, bewusst:** Sobald Kanban live ist, invalidieren neue
+   `sales`-Inserts aus den Verkaufs-Popups Vanillas `mySalesCache` nicht
+   — die Verkaufsstatistik-Seite (noch Vanilla, Block 6) zeigt bis zum
+   manuellen Neuladen veraltete Zahlen nach einem über React
+   abgeschlossenen Verkauf. Braucht eine neue, dokumentierte
+   `window.__bridge`-Erweiterung (ADR-0002 ist ein "schmaler, stabiler
+   Vertrag" — keine Ad-hoc-Anbauten) UND eine kleine Vanilla-seitige
+   Ergänzung in `index.html`, die während des aktuellen Feature-Stopps
+   dort nicht nebenbei mitgezogen werden sollte. Zusammen mit Schritt 2
+   unten (Route scharfschalten) angehen, nicht isoliert vorher.
+8. **Behoben:** neuer `shared/hooks/useBusyGuard.ts` (Ref-basierte
+   synchrone Sperre wie `useGuardedAction`, aber mit Rückgabewert/
+   Fehler-Weitergabe für Inline-Status-Texte, `run(fn)` statt einer
+   vorab gebundenen Aktion) — alle vier Modale (`KanbanWonSaleModal`/
+   `KanbanLostSaleModal`/`KanbanTerminModal`/`KanbanExtraActionModal`)
+   nutzen ihn jetzt statt eines eigenen `useState`-Busy-Flags.
+9. **Behoben:** neuer `shared/hooks/usePendingPopup.ts` (generisches
+   "ein Popup offen halten, per Promise auflösen") — `useKanbanSalePopups.tsx`/
+   `useKanbanExtraPopups.tsx` bauen jetzt beide darauf auf, je eine
+   Hook-Instanz pro Popup-Art statt einer eigenen Discriminated-Union.
+10. **Behoben:** neues `shared/ui/formStyles.ts`
+    (`formSelectClass`/`formInputClass`/`formLabelClass`) — die drei
+    betroffenen Modale importieren jetzt von dort statt eigener Kopien.
+11. **Behoben:** die drei betroffenen Modale nutzen jetzt
+    `toError(err).message` statt `err instanceof Error ? err.message :
+    '<fallback>'`.
+12. **Behoben:** `patchContactInCache()` in zwei Funktionen aufgeteilt —
+    `moveContactInCache()` (zwischen Spalten) und
+    `patchContactFieldsInCache()` (Felder in derselben Spalte, z.B. der
+    Status-/Wiedervorlage-Nachzug).
 
 ## Noch offen (nächste Schritte in Block 5)
 
-1. Popup-Komponenten (siehe oben) + der eigentliche Verkaufs-Schreibpfad
-   für "Gewonnen"/"Verloren".
+1. Fund 7 oben (Vanillas `mySalesCache` nach einem React-Verkauf
+   invalidieren) — zusammen mit Schritt 2 angehen, nicht isoliert.
 2. Route in `App.tsx` + Vanilla-Kanban-Seite ausblenden (das eigentliche
    Scharfschalten) — erst nach echtem End-to-End-Test.
 3. Geteilte, schreibgeschützte Karten aus Termin-Einladungen (siehe
